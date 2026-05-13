@@ -1,0 +1,12 @@
+Flask==3.0.3
+numpy==1.26.4
+pandas==2.2.2
+matplotlib==3.9.0
+scikit-learn==1.5.0
+scipy==1.13.1
+Pillow==10.3.0
+openpyxl==3.1.4
+
+# 桌面程序（PyQt6 方案）
+PyQt6>=6.6.0
+PyQt6-WebEngine>=6.6.0

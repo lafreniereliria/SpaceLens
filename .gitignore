@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.spec.bak
+
+# 虚拟环境
+.venv/
+.venv311/
+venv/
+env/
+
+# macOS
+.DS_Store
+
+# PyInstaller 中间产物
+build/
+
+# IDE
+.idea/
+.vscode/
+
+# pyenv 本地版本文件（可保留或忽略，按需）
+# .python-version

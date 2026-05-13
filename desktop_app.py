@@ -65,19 +65,27 @@ def _warmup_matplotlib():
 
 
 def _run_flask(port: int, status_cb=None):
-    """在后台线程中启动 Flask，禁用 debug 和 reloader"""
-    if status_cb:
-        status_cb("正在加载数学计算库...")
+    """
+    启动策略：
+    - 后台线程预热重型库（与 splash 画面同时进行）
+    - 重型库加载完毕后 Flask 才启动并绑定端口
+    - _wait_for_flask() 检测到端口可用时，splash 关闭、主窗口打开
+    - 整个过程用户看到的是进度条，不是白屏
+    """
     import flask as _flask
-    import numpy  # noqa - 提前 import 让后续调用更快
+    import threading as _threading
 
     if status_cb:
-        status_cb("正在加载数据分析库...")
-    import pandas  # noqa
+        status_cb("正在加载分析引擎...")
 
-    if status_cb:
-        status_cb("正在加载图形渲染库...")
-    from api.analysis import analysis_bp  # 内部会 import matplotlib / sklearn
+    # 同步加载重型库（在 Flask 启动之前完成）
+    # 这段时间用户看到的是 splash 进度条
+    try:
+        from api.analysis import analysis_bp
+    except Exception as e:
+        if status_cb:
+            status_cb(f"加载失败: {e}")
+        return
 
     if status_cb:
         status_cb("正在启动服务...")
@@ -93,6 +101,11 @@ def _run_flask(port: int, status_cb=None):
     @flask_app.route('/')
     def _index():
         return _flask.render_template('index.html')
+
+    @flask_app.route('/api/ready')
+    def _api_ready():
+        # 能访问到这里说明 blueprint 已注册，直接返回 ready
+        return _flask.jsonify({"ready": True, "error": None})
 
     flask_app.run(host=FLASK_HOST, port=port, debug=False, use_reloader=False)
 
@@ -283,15 +296,7 @@ def main():
 
     def _on_status(text: str):
         """从 Flask 线程回调，更新启动画面状态"""
-        # 根据状态文字推断进度
-        progress_map = {
-            "正在加载数学计算库...": 25,
-            "正在加载数据分析库...": 50,
-            "正在加载图形渲染库...": 75,
-            "正在启动服务...": 88,
-        }
-        target = progress_map.get(text, None)
-        splash.set_status(text, target)
+        splash.set_status(text, 70)
 
     def _on_flask_ready(p: int):
         splash.set_status("加载完成，正在打开界面...", 98)

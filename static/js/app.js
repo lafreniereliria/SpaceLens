@@ -218,6 +218,47 @@ const NEEDS_REGION = new Set(['openness','utilization']);
 let currentView = 'heatmap';
 let kValue = 5;
 
+// ─── Engine Ready（分析引擎后台预热）───
+let _engineReady = false;
+
+function startEngineReadyPoller() {
+  const runBtn = document.getElementById('run-btn');
+  const originalText = runBtn ? runBtn.textContent : '开始分析';
+
+  function setEngineReady() {
+    _engineReady = true;
+    if (runBtn) {
+      runBtn.disabled = false;
+      runBtn.textContent = originalText;
+      runBtn.title = '';
+    }
+  }
+
+  function poll() {
+    fetch('/api/ready')
+      .then(r => r.json())
+      .then(data => {
+        if (data.ready) {
+          setEngineReady();
+        } else {
+          setTimeout(poll, 800);
+        }
+      })
+      .catch(() => {
+        // Flask 还没就绪，继续轮询
+        setTimeout(poll, 1000);
+      });
+  }
+
+  // 先禁用按钮，开始轮询
+  if (runBtn) {
+    runBtn.disabled = true;
+    runBtn.textContent = '引擎加载中…';
+    runBtn.title = '分析引擎正在初始化，请稍候';
+  }
+  poll();
+}
+
 // ─── Init ───
 document.addEventListener('DOMContentLoaded', () => {
   bindNav();
@@ -228,6 +269,8 @@ document.addEventListener('DOMContentLoaded', () => {
   bindThemeToggle();
   bindColorSettings();
   restoreAccentColor();
+  // 界面加载完立即开始后台轮询引擎就绪状态
+  startEngineReadyPoller();
 });
 
 // ─── Theme Toggle ───
@@ -443,6 +486,11 @@ function bindRunBtn() {
 }
 
 async function runAnalysis() {
+  // 双重保险：引擎未就绪则提示等待
+  if (!_engineReady) {
+    showToast('分析引擎仍在初始化，请稍候...', 'info');
+    return;
+  }
   const cfg = VIEWS[currentView];
   const fd = new FormData();
   // 附带当前主题和主题色，让后端配色一致

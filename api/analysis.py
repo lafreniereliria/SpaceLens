@@ -15,6 +15,18 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.font_manager as _fm
 
+# matplotlib 3.9+ 移除了 cm.get_cmap()，统一用此兼容函数
+def _get_cmap(name, n=None):
+    """兼容 matplotlib 3.7+ 的 colormap 获取方式"""
+    try:
+        cmap = matplotlib.colormaps[name]
+    except AttributeError:
+        # matplotlib < 3.5 fallback
+        cmap = _get_cmap(name)
+    if n is not None:
+        cmap = cmap.resampled(n)
+    return cmap
+
 # ─── 主题配色 ───
 def _theme(t='dark'):
     if t == 'light':
@@ -225,7 +237,7 @@ def trajectory():
         ax0.axis('off')
 
         user_ids = df['UserID'].unique()
-        palette = plt.cm.get_cmap('tab20', len(user_ids))
+        palette = _get_cmap('tab20', len(user_ids))
         total_lengths = {}
 
         for idx, uid in enumerate(user_ids):
@@ -348,7 +360,7 @@ def cluster():
         ax0.imshow(img, alpha=0.35)
         ax0.axis('off')
 
-        palette = plt.cm.get_cmap('tab10', k)
+        palette = _get_cmap('tab10', k)
         for ci in range(k):
             mask = labels == ci
             ax0.scatter(x[mask], y[mask], s=12, color=palette(ci),
@@ -450,7 +462,7 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
     # gamma < 1 让边缘衰减更平缓（0.5 → 平方根曲线，过渡更柔和）
     density_soft = np.power(density_norm, 0.45)
 
-    cm = plt.cm.get_cmap(cmap)
+    cm = _get_cmap(cmap)
     heat_rgba = cm(density_norm)          # 颜色仍按线性密度取色
     heat_rgb  = heat_rgba[:, :, :3]
     heat_alpha = density_soft * alpha     # 透明度用软化后的值，边缘更柔
@@ -1098,7 +1110,7 @@ def environment():
 
         vmin, vmax = float(np.nanmin(interp)), float(np.nanmax(interp))
         interp_norm = (interp - vmin) / (vmax - vmin + 1e-9)
-        cm = plt.cm.get_cmap('RdYlBu_r')
+        cm = _get_cmap('RdYlBu_r')
         heat_rgb = cm(interp_norm)[:, :, :3]
         overlay = (img / 255.0) * 0.35 + heat_rgb * 0.65
         overlay = np.clip(overlay, 0, 1)
@@ -1193,7 +1205,7 @@ def behavior_count():
                 count_matrix[i, j] = int(((regions == r) & (beh_nums == b)).sum())
 
         # 散点图叠加
-        palette = plt.cm.get_cmap('tab10', len(uniq_beh))
+        palette = _get_cmap('tab10', len(uniq_beh))
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
 
@@ -1282,7 +1294,7 @@ def behavior_duration():
             for j, b in enumerate(uniq_beh):
                 dur_matrix[i, j] = t[(regions == r) & (beh_nums == b)].sum()
 
-        palette = plt.cm.get_cmap('tab10', len(uniq_beh))
+        palette = _get_cmap('tab10', len(uniq_beh))
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
 
@@ -1366,7 +1378,7 @@ def behavior_rate():
                 beh_t = t[r_mask & (beh_nums == b)].sum()
                 rate_matrix[i, j] = beh_t / total_t if total_t > 0 else 0
 
-        palette = plt.cm.get_cmap('tab10', len(uniq_beh))
+        palette = _get_cmap('tab10', len(uniq_beh))
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
 
@@ -1549,7 +1561,7 @@ def utilization():
 
         util_matrix = dur_matrix / reg_areas[:, np.newaxis]
 
-        palette = plt.cm.get_cmap('tab10', len(uniq_beh))
+        palette = _get_cmap('tab10', len(uniq_beh))
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
 

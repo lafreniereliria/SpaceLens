@@ -60,7 +60,7 @@ if _CJK_FONT:
     matplotlib.rcParams['font.sans-serif'] = [_CJK_FONT] + matplotlib.rcParams['font.sans-serif']
     matplotlib.rcParams['axes.unicode_minus'] = False
 from matplotlib.patches import FancyArrowPatch
-from sklearn.cluster import KMeans
+from scipy.cluster.vq import kmeans2 as _kmeans2
 from scipy.ndimage import gaussian_filter
 from PIL import Image
 
@@ -339,9 +339,18 @@ def cluster():
         data_xy = np.column_stack([x, y])
 
         k = max(2, min(k, len(data_xy) - 1))
-        km = KMeans(n_clusters=k, random_state=42, n_init=10)
-        labels = km.fit_predict(data_xy)
-        centers = km.cluster_centers_
+        # 用 scipy.cluster.vq.kmeans2 替代 sklearn.KMeans
+        # 优势：scipy 已作为依赖加载，无额外 import 开销；sklearn 在 PyInstaller bundle
+        # 中需要解压大量 Cython .so，是启动最慢的单步（占约 35%）
+        centers, labels = _kmeans2(
+            data_xy.astype(float), k,
+            iter=10, minit='points', missing='warn', seed=42
+        )
+        # 计算 inertia（簇内平方和，等价于 sklearn 的 km.inertia_）
+        inertia = float(sum(
+            ((data_xy[labels == i] - c) ** 2).sum()
+            for i, c in enumerate(centers)
+        ))
 
         img = load_img(img_file)
 
@@ -418,7 +427,7 @@ def cluster():
         summary = {
             'k': k,
             'total_points': len(x),
-            'inertia': round(float(km.inertia_), 1),
+            'inertia': round(inertia, 1),
             'clusters': clusters_info,
         }
         return jsonify({'image': img_b64, 'summary': summary})

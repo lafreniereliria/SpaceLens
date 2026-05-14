@@ -113,7 +113,7 @@ def _run_flask(port: int, state: dict):
 
     _set("正在初始化聚类分析...", 6)
     try:
-        from sklearn.cluster import KMeans  # noqa
+        from scipy.cluster.vq import kmeans2  # noqa  已替换 sklearn，更快
         from PIL import Image  # noqa
     except Exception:
         pass

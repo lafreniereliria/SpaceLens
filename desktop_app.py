@@ -270,17 +270,20 @@ class SplashScreen(QSplashScreen):
         # ── 进度驱动（指数衰减平滑趋近）──
         self._progress_val = 5.0   # 浮点，累积小步长
         self._progress_target = 30.0
-        self._decay = 0.06          # 衰减系数，耗时阶段会临时调小
+        self._decay = 0.06          # 衰减系数
+        self._min_step = 0.08       # 最小步长（保底速度）
         self._timer = QTimer()
         self._timer.timeout.connect(self._tick)
         self._timer.start(50)   # 50ms = 20fps，够流畅
 
     # ── 动画心跳 ──
     def _tick(self):
-        # 1. 进度条：指数衰减趋近 target（衰减系数可动态调整）
+        # 进度条：指数衰减 + 保底最小步长
+        # 步长 = max(diff * decay,  min_step)
+        # decay 控制起步快慢，min_step 防止末段太慢
         diff = self._progress_target - self._progress_val
         if diff > 0.05:
-            step = max(diff * self._decay, 0.08)
+            step = max(diff * self._decay, self._min_step)
             self._progress_val = min(self._progress_val + step, self._progress_target)
         self.progress.setValue(int(self._progress_val))
 
@@ -300,17 +303,21 @@ class SplashScreen(QSplashScreen):
             "border-radius: 7px;"
         )
 
-    def set_status(self, text: str, target_progress: float = None, decay: float = None):
+    def set_status(self, text: str, target_progress: float = None,
+                   decay: float = None, min_step: float = None):
         self.status_lbl.setText(text)
         if target_progress is not None:
             self._progress_target = min(float(target_progress), 92.0)
         if decay is not None:
             self._decay = decay
+        if min_step is not None:
+            self._min_step = min_step
         # 不调用 processEvents，让 Qt 事件循环自然处理
 
     def finish_loading(self):
         """加载完成：快速冲到 100，用 QTimer 单次回调，不阻塞主线程"""
         self._decay = 0.10
+        self._min_step = 0.30   # 尾段快速推进
         self._progress_target = 100.0
         # 不在这里 sleep，让 _tick 继续由 timer 驱动直到完成
         # 由 _on_flask_ready 调用，50ms 后 timer 会继续跑完剩余
@@ -336,14 +343,16 @@ def main():
     state = {'status': '正在准备...', 'stage': 0, 'error': None}
     port = _find_free_port()
 
-    # 阶段 → (进度目标, 衰减系数)
+    # 阶段 → (进度目标, 衰减系数, 最小步长/帧)
+    # 50ms/帧：min_step=0.20 → 每秒最慢推进 4%，63% 区间约 16s 跑完
+    #          decay=0.015  → 起步时 diff=63, step≈0.95, 起步不会太冲
     _STAGES = {
-        0: (10,  0.10),
-        1: (15,  0.10),   # 加载数学计算库
-        2: (20,  0.08),   # 加载数据分析库
-        3: (25,  0.07),   # 加载图形渲染库
-        4: (88,  0.022),  # 注册分析模块（最耗时，大区间缓慢爬行）
-        5: (93,  0.08),   # 启动服务
+        0: (10,  0.10,  0.08),
+        1: (15,  0.10,  0.08),   # 加载数学计算库
+        2: (20,  0.08,  0.08),   # 加载数据分析库
+        3: (25,  0.07,  0.08),   # 加载图形渲染库
+        4: (88,  0.015, 0.20),   # 注册分析模块：起步慢(0.015)，末段保底(0.20)
+        5: (93,  0.08,  0.08),   # 启动服务
     }
     _last_stage = [-1]
     _flask_opened = [False]
@@ -355,8 +364,8 @@ def main():
             return
         if stage != _last_stage[0]:
             _last_stage[0] = stage
-            target, decay = _STAGES.get(stage, (93, 0.08))
-            splash.set_status(state['status'], target, decay=decay)
+            target, decay, min_step = _STAGES.get(stage, (93, 0.08, 0.08))
+            splash.set_status(state['status'], target, decay=decay, min_step=min_step)
         if not _flask_opened[0] and stage >= 5:
             try:
                 with socket.create_connection((FLASK_HOST, port), timeout=0.05):

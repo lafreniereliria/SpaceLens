@@ -22,7 +22,7 @@ if _BASE_DIR not in sys.path:
     sys.path.insert(0, _BASE_DIR)
 
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QSplashScreen, QLabel, QProgressBar
+    QApplication, QMainWindow, QSplashScreen, QLabel, QProgressBar, QWidget
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage
@@ -75,11 +75,31 @@ def _run_flask(port: int, status_cb=None):
     import flask as _flask
     import threading as _threading
 
+    # 分阶段加载，驱动进度条平滑推进
     if status_cb:
-        status_cb("正在加载分析引擎...")
+        status_cb("正在加载数学计算库...")
+    try:
+        import numpy  # noqa
+    except Exception:
+        pass
 
-    # 同步加载重型库（在 Flask 启动之前完成）
-    # 这段时间用户看到的是 splash 进度条
+    if status_cb:
+        status_cb("正在加载数据分析库...")
+    try:
+        import pandas  # noqa
+    except Exception:
+        pass
+
+    if status_cb:
+        status_cb("正在加载图形渲染库...")
+    try:
+        import matplotlib  # noqa
+        matplotlib.use('Agg')
+    except Exception:
+        pass
+
+    if status_cb:
+        status_cb("正在注册分析模块...")
     try:
         from api.analysis import analysis_bp
     except Exception as e:
@@ -249,32 +269,107 @@ class SplashScreen(QSplashScreen):
         self.show()
         QApplication.processEvents()
 
-        # 进度条动画 timer（假进度，视觉反馈）
-        self._progress_val = 5
-        self._progress_target = 30
+        # ── 流光动画（进度条上方的移动光点）──
+        BAR_X, BAR_Y, BAR_W, BAR_H = 40, 210, W - 80, 8
+        self._bar_x = BAR_X
+        self._bar_w = BAR_W
+
+        self._glow = QWidget(self)
+        GLOW_D = 14
+        self._glow.setFixedSize(GLOW_D, GLOW_D)
+        self._glow.move(BAR_X - GLOW_D // 2, BAR_Y + BAR_H // 2 - GLOW_D // 2)
+        self._glow.setStyleSheet("""
+            background: radial-gradient(circle, #ffffff, #a78bfa);
+            border-radius: 7px;
+        """)
+        # Qt widget 用 border-radius 实现圆形
+        self._glow.setStyleSheet(
+            "background-color: #c4b5fd;"
+            "border-radius: 7px;"
+        )
+        self._glow_opacity = 1.0
+        self._glow_dir = -0.08   # 透明度变化方向（呼吸效果）
+
+        # ── 进度驱动（指数衰减平滑趋近）──
+        self._progress_val = 5.0   # 浮点，累积小步长
+        self._progress_target = 30.0
+        self._pulse_mode = False    # True = 摆动模式（长耗时阶段）
+        self._pulse_base = 0.0      # 摆动中心值
+        self._pulse_phase = 0.0     # 摆动相位（0~2π）
         self._timer = QTimer()
-        self._timer.timeout.connect(self._tick_progress)
-        self._timer.start(80)
+        self._timer.timeout.connect(self._tick)
+        self._timer.start(50)   # 50ms = 20fps，够流畅
 
-    def _tick_progress(self):
-        if self._progress_val < self._progress_target:
-            self._progress_val += 1
-            self.progress.setValue(self._progress_val)
-            QApplication.processEvents()
+    def enter_pulse(self):
+        """进入摆动模式：进度条在当前值附近小幅振荡，避免视觉卡死"""
+        self._pulse_mode = True
+        self._pulse_base = self._progress_val
+        self._pulse_phase = 0.0
 
-    def set_status(self, text: str, target_progress: int = None):
+    def exit_pulse(self):
+        """退出摆动模式，恢复正常趋近"""
+        self._pulse_mode = False
+
+    # ── 动画心跳 ──
+    def _tick(self):
+        import math
+        # 1. 进度条
+        if self._pulse_mode:
+            # 摆动模式：在 base ± 2.5 之间用正弦波振荡
+            self._pulse_phase += 0.12   # 每帧推进相位（~0.38Hz，约2.6s一周期）
+            offset = 2.5 * math.sin(self._pulse_phase)
+            display = self._pulse_base + offset
+            self.progress.setValue(int(display))
+        else:
+            # 正常模式：指数衰减趋近 target
+            diff = self._progress_target - self._progress_val
+            if diff > 0.05:
+                step = max(diff * 0.06, 0.12)
+                self._progress_val = min(self._progress_val + step, self._progress_target)
+            self.progress.setValue(int(self._progress_val))
+
+        # 2. 流光小圆点：跟随进度条前沿位置 + 呼吸透明度
+        filled_w = int(self._bar_w * self._progress_val / 100)
+        gx = self._bar_x + filled_w - self._glow.width() // 2
+        gy = 210 + 4 - self._glow.height() // 2
+        self._glow.move(gx, gy)
+
+        # 呼吸效果
+        self._glow_opacity += self._glow_dir
+        if self._glow_opacity <= 0.3 or self._glow_opacity >= 1.0:
+            self._glow_dir *= -1
+        alpha = int(self._glow_opacity * 255)
+        self._glow.setStyleSheet(
+            f"background-color: rgba(196,181,253,{alpha});"
+            "border-radius: 7px;"
+        )
+
+        QApplication.processEvents()
+
+    def set_status(self, text: str, target_progress: float = None, pulse: bool = False):
         self.status_lbl.setText(text)
         if target_progress is not None:
-            self._progress_target = min(target_progress, 95)
+            self._progress_target = min(float(target_progress), 92.0)
+        if pulse:
+            self.enter_pulse()
+        else:
+            self.exit_pulse()
         QApplication.processEvents()
 
     def finish_loading(self):
+        """加载完成：退出摆动，从当前值平滑冲到 100"""
+        self.exit_pulse()
+        # 把浮点值同步到真实显示值（摆动期间 _progress_val 没在更新）
+        self._progress_val = float(self.progress.value())
+        self._progress_target = 100.0
+        deadline = time.time() + 0.8
+        while self._progress_val < 99.5 and time.time() < deadline:
+            self._tick()
+            time.sleep(0.03)
         self._timer.stop()
-        # 快速填满进度条
-        for v in range(self._progress_val, 101, 3):
-            self.progress.setValue(v)
-            QApplication.processEvents()
-            time.sleep(0.01)
+        self._glow.hide()
+        self.progress.setValue(100)
+        QApplication.processEvents()
 
 
 # --------------------------------------------------------------------------- #
@@ -294,9 +389,22 @@ def main():
     bridge = _Signal()
     window_holder = {}
 
+    _STAGE_PROGRESS = {
+        "正在加载数学计算库...": (35,  False),
+        "正在加载数据分析库...": (55,  False),
+        "正在加载图形渲染库...": (72,  False),
+        "正在注册分析模块...":   (82,  True),   # 耗时最久，用摆动模式
+        "正在启动服务...":       (93,  False),
+    }
+
     def _on_status(text: str):
-        """从 Flask 线程回调，更新启动画面状态"""
-        splash.set_status(text, 70)
+        """从 Flask 线程回调，更新启动画面状态和目标进度"""
+        entry = _STAGE_PROGRESS.get(text)
+        if entry:
+            target, pulse = entry
+            splash.set_status(text, target, pulse=pulse)
+        else:
+            splash.set_status(text)
 
     def _on_flask_ready(p: int):
         splash.set_status("加载完成，正在打开界面...", 98)

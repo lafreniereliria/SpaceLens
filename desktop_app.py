@@ -95,7 +95,30 @@ def _run_flask(port: int, state: dict):
     except Exception:
         pass
 
-    _set("正在注册分析模块...", 4)
+    # ── 阶段 4：注册分析模块（拆分为 4 个真实子阶段）──
+    _set("正在初始化热力图分析...", 4)
+    try:
+        import matplotlib.pyplot   # noqa  触发字体缓存（最耗时）
+        import matplotlib.colors   # noqa
+    except Exception:
+        pass
+
+    _set("正在初始化轨迹分析...", 5)
+    try:
+        import matplotlib.font_manager  # noqa  字体扫描
+        from scipy.ndimage import gaussian_filter  # noqa
+        from scipy.interpolate import make_interp_spline  # noqa
+    except Exception:
+        pass
+
+    _set("正在初始化聚类分析...", 6)
+    try:
+        from sklearn.cluster import KMeans  # noqa
+        from PIL import Image  # noqa
+    except Exception:
+        pass
+
+    _set("正在注册 API 路由...", 7)
     try:
         from api.analysis import analysis_bp
     except Exception as e:
@@ -103,7 +126,7 @@ def _run_flask(port: int, state: dict):
         state['stage'] = -1
         return
 
-    _set("正在启动服务...", 5)
+    _set("正在启动服务...", 8)
 
     flask_app = _flask.Flask(
         __name__,
@@ -351,8 +374,8 @@ def main():
         1: (15,  0.10,  0.08),   # 加载数学计算库
         2: (20,  0.08,  0.08),   # 加载数据分析库
         3: (25,  0.07,  0.08),   # 加载图形渲染库
-        4: (88,  0.015, 0.20),   # 注册分析模块：起步慢(0.015)，末段保底(0.20)
-        5: (93,  0.08,  0.08),   # 启动服务
+        4: (95,  0.015, 0.20),   # 注册分析模块：起步慢(0.015)，末段保底(0.20)
+        5: (98,  0.08,  0.08),   # 启动服务
     }
     _last_stage = [-1]
     _flask_opened = [False]
@@ -366,7 +389,7 @@ def main():
             _last_stage[0] = stage
             target, decay, min_step = _STAGES.get(stage, (93, 0.08, 0.08))
             splash.set_status(state['status'], target, decay=decay, min_step=min_step)
-        if not _flask_opened[0] and stage >= 5:
+        if not _flask_opened[0] and stage >= 8:
             try:
                 with socket.create_connection((FLASK_HOST, port), timeout=0.05):
                     _flask_opened[0] = True

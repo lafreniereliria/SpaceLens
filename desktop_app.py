@@ -9,6 +9,7 @@ import os
 import threading
 import time
 import socket
+import math
 
 # --------------------------------------------------------------------------- #
 #  PyInstaller 打包后路径修正
@@ -64,51 +65,45 @@ def _warmup_matplotlib():
         pass
 
 
-def _run_flask(port: int, status_cb=None):
+def _run_flask(port: int, state: dict):
     """
-    启动策略：
-    - 后台线程预热重型库（与 splash 画面同时进行）
-    - 重型库加载完毕后 Flask 才启动并绑定端口
-    - _wait_for_flask() 检测到端口可用时，splash 关闭、主窗口打开
-    - 整个过程用户看到的是进度条，不是白屏
+    后台线程：分阶段加载重型库，通过共享 state 字典传递进度，
+    不直接调用任何 Qt API，避免跨线程崩溃。
     """
     import flask as _flask
-    import threading as _threading
 
-    # 分阶段加载，驱动进度条平滑推进
-    if status_cb:
-        status_cb("正在加载数学计算库...")
+    def _set(text, stage):
+        state['status'] = text
+        state['stage'] = stage
+
+    _set("正在加载数学计算库...", 1)
     try:
         import numpy  # noqa
     except Exception:
         pass
 
-    if status_cb:
-        status_cb("正在加载数据分析库...")
+    _set("正在加载数据分析库...", 2)
     try:
         import pandas  # noqa
     except Exception:
         pass
 
-    if status_cb:
-        status_cb("正在加载图形渲染库...")
+    _set("正在加载图形渲染库...", 3)
     try:
         import matplotlib  # noqa
         matplotlib.use('Agg')
     except Exception:
         pass
 
-    if status_cb:
-        status_cb("正在注册分析模块...")
+    _set("正在注册分析模块...", 4)
     try:
         from api.analysis import analysis_bp
     except Exception as e:
-        if status_cb:
-            status_cb(f"加载失败: {e}")
+        state['error'] = str(e)
+        state['stage'] = -1
         return
 
-    if status_cb:
-        status_cb("正在启动服务...")
+    _set("正在启动服务...", 5)
 
     flask_app = _flask.Flask(
         __name__,
@@ -124,29 +119,11 @@ def _run_flask(port: int, status_cb=None):
 
     @flask_app.route('/api/ready')
     def _api_ready():
-        # 能访问到这里说明 blueprint 已注册，直接返回 ready
         return _flask.jsonify({"ready": True, "error": None})
 
     flask_app.run(host=FLASK_HOST, port=port, debug=False, use_reloader=False)
 
 
-def _wait_for_flask(port: int, timeout: float = 30.0) -> bool:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            with socket.create_connection((FLASK_HOST, port), timeout=0.3):
-                return True
-        except OSError:
-            time.sleep(0.1)
-    return False
-
-
-# --------------------------------------------------------------------------- #
-#  信号桥（跨线程通信）
-# --------------------------------------------------------------------------- #
-class _Signal(QObject):
-    flask_ready = pyqtSignal(int)
-    status_update = pyqtSignal(str)   # 进度文字更新
 
 
 # --------------------------------------------------------------------------- #
@@ -293,40 +270,19 @@ class SplashScreen(QSplashScreen):
         # ── 进度驱动（指数衰减平滑趋近）──
         self._progress_val = 5.0   # 浮点，累积小步长
         self._progress_target = 30.0
-        self._pulse_mode = False    # True = 摆动模式（长耗时阶段）
-        self._pulse_base = 0.0      # 摆动中心值
-        self._pulse_phase = 0.0     # 摆动相位（0~2π）
+        self._decay = 0.06          # 衰减系数，耗时阶段会临时调小
         self._timer = QTimer()
         self._timer.timeout.connect(self._tick)
         self._timer.start(50)   # 50ms = 20fps，够流畅
 
-    def enter_pulse(self):
-        """进入摆动模式：进度条在当前值附近小幅振荡，避免视觉卡死"""
-        self._pulse_mode = True
-        self._pulse_base = self._progress_val
-        self._pulse_phase = 0.0
-
-    def exit_pulse(self):
-        """退出摆动模式，恢复正常趋近"""
-        self._pulse_mode = False
-
     # ── 动画心跳 ──
     def _tick(self):
-        import math
-        # 1. 进度条
-        if self._pulse_mode:
-            # 摆动模式：在 base ± 2.5 之间用正弦波振荡
-            self._pulse_phase += 0.12   # 每帧推进相位（~0.38Hz，约2.6s一周期）
-            offset = 2.5 * math.sin(self._pulse_phase)
-            display = self._pulse_base + offset
-            self.progress.setValue(int(display))
-        else:
-            # 正常模式：指数衰减趋近 target
-            diff = self._progress_target - self._progress_val
-            if diff > 0.05:
-                step = max(diff * 0.06, 0.12)
-                self._progress_val = min(self._progress_val + step, self._progress_target)
-            self.progress.setValue(int(self._progress_val))
+        # 1. 进度条：指数衰减趋近 target（衰减系数可动态调整）
+        diff = self._progress_target - self._progress_val
+        if diff > 0.05:
+            step = max(diff * self._decay, 0.08)
+            self._progress_val = min(self._progress_val + step, self._progress_target)
+        self.progress.setValue(int(self._progress_val))
 
         # 2. 流光小圆点：跟随进度条前沿位置 + 呼吸透明度
         filled_w = int(self._bar_w * self._progress_val / 100)
@@ -344,32 +300,20 @@ class SplashScreen(QSplashScreen):
             "border-radius: 7px;"
         )
 
-        QApplication.processEvents()
-
-    def set_status(self, text: str, target_progress: float = None, pulse: bool = False):
+    def set_status(self, text: str, target_progress: float = None, decay: float = None):
         self.status_lbl.setText(text)
         if target_progress is not None:
             self._progress_target = min(float(target_progress), 92.0)
-        if pulse:
-            self.enter_pulse()
-        else:
-            self.exit_pulse()
-        QApplication.processEvents()
+        if decay is not None:
+            self._decay = decay
+        # 不调用 processEvents，让 Qt 事件循环自然处理
 
     def finish_loading(self):
-        """加载完成：退出摆动，从当前值平滑冲到 100"""
-        self.exit_pulse()
-        # 把浮点值同步到真实显示值（摆动期间 _progress_val 没在更新）
-        self._progress_val = float(self.progress.value())
+        """加载完成：快速冲到 100，用 QTimer 单次回调，不阻塞主线程"""
+        self._decay = 0.10
         self._progress_target = 100.0
-        deadline = time.time() + 0.8
-        while self._progress_val < 99.5 and time.time() < deadline:
-            self._tick()
-            time.sleep(0.03)
-        self._timer.stop()
-        self._glow.hide()
-        self.progress.setValue(100)
-        QApplication.processEvents()
+        # 不在这里 sleep，让 _tick 继续由 timer 驱动直到完成
+        # 由 _on_flask_ready 调用，50ms 后 timer 会继续跑完剩余
 
 
 # --------------------------------------------------------------------------- #
@@ -385,58 +329,58 @@ def main():
     app.setOrganizationName("SpaceLens")
 
     splash = SplashScreen()
-
-    bridge = _Signal()
     window_holder = {}
 
-    _STAGE_PROGRESS = {
-        "正在加载数学计算库...": (35,  False),
-        "正在加载数据分析库...": (55,  False),
-        "正在加载图形渲染库...": (72,  False),
-        "正在注册分析模块...":   (82,  True),   # 耗时最久，用摆动模式
-        "正在启动服务...":       (93,  False),
-    }
-
-    def _on_status(text: str):
-        """从 Flask 线程回调，更新启动画面状态和目标进度"""
-        entry = _STAGE_PROGRESS.get(text)
-        if entry:
-            target, pulse = entry
-            splash.set_status(text, target, pulse=pulse)
-        else:
-            splash.set_status(text)
-
-    def _on_flask_ready(p: int):
-        splash.set_status("加载完成，正在打开界面...", 98)
-        splash.finish_loading()
-        splash.close()
-        win = SpaceLensWindow(p)
-        window_holder["win"] = win
-        win.show()
-
-    bridge.flask_ready.connect(_on_flask_ready)
-    bridge.status_update.connect(_on_status)
-
-    # 在后台线程启动 Flask，通过 signal 回调更新 UI
+    # 共享状态字典（后台线程写，主线程 QTimer 轮询读）
+    # 彻底避免后台线程直接 emit Qt signal，消除跨线程崩溃
+    state = {'status': '正在准备...', 'stage': 0, 'error': None}
     port = _find_free_port()
 
-    def _status_cb(text: str):
-        bridge.status_update.emit(text)
+    # 阶段 → (进度目标, 衰减系数)
+    _STAGES = {
+        0: (10,  0.10),
+        1: (30,  0.10),   # 加载数学计算库
+        2: (50,  0.08),   # 加载数据分析库
+        3: (65,  0.07),   # 加载图形渲染库
+        4: (88,  0.022),  # 注册分析模块（最耗时，大区间缓慢爬行）
+        5: (93,  0.08),   # 启动服务
+    }
+    _last_stage = [-1]
+    _flask_opened = [False]
+
+    def _poll():
+        stage = state['stage']
+        if stage == -1:
+            splash.set_status(f"⚠ {state.get('error', '加载失败')}")
+            return
+        if stage != _last_stage[0]:
+            _last_stage[0] = stage
+            target, decay = _STAGES.get(stage, (93, 0.08))
+            splash.set_status(state['status'], target, decay=decay)
+        if not _flask_opened[0] and stage >= 5:
+            try:
+                with socket.create_connection((FLASK_HOST, port), timeout=0.05):
+                    _flask_opened[0] = True
+                    _poll_timer.stop()
+                    splash.set_status("加载完成，正在打开界面...")
+                    splash.finish_loading()
+                    def _open_win():
+                        splash.close()
+                        win = SpaceLensWindow(port)
+                        window_holder["win"] = win
+                        win.show()
+                    QTimer.singleShot(400, _open_win)
+            except OSError:
+                pass
+
+    _poll_timer = QTimer()
+    _poll_timer.timeout.connect(_poll)
+    _poll_timer.start(100)
 
     flask_thread = threading.Thread(
-        target=_run_flask, args=(port, _status_cb), daemon=True
+        target=_run_flask, args=(port, state), daemon=True
     )
     flask_thread.start()
-
-    def _checker():
-        if _wait_for_flask(port, timeout=30.0):
-            bridge.flask_ready.emit(port)
-        else:
-            splash.set_status("⚠ 服务启动超时，请重试")
-            QTimer.singleShot(3000, app.quit)
-
-    checker_thread = threading.Thread(target=_checker, daemon=True)
-    checker_thread.start()
 
     sys.exit(app.exec())
 

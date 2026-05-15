@@ -1,4 +1,6 @@
 Flask==3.0.3
+Werkzeug>=3.0.0
+Jinja2>=3.1.0
 numpy==1.26.4
 pandas==2.2.2
 matplotlib==3.9.0
@@ -10,3 +12,6 @@ openpyxl==3.1.4
 # Desktop app (PyQt6)
 PyQt6>=6.6.0
 PyQt6-WebEngine>=6.6.0
+
+# Build tool
+pyinstaller>=6.0.0

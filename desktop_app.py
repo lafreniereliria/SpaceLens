@@ -149,6 +149,10 @@ def _run_flask_impl(port: int, state: dict):
     def _index():
         return _flask.render_template('index.html')
 
+    @flask_app.route('/cover')
+    def _cover():
+        return _flask.render_template('cover.html')
+
     @flask_app.route('/api/ready')
     def _api_ready():
         return _flask.jsonify({"ready": True, "error": None})
@@ -183,7 +187,7 @@ class SpaceLensWindow(QMainWindow):
         profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
         page = QWebEnginePage(profile, self.webview)
         self.webview.setPage(page)
-        url = QUrl(f"http://{FLASK_HOST}:{self.port}/")
+        url = QUrl(f"http://{FLASK_HOST}:{self.port}/cover")
         self.webview.setUrl(url)
         self.setCentralWidget(self.webview)
 

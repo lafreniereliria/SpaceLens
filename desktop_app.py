@@ -70,6 +70,15 @@ def _run_flask(port: int, state: dict):
     后台线程：分阶段加载重型库，通过共享 state 字典传递进度，
     不直接调用任何 Qt API，避免跨线程崩溃。
     """
+    try:
+        _run_flask_impl(port, state)
+    except Exception as e:
+        import traceback
+        state['error'] = f"Fatal: {e}\n{traceback.format_exc()}"
+        state['stage'] = -1
+
+
+def _run_flask_impl(port: int, state: dict):
     import flask as _flask
 
     def _set(text, stage):
@@ -96,7 +105,7 @@ def _run_flask(port: int, state: dict):
         pass
 
     # ── 阶段 4：注册分析模块（拆分为 4 个真实子阶段）──
-    _set("正在初始化热力图分析与渲染核心...", 4)
+    _set("正在初始化数据引擎分析与渲染核心...", 4)
     try:
         import matplotlib.pyplot   # noqa  触发字体缓存（最耗时）
         import matplotlib.colors   # noqa
@@ -382,11 +391,18 @@ def main():
     }
     _last_stage = [-1]
     _flask_opened = [False]
+    _start_time = [time.time()]
 
     def _poll():
         stage = state['stage']
         if stage == -1:
-            splash.set_status(f"⚠ {state.get('error', '加载失败')}")
+            err = state.get('error', '加载失败')
+            # 只显示第一行，避免长堆栈撑爆 splash
+            splash.set_status(f"⚠ {err.splitlines()[0][:60]}")
+            return
+        # 超时保护：60s 还在 stage 0 说明后台线程挂了
+        if stage == 0 and time.time() - _start_time[0] > 60:
+            splash.set_status("⚠ 启动超时，请检查杀毒软件或重试")
             return
         if stage != _last_stage[0]:
             _last_stage[0] = stage
@@ -421,4 +437,7 @@ def main():
 
 
 if __name__ == "__main__":
+    # Windows PyInstaller freeze_support 必须在最外层调用
+    import multiprocessing
+    multiprocessing.freeze_support()
     main()

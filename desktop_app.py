@@ -173,7 +173,7 @@ class SpaceLensWindow(QMainWindow):
         self._setup_webview()
 
     def _setup_window(self):
-        self.setWindowTitle("建筑空间评价智能化工具")
+        self.setWindowTitle("建筑空间绩效评价平台")
         self.setMinimumSize(1200, 780)
         self.resize(1440, 900)
         screen = QApplication.primaryScreen().geometry()
@@ -224,7 +224,7 @@ class SplashScreen(QSplashScreen):
         self.setFixedSize(W, H)
 
         # 标题
-        title = QLabel("建筑空间评价智能化工具", self)
+        title = QLabel("建筑空间绩效评价平台", self)
         title.setGeometry(0, 60, W, 65)
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         f = QFont()
@@ -234,7 +234,7 @@ class SplashScreen(QSplashScreen):
         title.setStyleSheet("color: #7c83fd; background: transparent;")
 
         # 副标题
-        sub = QLabel("Intelligent Building Space Evaluation", self)
+        sub = QLabel("Building Space Performance Evaluation", self)
         sub.setGeometry(0, 132, W, 32)
         sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         f2 = QFont()
@@ -368,8 +368,8 @@ def main():
     )
 
     app = QApplication(sys.argv)
-    app.setApplicationName("建筑空间评价智能化工具")
-    app.setOrganizationName("建筑空间评价智能化工具")
+    app.setApplicationName("建筑空间绩效评价平台")
+    app.setOrganizationName("建筑空间绩效评价平台")
 
     splash = SplashScreen()
     window_holder = {}

@@ -1,9 +1,23 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="dark">
+<html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SpaceLens 空间效能分析系统</title>
+<!-- 最早注入主题，避免 CSS 加载后出现闪烁 -->
+<script>
+(function(){
+  var t = localStorage.getItem('theme') || 'light';
+  document.documentElement.setAttribute('data-theme', t);
+  var a = localStorage.getItem('accentColor') || '#0ea5e9';
+  var m = a.match(/^#([0-9a-f]{6})$/i);
+  if(m){
+    var r=parseInt(m[1].slice(0,2),16), g=parseInt(m[1].slice(2,4),16), b=parseInt(m[1].slice(4,6),16);
+    document.documentElement.style.setProperty('--accent', a);
+    document.documentElement.style.setProperty('--accent-rgb', r+','+g+','+b);
+  }
+})();
+</script>
 <link rel="stylesheet" href="/static/css/app.css">
 </head>
 <body>

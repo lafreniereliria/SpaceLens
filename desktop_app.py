@@ -224,13 +224,13 @@ class SplashScreen(QSplashScreen):
         title.setGeometry(0, 60, W, 65)
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         f = QFont()
-        f.setPointSize(36)
+        f.setPointSize(28)
         f.setBold(True)
         title.setFont(f)
         title.setStyleSheet("color: #7c83fd; background: transparent;")
 
         # 副标题
-        sub = QLabel("空间评价智能化工具", self)
+        sub = QLabel("Intelligent Building Space Evaluation", self)
         sub.setGeometry(0, 132, W, 32)
         sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         f2 = QFont()

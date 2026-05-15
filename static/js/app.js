@@ -277,7 +277,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function bindThemeToggle() {
   const btn = document.getElementById('theme-toggle');
   const html = document.documentElement;
-  const saved = localStorage.getItem('theme') || 'dark';
+  const saved = localStorage.getItem('theme') || 'light';
   html.setAttribute('data-theme', saved);
   btn.addEventListener('click', () => {
     const current = html.getAttribute('data-theme');
@@ -357,17 +357,17 @@ function setAccentColor(hex) {
   localStorage.setItem('accentColor', hex);
 }
 
+const DEFAULT_ACCENT = '#0ea5e9'; // sky blue
+
 function restoreAccentColor() {
-  const saved = localStorage.getItem('accentColor');
-  if (saved) {
-    const rgb = hexToRgb(saved);
-    document.documentElement.style.setProperty('--accent', saved);
-    document.documentElement.style.setProperty('--accent-rgb', `${rgb.r},${rgb.g},${rgb.b}`);
-    // 更新选中状态
-    document.querySelectorAll('.color-swatch').forEach(el => {
-      el.classList.toggle('active', el.dataset.color === saved);
-    });
-  }
+  const saved = localStorage.getItem('accentColor') || DEFAULT_ACCENT;
+  const rgb = hexToRgb(saved);
+  document.documentElement.style.setProperty('--accent', saved);
+  document.documentElement.style.setProperty('--accent-rgb', `${rgb.r},${rgb.g},${rgb.b}`);
+  // 更新选中状态
+  document.querySelectorAll('.color-swatch').forEach(el => {
+    el.classList.toggle('active', el.dataset.color === saved);
+  });
 }
 
 function updateSwatchActive(target) {

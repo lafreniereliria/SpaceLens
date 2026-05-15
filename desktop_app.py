@@ -1,7 +1,7 @@
 """
-SpaceLens 桌面程序入口
+建筑空间绩效评价平台 桌面程序入口
 使用 PyQt6 创建原生窗口，内嵌 Flask 服务 + WebEngine 渲染界面
-无需打开浏览器，即为独立桌面程序
+封面界面通过 setHtml() 立即显示，无需等待 Flask 启动
 """
 
 import sys
@@ -9,7 +9,6 @@ import os
 import threading
 import time
 import socket
-import math
 
 # --------------------------------------------------------------------------- #
 #  PyInstaller 打包后路径修正
@@ -22,13 +21,11 @@ else:
 if _BASE_DIR not in sys.path:
     sys.path.insert(0, _BASE_DIR)
 
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QSplashScreen, QLabel, QProgressBar, QWidget
-)
+from PyQt6.QtWidgets import QApplication, QMainWindow
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage
-from PyQt6.QtCore import QUrl, Qt, QTimer, pyqtSignal, QObject
-from PyQt6.QtGui import QPixmap, QColor, QFont, QPainter, QLinearGradient
+from PyQt6.QtCore import QUrl, Qt, QTimer
+from PyQt6.QtGui import QFont
 
 # --------------------------------------------------------------------------- #
 #  Flask 服务配置
@@ -36,6 +33,8 @@ from PyQt6.QtGui import QPixmap, QColor, QFont, QPainter, QLinearGradient
 FLASK_HOST = "127.0.0.1"
 FLASK_PORT = 18080
 
+APP_NAME = "建筑空间绩效评价平台"
+APP_NAME_EN = "Building Space Performance Evaluation Platform"
 
 def _find_free_port() -> int:
     s = socket.socket()
@@ -51,25 +50,560 @@ def _find_free_port() -> int:
         return port
 
 
-def _warmup_matplotlib():
-    """
-    预热 matplotlib 字体缓存（最耗时的步骤）。
-    在 Flask 线程启动前先跑一次 import，后续调用几乎零延迟。
-    """
-    import matplotlib
-    # 强制触发字体缓存构建，之后再次 import 会命中缓存
-    matplotlib.font_manager._fmcache  # access to trigger lazy init
-    try:
-        matplotlib.font_manager.fontManager  # noqa
-    except Exception:
-        pass
+# --------------------------------------------------------------------------- #
+#  封面 HTML（内嵌，不依赖 Flask，可立即显示）
+# --------------------------------------------------------------------------- #
+def _build_cover_html() -> str:
+    """生成封面 HTML 字符串，通过 setHtml() 立即渲染"""
+    return r"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>建筑空间绩效评价平台</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    height: 100vh;
+    display: flex;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f4f7fb;
+    color: #1a2035;
+    overflow: hidden;
+  }
+
+  /* ── 左侧装饰区 ── */
+  .cover-left {
+    width: 55%;
+    background: linear-gradient(135deg, #0a1628 0%, #0e2a52 40%, #0a4a8c 80%, #0ea5e9 100%);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 60px 56px;
+    overflow: hidden;
+  }
+
+  .cover-left::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 20% 80%, rgba(14,165,233,0.25) 0%, transparent 50%),
+      radial-gradient(circle at 80% 20%, rgba(56,189,248,0.15) 0%, transparent 45%);
+  }
+
+  .grid-deco {
+    position: absolute;
+    inset: 0;
+    opacity: 0.08;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.6) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.6) 1px, transparent 1px);
+    background-size: 60px 60px;
+  }
+
+  .hex-deco {
+    position: absolute;
+    bottom: -40px;
+    right: -40px;
+    width: 320px;
+    height: 320px;
+    opacity: 0.06;
+  }
+
+  .cover-left-content { position: relative; z-index: 1; }
+
+  .cover-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(14,165,233,0.2);
+    border: 1px solid rgba(14,165,233,0.4);
+    color: #7dd3fc;
+    font-size: 12px;
+    letter-spacing: 2px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    margin-bottom: 32px;
+  }
+
+  .cover-badge-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #38bdf8;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  .cover-title-en {
+    font-size: 13px;
+    letter-spacing: 3px;
+    color: rgba(125,211,252,0.7);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+
+  .cover-title-zh {
+    font-size: 36px;
+    font-weight: 700;
+    color: #ffffff;
+    line-height: 1.3;
+    margin-bottom: 24px;
+    letter-spacing: 2px;
+  }
+
+  .cover-title-zh em {
+    font-style: normal;
+    color: #38bdf8;
+  }
+
+  .cover-desc {
+    font-size: 14px;
+    color: rgba(186,230,255,0.65);
+    line-height: 1.8;
+    max-width: 380px;
+  }
+
+  .tag-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 36px;
+  }
+
+  .tag {
+    font-size: 11px;
+    padding: 4px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(56,189,248,0.3);
+    color: rgba(186,230,255,0.8);
+    background: rgba(14,165,233,0.1);
+  }
+
+  .cover-version {
+    position: absolute;
+    bottom: 28px;
+    left: 56px;
+    font-size: 12px;
+    color: rgba(186,230,255,0.4);
+    z-index: 1;
+  }
+
+  /* ── 右侧操作区 ── */
+  .cover-right {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 48px 56px;
+  }
+
+  .logo-icon {
+    width: 72px;
+    height: 72px;
+    background: linear-gradient(135deg, #0ea5e9, #0284c7);
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 24px rgba(14,165,233,0.35);
+    margin-bottom: 24px;
+  }
+
+  .logo-icon svg { width: 38px; height: 38px; color: #ffffff; }
+
+  .right-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #0f172a;
+    text-align: center;
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+  }
+
+  .right-subtitle {
+    font-size: 13px;
+    color: #64748b;
+    text-align: center;
+    margin-bottom: 40px;
+  }
+
+  .btn-primary {
+    width: 100%;
+    max-width: 320px;
+    padding: 16px 32px;
+    background: linear-gradient(135deg, #0ea5e9, #0284c7);
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(14,165,233,0.4);
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 28px rgba(14,165,233,0.5);
+    background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+  }
+
+  .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 12px;
+    width: 100%;
+    max-width: 320px;
+    margin-bottom: 12px;
+  }
+
+  .btn-secondary {
+    flex: 1;
+    padding: 12px 16px;
+    background: #ffffff;
+    color: #334155;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.18s;
+    text-align: center;
+    line-height: 1.4;
+  }
+
+  .btn-secondary:hover { border-color: #0ea5e9; color: #0ea5e9; background: #f0f9ff; }
+
+  /* 进度条 */
+  .loading-bar { width: 100%; max-width: 320px; margin-top: 28px; }
+
+  .loading-label {
+    font-size: 11px;
+    color: #94a3b8;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .loading-track {
+    height: 4px;
+    background: #e2e8f0;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .loading-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #0ea5e9, #38bdf8);
+    border-radius: 2px;
+    width: 0%;
+    transition: width 0.4s ease;
+  }
+
+  /* 面板 */
+  .panel-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15,23,42,0.5);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+
+  .panel-overlay.active { display: flex; }
+
+  .panel-box {
+    background: #ffffff;
+    border-radius: 16px;
+    width: 560px;
+    max-width: 90vw;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.18);
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .panel-header h3 { font-size: 16px; font-weight: 600; color: #0f172a; }
+
+  .panel-close {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    border: none;
+    background: #f1f5f9;
+    color: #64748b;
+    font-size: 18px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s;
+  }
+
+  .panel-close:hover { background: #e2e8f0; color: #1e293b; }
+  .panel-body { padding: 24px; overflow-y: auto; flex: 1; }
+
+  .tree-item {
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #334155;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.15s;
+  }
+
+  .tree-item:hover { background: #f0f9ff; color: #0ea5e9; }
+  .tree-item.level1 { font-weight: 600; color: #0f172a; margin-top: 4px; }
+  .tree-item.level2 { padding-left: 28px; color: #475569; }
+  .tree-item.level3 { padding-left: 48px; color: #64748b; font-size: 13px; }
+  .tree-arrow { font-size: 10px; color: #94a3b8; transition: transform 0.2s; }
+  .tree-arrow.open { transform: rotate(90deg); }
+  .tree-children { display: none; }
+  .tree-children.open { display: block; }
+
+  .info-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 16px 0;
+    border-bottom: 1px solid #f1f5f9;
+  }
+
+  .info-row:last-child { border-bottom: none; }
+  .info-label { width: 80px; font-size: 12px; color: #94a3b8; flex-shrink: 0; padding-top: 2px; }
+  .info-value { font-size: 14px; color: #334155; line-height: 1.6; }
+
+  .version-tag {
+    display: inline-block;
+    padding: 2px 10px;
+    background: #f0f9ff;
+    color: #0ea5e9;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid #bae6fd;
+  }
+</style>
+</head>
+<body>
+
+<div class="cover-left">
+  <div class="grid-deco"></div>
+  <svg class="hex-deco" viewBox="0 0 200 200" fill="none">
+    <polygon points="100,10 185,55 185,145 100,190 15,145 15,55" stroke="white" stroke-width="2" fill="none"/>
+    <polygon points="100,35 165,72 165,128 100,165 35,128 35,72" stroke="white" stroke-width="1.5" fill="none"/>
+    <polygon points="100,60 145,85 145,115 100,140 55,115 55,85" stroke="white" stroke-width="1" fill="none"/>
+  </svg>
+  <div class="cover-left-content">
+    <div class="cover-badge">
+      <div class="cover-badge-dot"></div>
+      INTELLIGENT EVALUATION PLATFORM
+    </div>
+    <div class="cover-title-en">Building Space Performance Assessment</div>
+    <div class="cover-title-zh">建筑空间绩效<br><em>评价平台</em></div>
+    <p class="cover-desc">
+      基于多源空间行为数据，综合分析建筑空间使用绩效，
+      支持热力图、轨迹分析、聚类分析等多维度评价方法，
+      为建筑设计与优化提供数据驱动的决策支持。
+    </p>
+    <div class="tag-row">
+      <span class="tag">到访频次分析</span>
+      <span class="tag">轨迹分析</span>
+      <span class="tag">空间聚类</span>
+      <span class="tag">使用时长</span>
+      <span class="tag">密度分析</span>
+      <span class="tag">移动速率</span>
+    </div>
+  </div>
+  <div class="cover-version">v1.0.0 · 2025</div>
+</div>
+
+<div class="cover-right">
+  <div class="logo-icon">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="12,2 22,8.5 22,15.5 12,22 2,15.5 2,8.5"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>
+  </div>
+  <div class="right-title">建筑空间绩效评价平台</div>
+  <div class="right-subtitle">Building Space Performance Evaluation Platform</div>
+
+  <button class="btn-primary" id="btn-start" disabled onclick="startEvaluation()">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <polygon points="5,3 19,12 5,21"/>
+    </svg>
+    开始评价
+  </button>
+
+  <div class="btn-row">
+    <button class="btn-secondary" onclick="showPanel('intro')">工具介绍</button>
+    <button class="btn-secondary" onclick="showPanel('team')">开发人员</button>
+    <button class="btn-secondary" onclick="showPanel('version')">版本信息</button>
+  </div>
+
+  <div class="loading-bar">
+    <div class="loading-label">
+      <span id="loading-text">正在初始化系统...</span>
+      <span id="loading-pct">0%</span>
+    </div>
+    <div class="loading-track">
+      <div class="loading-fill" id="loading-fill"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 工具介绍面板 -->
+<div class="panel-overlay" id="panel-intro">
+  <div class="panel-box">
+    <div class="panel-header">
+      <h3>工具介绍</h3>
+      <button class="panel-close" onclick="closePanel('intro')">×</button>
+    </div>
+    <div class="panel-body">
+      <div class="tree-item level1" onclick="toggleTree(this)"><span class="tree-arrow">▶</span> 软件概述</div>
+      <div class="tree-children">
+        <div class="tree-item level2" onclick="toggleTree(this)"><span class="tree-arrow">▶</span> 开发背景</div>
+        <div class="tree-children">
+          <div class="tree-item level3">· 空间使用效率评估需求</div>
+          <div class="tree-item level3">· 多源数据融合研究</div>
+        </div>
+        <div class="tree-item level2">· 研究目标与意义</div>
+      </div>
+      <div class="tree-item level1" onclick="toggleTree(this)"><span class="tree-arrow">▶</span> 功能模块</div>
+      <div class="tree-children">
+        <div class="tree-item level2">· 建筑空间使用绩效评价</div>
+        <div class="tree-item level2">· 空间服务点布局与评价</div>
+        <div class="tree-item level2">· 空间句法与性能耦合评价</div>
+      </div>
+      <div class="tree-item level1" onclick="toggleTree(this)"><span class="tree-arrow">▶</span> 指标体系</div>
+      <div class="tree-children">
+        <div class="tree-item level2">· 动线指标（轨迹长度 / 移动速率）</div>
+        <div class="tree-item level2">· 行为指标（行为人次 / 发生率）</div>
+        <div class="tree-item level2">· 物理环境指标（温湿度 / 光照 / 噪声）</div>
+        <div class="tree-item level2">· 主观感知指标（满意度）</div>
+      </div>
+      <div class="tree-item level1" onclick="toggleTree(this)"><span class="tree-arrow">▶</span> 使用流程</div>
+      <div class="tree-children">
+        <div class="tree-item level2">· 导入空间图像</div>
+        <div class="tree-item level2">· 导入多源数据</div>
+        <div class="tree-item level2">· 选择分析模块</div>
+        <div class="tree-item level2">· 查看可视化结果</div>
+        <div class="tree-item level2">· 导出分析报告</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 开发人员面板 -->
+<div class="panel-overlay" id="panel-team">
+  <div class="panel-box">
+    <div class="panel-header">
+      <h3>开发人员</h3>
+      <button class="panel-close" onclick="closePanel('team')">×</button>
+    </div>
+    <div class="panel-body">
+      <div class="info-row"><div class="info-label">单位</div><div class="info-value">同济大学建筑与城市规划学院</div></div>
+      <div class="info-row"><div class="info-label">研究团队</div><div class="info-value">建筑空间绩效评价研究组</div></div>
+      <div class="info-row"><div class="info-label">指导教师</div><div class="info-value">待补充</div></div>
+      <div class="info-row"><div class="info-label">开发成员</div><div class="info-value">待补充</div></div>
+      <div class="info-row"><div class="info-label">联系邮箱</div><div class="info-value">待补充</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- 版本信息面板 -->
+<div class="panel-overlay" id="panel-version">
+  <div class="panel-box">
+    <div class="panel-header">
+      <h3>版本信息</h3>
+      <button class="panel-close" onclick="closePanel('version')">×</button>
+    </div>
+    <div class="panel-body">
+      <div class="info-row"><div class="info-label">当前版本</div><div class="info-value"><span class="version-tag">v1.0.0</span></div></div>
+      <div class="info-row"><div class="info-label">更新时间</div><div class="info-value">2025 年 5 月</div></div>
+      <div class="info-row"><div class="info-label">技术栈</div><div class="info-value">Python · Flask · PyQt6 · NumPy · SciPy · Matplotlib</div></div>
+      <div class="info-row">
+        <div class="info-label">更新内容</div>
+        <div class="info-value">· 热力图、轨迹分析、聚类分析模块<br>· 多主题配色支持<br>· 双平台（macOS / Windows）打包支持</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── 由 Python 调用的接口，推送进度 ──
+var _flaskPort = null;
+
+function setProgress(pct, text) {
+  document.getElementById('loading-fill').style.width = pct + '%';
+  document.getElementById('loading-pct').textContent = Math.round(pct) + '%';
+  if (text) document.getElementById('loading-text').textContent = text;
+}
+
+function setReady(port) {
+  _flaskPort = port;
+  setProgress(100, '系统就绪，可以开始评价');
+  document.getElementById('btn-start').disabled = false;
+}
+
+function startEvaluation() {
+  if (_flaskPort) {
+    window.location.href = 'http://127.0.0.1:' + _flaskPort + '/';
+  }
+}
+
+// ── 面板控制 ──
+function showPanel(id) { document.getElementById('panel-' + id).classList.add('active'); }
+function closePanel(id) { document.getElementById('panel-' + id).classList.remove('active'); }
+
+document.querySelectorAll('.panel-overlay').forEach(function(el) {
+  el.addEventListener('click', function(e) { if (e.target === el) el.classList.remove('active'); });
+});
+
+function toggleTree(el) {
+  var arrow = el.querySelector('.tree-arrow');
+  var children = el.nextElementSibling;
+  if (!children || !children.classList.contains('tree-children')) return;
+  var isOpen = children.classList.toggle('open');
+  if (arrow) arrow.classList.toggle('open', isOpen);
+}
+</script>
+</body>
+</html>"""
 
 
+# --------------------------------------------------------------------------- #
+#  Flask 后台线程
+# --------------------------------------------------------------------------- #
 def _run_flask(port: int, state: dict):
-    """
-    后台线程：分阶段加载重型库，通过共享 state 字典传递进度，
-    不直接调用任何 Qt API，避免跨线程崩溃。
-    """
     try:
         _run_flask_impl(port, state)
     except Exception as e:
@@ -104,17 +638,16 @@ def _run_flask_impl(port: int, state: dict):
     except Exception:
         pass
 
-    # ── 阶段 4：注册分析模块（拆分为 4 个真实子阶段）──
-    _set("正在初始化数据引擎分析与渲染核心...", 4)
+    _set("正在初始化热力图分析...", 4)
     try:
-        import matplotlib.pyplot   # noqa  触发字体缓存（最耗时）
+        import matplotlib.pyplot   # noqa
         import matplotlib.colors   # noqa
     except Exception:
         pass
 
     _set("正在初始化轨迹分析...", 5)
     try:
-        import matplotlib.font_manager  # noqa  字体扫描
+        import matplotlib.font_manager  # noqa
         from scipy.ndimage import gaussian_filter  # noqa
         from scipy.interpolate import make_interp_spline  # noqa
     except Exception:
@@ -122,7 +655,7 @@ def _run_flask_impl(port: int, state: dict):
 
     _set("正在初始化聚类分析...", 6)
     try:
-        from scipy.cluster.vq import kmeans2  # noqa  已替换 sklearn，更快
+        from scipy.cluster.vq import kmeans2  # noqa
         from PIL import Image  # noqa
     except Exception:
         pass
@@ -149,10 +682,6 @@ def _run_flask_impl(port: int, state: dict):
     def _index():
         return _flask.render_template('index.html')
 
-    @flask_app.route('/cover')
-    def _cover():
-        return _flask.render_template('cover.html')
-
     @flask_app.route('/api/ready')
     def _api_ready():
         return _flask.jsonify({"ready": True, "error": None})
@@ -160,203 +689,115 @@ def _run_flask_impl(port: int, state: dict):
     flask_app.run(host=FLASK_HOST, port=port, debug=False, use_reloader=False)
 
 
-
-
 # --------------------------------------------------------------------------- #
-#  主窗口
+#  主窗口（封面用 setHtml 立即显示，就绪后 setUrl 跳转主界面）
 # --------------------------------------------------------------------------- #
-class SpaceLensWindow(QMainWindow):
-    def __init__(self, port: int):
+class MainWindow(QMainWindow):
+    def __init__(self, port: int, state: dict):
         super().__init__()
         self.port = port
-        self._setup_window()
-        self._setup_webview()
+        self.state = state
+        self._flask_ready = False
 
-    def _setup_window(self):
-        self.setWindowTitle("建筑空间绩效评价平台")
+        self.setWindowTitle(APP_NAME)
         self.setMinimumSize(1200, 780)
         self.resize(1440, 900)
         screen = QApplication.primaryScreen().geometry()
-        x = (screen.width() - 1440) // 2
-        y = (screen.height() - 900) // 2
-        self.move(x, y)
+        self.move((screen.width() - 1440) // 2, (screen.height() - 900) // 2)
 
-    def _setup_webview(self):
+        # WebView
         self.webview = QWebEngineView()
         profile = QWebEngineProfile.defaultProfile()
         profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
         page = QWebEnginePage(profile, self.webview)
         self.webview.setPage(page)
-        url = QUrl(f"http://{FLASK_HOST}:{self.port}/cover")
-        self.webview.setUrl(url)
         self.setCentralWidget(self.webview)
+
+        # 立即加载封面（不依赖 Flask）
+        self.webview.setHtml(
+            _build_cover_html(),
+            QUrl("about:blank")   # baseUrl 设 about:blank，封面内所有资源都内嵌
+        )
+
+        # 阶段 → (进度目标%)
+        self._STAGES = {
+            0: (5,   "正在初始化系统..."),
+            1: (12,  "正在加载数学计算库..."),
+            2: (18,  "正在加载数据分析库..."),
+            3: (24,  "正在加载图形渲染库..."),
+            4: (72,  "正在初始化热力图分析..."),
+            5: (80,  "正在初始化轨迹分析..."),
+            6: (87,  "正在初始化聚类分析..."),
+            7: (93,  "正在注册 API 路由..."),
+            8: (97,  "正在启动服务..."),
+        }
+        self._last_stage = -1
+        self._smooth_pct = 5.0    # 平滑进度值
+
+        # 轮询定时器
+        self._poll_timer = QTimer(self)
+        self._poll_timer.timeout.connect(self._poll)
+        self._poll_timer.start(80)
+
+    def _js(self, code: str):
+        """安全地向 WebView 推送 JS"""
+        self.webview.page().runJavaScript(code)
+
+    def _poll(self):
+        stage = self.state['stage']
+
+        # 错误处理
+        if stage == -1:
+            err = self.state.get('error', '加载失败')
+            self._js(f"setProgress(0, '⚠ {err.splitlines()[0][:50]}')")
+            self._poll_timer.stop()
+            return
+
+        # 更新进度（平滑趋近目标值）
+        if stage in self._STAGES:
+            target_pct, status_text = self._STAGES[stage]
+
+            # 阶段切换时立即更新文字
+            if stage != self._last_stage:
+                self._last_stage = stage
+                self._js(f"setProgress({int(self._smooth_pct)}, '{status_text}')")
+
+            # 平滑推进
+            if self._smooth_pct < target_pct:
+                diff = target_pct - self._smooth_pct
+                # stage 4 最慢（decay 小），其余较快
+                decay = 0.012 if stage == 4 else 0.06
+                min_step = 0.18 if stage == 4 else 0.15
+                self._smooth_pct += max(diff * decay, min_step)
+                self._smooth_pct = min(self._smooth_pct, target_pct)
+                self._js(f"setProgress({self._smooth_pct:.1f})")
+
+        # Flask 就绪检测
+        if not self._flask_ready and stage >= 8:
+            try:
+                with socket.create_connection((FLASK_HOST, self.port), timeout=0.05):
+                    self._flask_ready = True
+                    self._poll_timer.stop()
+                    # 平滑冲到 100% 再解锁按钮
+                    self._finish_timer_count = 0
+                    self._finish_timer = QTimer(self)
+                    self._finish_timer.timeout.connect(self._finish_anim)
+                    self._finish_timer.start(40)
+            except OSError:
+                pass
+
+    def _finish_anim(self):
+        """100% 完成动画，约 800ms"""
+        self._finish_timer_count += 1
+        pct = min(97 + self._finish_timer_count * 1.5, 100)
+        self._js(f"setProgress({pct:.1f})")
+        if pct >= 100:
+            self._finish_timer.stop()
+            self._js(f"setReady({self.port})")
 
     def closeEvent(self, event):
         QApplication.quit()
         event.accept()
-
-
-# --------------------------------------------------------------------------- #
-#  启动画面（带进度条 + 动态状态文字）
-# --------------------------------------------------------------------------- #
-class SplashScreen(QSplashScreen):
-    """自定义启动画面，带进度条和状态文字"""
-
-    def __init__(self):
-        W, H = 520, 300
-        pixmap = QPixmap(W, H)
-        pixmap.fill(Qt.GlobalColor.transparent)
-
-        # 渐变背景
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        grad = QLinearGradient(0, 0, 0, H)
-        grad.setColorAt(0, QColor("#0f0f23"))
-        grad.setColorAt(1, QColor("#1a1a3e"))
-        painter.fillRect(0, 0, W, H, grad)
-
-        # 顶部强调线
-        painter.setPen(QColor("#7c83fd"))
-        painter.drawLine(0, 0, W, 0)
-        painter.end()
-
-        super().__init__(pixmap, Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
-        self.setFixedSize(W, H)
-
-        # 标题
-        title = QLabel("建筑空间绩效评价平台", self)
-        title.setGeometry(0, 60, W, 65)
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        f = QFont()
-        f.setPointSize(28)
-        f.setBold(True)
-        title.setFont(f)
-        title.setStyleSheet("color: #7c83fd; background: transparent;")
-
-        # 副标题
-        sub = QLabel("Building Space Performance Evaluation", self)
-        sub.setGeometry(0, 132, W, 32)
-        sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        f2 = QFont()
-        f2.setPointSize(14)
-        sub.setFont(f2)
-        sub.setStyleSheet("color: #9090c0; background: transparent;")
-
-        # 进度条
-        self.progress = QProgressBar(self)
-        self.progress.setGeometry(40, 210, W - 80, 8)
-        self.progress.setRange(0, 100)
-        self.progress.setValue(5)
-        self.progress.setTextVisible(False)
-        self.progress.setStyleSheet("""
-            QProgressBar {
-                background: #2a2a4a;
-                border: none;
-                border-radius: 4px;
-            }
-            QProgressBar::chunk {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #7c83fd, stop:1 #a78bfa);
-                border-radius: 4px;
-            }
-        """)
-
-        # 状态文字
-        self.status_lbl = QLabel("正在启动...", self)
-        self.status_lbl.setGeometry(0, 228, W, 28)
-        self.status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        f3 = QFont()
-        f3.setPointSize(10)
-        self.status_lbl.setFont(f3)
-        self.status_lbl.setStyleSheet("color: #5a5a8a; background: transparent;")
-
-        # 版本号
-        ver = QLabel("v1.0", self)
-        ver.setGeometry(0, H - 26, W, 20)
-        ver.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        f4 = QFont()
-        f4.setPointSize(9)
-        ver.setFont(f4)
-        ver.setStyleSheet("color: #3a3a6a; background: transparent;")
-
-        self.show()
-        QApplication.processEvents()
-
-        # ── 流光动画（进度条上方的移动光点）──
-        BAR_X, BAR_Y, BAR_W, BAR_H = 40, 210, W - 80, 8
-        self._bar_x = BAR_X
-        self._bar_w = BAR_W
-
-        self._glow = QWidget(self)
-        GLOW_D = 14
-        self._glow.setFixedSize(GLOW_D, GLOW_D)
-        self._glow.move(BAR_X - GLOW_D // 2, BAR_Y + BAR_H // 2 - GLOW_D // 2)
-        self._glow.setStyleSheet("""
-            background: radial-gradient(circle, #ffffff, #a78bfa);
-            border-radius: 7px;
-        """)
-        # Qt widget 用 border-radius 实现圆形
-        self._glow.setStyleSheet(
-            "background-color: #c4b5fd;"
-            "border-radius: 7px;"
-        )
-        self._glow_opacity = 1.0
-        self._glow_dir = -0.08   # 透明度变化方向（呼吸效果）
-
-        # ── 进度驱动（指数衰减平滑趋近）──
-        self._progress_val = 5.0   # 浮点，累积小步长
-        self._progress_target = 30.0
-        self._decay = 0.06          # 衰减系数
-        self._min_step = 0.08       # 最小步长（保底速度）
-        self._timer = QTimer()
-        self._timer.timeout.connect(self._tick)
-        self._timer.start(50)   # 50ms = 20fps，够流畅
-
-    # ── 动画心跳 ──
-    def _tick(self):
-        # 进度条：指数衰减 + 保底最小步长
-        # 步长 = max(diff * decay,  min_step)
-        # decay 控制起步快慢，min_step 防止末段太慢
-        diff = self._progress_target - self._progress_val
-        if diff > 0.05:
-            step = max(diff * self._decay, self._min_step)
-            self._progress_val = min(self._progress_val + step, self._progress_target)
-        self.progress.setValue(int(self._progress_val))
-
-        # 2. 流光小圆点：跟随进度条前沿位置 + 呼吸透明度
-        filled_w = int(self._bar_w * self._progress_val / 100)
-        gx = self._bar_x + filled_w - self._glow.width() // 2
-        gy = 210 + 4 - self._glow.height() // 2
-        self._glow.move(gx, gy)
-
-        # 呼吸效果
-        self._glow_opacity += self._glow_dir
-        if self._glow_opacity <= 0.3 or self._glow_opacity >= 1.0:
-            self._glow_dir *= -1
-        alpha = int(self._glow_opacity * 255)
-        self._glow.setStyleSheet(
-            f"background-color: rgba(196,181,253,{alpha});"
-            "border-radius: 7px;"
-        )
-
-    def set_status(self, text: str, target_progress: float = None,
-                   decay: float = None, min_step: float = None):
-        self.status_lbl.setText(text)
-        if target_progress is not None:
-            self._progress_target = min(float(target_progress), 92.0)
-        if decay is not None:
-            self._decay = decay
-        if min_step is not None:
-            self._min_step = min_step
-        # 不调用 processEvents，让 Qt 事件循环自然处理
-
-    def finish_loading(self):
-        """加载完成：快速冲到 100，用 QTimer 单次回调，不阻塞主线程"""
-        self._decay = 0.10
-        self._min_step = 0.30   # 尾段快速推进
-        self._progress_target = 100.0
-        # 不在这里 sleep，让 _tick 继续由 timer 驱动直到完成
-        # 由 _on_flask_ready 调用，50ms 后 timer 会继续跑完剩余
 
 
 # --------------------------------------------------------------------------- #
@@ -366,82 +807,27 @@ def main():
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
-
     app = QApplication(sys.argv)
-    app.setApplicationName("建筑空间绩效评价平台")
-    app.setOrganizationName("建筑空间绩效评价平台")
+    app.setApplicationName(APP_NAME)
+    app.setOrganizationName(APP_NAME)
 
-    splash = SplashScreen()
-    window_holder = {}
-
-    # 共享状态字典（后台线程写，主线程 QTimer 轮询读）
-    # 彻底避免后台线程直接 emit Qt signal，消除跨线程崩溃
-    state = {'status': '正在准备...', 'stage': 0, 'error': None}
     port = _find_free_port()
+    state = {'status': '正在准备...', 'stage': 0, 'error': None}
 
-    # 阶段 → (进度目标, 衰减系数, 最小步长/帧)
-    # stage 4（热力图/字体缓存）是真正的瓶颈，分配 25→75% 的大区间
-    # 其余子阶段（5/6/7）每步只占 ~5%，快速扫过与实际耗时匹配
-    _STAGES = {
-        0: (10,  0.10,  0.08),
-        1: (15,  0.10,  0.08),   # 加载数学计算库
-        2: (20,  0.08,  0.08),   # 加载数据分析库
-        3: (25,  0.07,  0.08),   # 加载图形渲染库（matplotlib 基础）
-        4: (89,  0.012, 0.18),   # 初始化热力图分析（字体缓存，最耗时，大区间慢爬）
-        5: (92,  0.08,  0.12),   # 初始化轨迹分析（scipy）
-        6: (97,  0.08,  0.12),   # 初始化聚类分析（sklearn）
-        7: (98,  0.08,  0.12),   # 注册 API 路由
-        8: (99,  0.08,  0.08),   # 启动服务
-    }
-    _last_stage = [-1]
-    _flask_opened = [False]
-    _start_time = [time.time()]
-
-    def _poll():
-        stage = state['stage']
-        if stage == -1:
-            err = state.get('error', '加载失败')
-            # 只显示第一行，避免长堆栈撑爆 splash
-            splash.set_status(f"⚠ {err.splitlines()[0][:60]}")
-            return
-        # 超时保护：60s 还在 stage 0 说明后台线程挂了
-        if stage == 0 and time.time() - _start_time[0] > 60:
-            splash.set_status("⚠ 启动超时，请检查杀毒软件或重试")
-            return
-        if stage != _last_stage[0]:
-            _last_stage[0] = stage
-            target, decay, min_step = _STAGES.get(stage, (93, 0.08, 0.08))
-            splash.set_status(state['status'], target, decay=decay, min_step=min_step)
-        if not _flask_opened[0] and stage >= 8:
-            try:
-                with socket.create_connection((FLASK_HOST, port), timeout=0.05):
-                    _flask_opened[0] = True
-                    _poll_timer.stop()
-                    splash.set_status("加载完成，正在打开界面...")
-                    splash.finish_loading()
-                    def _open_win():
-                        splash.close()
-                        win = SpaceLensWindow(port)
-                        window_holder["win"] = win
-                        win.show()
-                    QTimer.singleShot(400, _open_win)
-            except OSError:
-                pass
-
-    _poll_timer = QTimer()
-    _poll_timer.timeout.connect(_poll)
-    _poll_timer.start(100)
-
+    # 启动 Flask 后台线程
     flask_thread = threading.Thread(
         target=_run_flask, args=(port, state), daemon=True
     )
     flask_thread.start()
 
+    # 立即打开主窗口（封面通过 setHtml 即时渲染，无需等 Flask）
+    win = MainWindow(port, state)
+    win.show()
+
     sys.exit(app.exec())
 
 
 if __name__ == "__main__":
-    # Windows PyInstaller freeze_support 必须在最外层调用
     import multiprocessing
     multiprocessing.freeze_support()
     main()

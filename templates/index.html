@@ -19,6 +19,194 @@
 })();
 </script>
 <link rel="stylesheet" href="/static/css/app.css">
+<style>
+/* ─── 结果卡片网格 ─── */
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 20px;
+  padding: 0 0 40px;
+}
+
+.metric-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow);
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+
+.metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(var(--accent-rgb),0.12);
+}
+
+/* 指标卡头部 */
+.metric-card-header {
+  padding: 14px 16px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-dim);
+  gap: 10px;
+}
+
+.metric-card-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.metric-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: rgba(var(--accent-rgb),0.12);
+  color: var(--accent);
+  flex-shrink: 0;
+  letter-spacing: 0.5px;
+}
+
+.metric-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 源文件按钮 */
+.source-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.source-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(var(--accent-rgb),0.06);
+}
+.source-btn svg { flex-shrink: 0; }
+
+/* 指标卡内容区（图 + 统计） */
+.metric-card-body {
+  padding: 14px 16px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.metric-img-wrap {
+  width: 100%;
+  aspect-ratio: 16/9;
+  background: var(--bg-deep);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.metric-img-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: none;
+}
+
+.metric-img-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-dim);
+}
+.metric-img-placeholder svg { width: 32px; height: 32px; opacity: 0.4; }
+.metric-img-placeholder span { font-size: 12px; opacity: 0.6; }
+
+.metric-stats {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.metric-stat {
+  flex: 1;
+  min-width: 80px;
+  background: var(--bg-deep);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+.metric-stat-label { font-size: 10px; color: var(--text-dim); margin-bottom: 3px; }
+.metric-stat-value { font-size: 15px; font-weight: 700; }
+.metric-stat-value .unit { font-size: 11px; font-weight: 400; color: var(--text-secondary); margin-left: 2px; }
+
+/* 状态标记 */
+.metric-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 20px;
+  font-weight: 500;
+  align-self: flex-start;
+}
+.metric-status.pending {
+  background: var(--bg-deep);
+  color: var(--text-dim);
+}
+.metric-status.pending::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+.metric-status.done {
+  background: rgba(0,201,167,0.1);
+  color: var(--teal);
+}
+.metric-status.done::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--teal);
+}
+.metric-status.error {
+  background: rgba(255,94,94,0.1);
+  color: var(--red);
+}
+.metric-status.error::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--red);
+}
+
+/* 全屏 loading 遮罩 */
+.loading-overlay { display: none; }
+.loading-overlay.show { display: flex; }
+
+/* 隐藏原有上传区 */
+.upload-section { display: none !important; }
+</style>
 </head>
 <body>
 
@@ -31,58 +219,58 @@
         <circle cx="12" cy="12" r="3"/>
       </svg>
     </div>
-    <span class="logo-text"><strong>模块选择</strong></span>
+    <span class="logo-text"><strong>指标总览</strong></span>
   </div>
 
   <nav class="sidebar-nav">
     <!-- A: 定位分析 -->
     <div class="nav-section-label">定位分析</div>
-    <button class="nav-item active" data-view="heatmap">
+    <button class="nav-item active" data-anchor="card-heatmap">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       <span>到访频次</span>
       <div class="nav-badge">A1</div>
     </button>
-    <button class="nav-item" data-view="usetime">
+    <button class="nav-item" data-anchor="card-usetime">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg>
       <span>使用时长</span>
       <div class="nav-badge">A2</div>
     </button>
-    <button class="nav-item" data-view="speed">
+    <button class="nav-item" data-anchor="card-speed">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
       <span>移动速率</span>
       <div class="nav-badge">A3</div>
     </button>
-    <button class="nav-item" data-view="duration">
+    <button class="nav-item" data-anchor="card-duration">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
       <span>停留时长</span>
       <div class="nav-badge">A4</div>
     </button>
-    <button class="nav-item" data-view="cluster">
+    <button class="nav-item" data-anchor="card-cluster">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><circle cx="12" cy="17" r="3"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="8" x2="12" y2="17"/><line x1="16" y1="8" x2="12" y2="17"/></svg>
       <span>空间聚类</span>
       <div class="nav-badge">A5</div>
     </button>
-    <button class="nav-item" data-view="density">
+    <button class="nav-item" data-anchor="card-density">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="7" r="4"/><path d="M5.5 20a7 7 0 0113 0"/></svg>
       <span>人员密度</span>
       <div class="nav-badge">A6</div>
     </button>
-    <button class="nav-item" data-view="openness">
+    <button class="nav-item" data-anchor="card-openness">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12l9-9 9 9M5 10v9a1 1 0 001 1h4v-5h4v5h4a1 1 0 001-1v-9"/></svg>
       <span>开放程度</span>
       <div class="nav-badge">A7</div>
     </button>
-    <button class="nav-item" data-view="topology">
+    <button class="nav-item" data-anchor="card-topology">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="12" cy="19" r="2"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="12" y1="7" x2="12" y2="17"/></svg>
       <span>拓扑关系</span>
       <div class="nav-badge">A8</div>
     </button>
-    <button class="nav-item" data-view="difference">
+    <button class="nav-item" data-anchor="card-difference">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
       <span>差异系数</span>
       <div class="nav-badge">A9</div>
     </button>
-    <button class="nav-item" data-view="trajectory">
+    <button class="nav-item" data-anchor="card-trajectory">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 17 C6 12 8 8 12 8 C16 8 18 14 21 9"/><circle cx="3" cy="17" r="1.5" fill="currentColor"/><circle cx="21" cy="9" r="1.5" fill="currentColor"/></svg>
       <span>轨迹长度</span>
       <div class="nav-badge">A10</div>
@@ -90,7 +278,7 @@
 
     <!-- B: 环境分析 -->
     <div class="nav-section-label" style="margin-top:12px">环境分析</div>
-    <button class="nav-item" data-view="environment">
+    <button class="nav-item" data-anchor="card-environment">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a10 10 0 100 20 10 10 0 000-20z"/><path d="M12 6v6l4 2"/></svg>
       <span>环境参数</span>
       <div class="nav-badge">B5</div>
@@ -98,40 +286,40 @@
 
     <!-- C: 行为分析 -->
     <div class="nav-section-label" style="margin-top:12px">行为分析</div>
-    <button class="nav-item" data-view="behavior_count">
+    <button class="nav-item" data-anchor="card-behavior_count">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
       <span>行为人次</span>
       <div class="nav-badge">C1</div>
     </button>
-    <button class="nav-item" data-view="behavior_duration">
+    <button class="nav-item" data-anchor="card-behavior_duration">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg>
       <span>行为时长</span>
       <div class="nav-badge">C2</div>
     </button>
-    <button class="nav-item" data-view="behavior_rate">
+    <button class="nav-item" data-anchor="card-behavior_rate">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       <span>行为发生率</span>
       <div class="nav-badge">C3</div>
     </button>
-    <button class="nav-item" data-view="behavior_entropy">
+    <button class="nav-item" data-anchor="card-behavior_entropy">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 16l4-6 4 4 4-8"/></svg>
       <span>行为复合度</span>
       <div class="nav-badge">C4</div>
     </button>
-    <button class="nav-item" data-view="utilization">
+    <button class="nav-item" data-anchor="card-utilization">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
       <span>功能利用率</span>
       <div class="nav-badge">C5</div>
     </button>
 
-    <!-- D: 问卷分析 -->
+    <!-- D: 满意度 -->
     <div class="nav-section-label" style="margin-top:12px">满意度</div>
-    <button class="nav-item" data-view="satisfaction">
+    <button class="nav-item" data-anchor="card-satisfaction">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M8 13s1.5 3 4 3 4-3 4-3"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
       <span>整体满意度</span>
       <div class="nav-badge">D3</div>
     </button>
-    <button class="nav-item" data-view="satisfaction_region">
+    <button class="nav-item" data-anchor="card-satisfaction_region">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
       <span>空间满意度</span>
       <div class="nav-badge">D4</div>
@@ -139,7 +327,7 @@
   </nav>
 
   <div class="sidebar-footer">
-    <div class="version-badge">Demo v2.0</div>
+    <div class="version-badge">v1.0.0</div>
   </div>
 </aside>
 
@@ -149,12 +337,18 @@
   <!-- 顶栏 -->
   <header class="topbar">
     <div class="topbar-left">
-      <h1 class="page-title" id="page-title">到访频次热力图</h1>
-      <span class="page-subtitle" id="page-subtitle">统计各区域人员到访密度，生成热力分布图</span>
+      <h1 class="page-title">指标计算结果</h1>
+      <span class="page-subtitle">建筑空间绩效评价 · 全量指标</span>
     </div>
     <div class="topbar-right">
-      <div class="status-dot online"></div>
-      <span class="status-text">系统就绪</span>
+      <a href="/projects" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);text-decoration:none;padding:5px 10px;border:1px solid var(--border);border-radius:7px;margin-right:4px;transition:all 0.15s;"
+         onmouseover="this.style.color='var(--accent)';this.style.borderColor='var(--accent)'"
+         onmouseout="this.style.color='var(--text-secondary)';this.style.borderColor='var(--border)'">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        项目管理
+      </a>
+      <div class="status-dot online" id="status-dot"></div>
+      <span class="status-text" id="status-text">计算中…</span>
       <button class="theme-toggle" id="theme-toggle" title="切换明暗">
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
           <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
@@ -193,222 +387,224 @@
     </div>
   </div>
 
-  <!-- 数据上传区域 -->
+  <!-- 上传区（隐藏，保留 DOM 供 JS 引用） -->
   <section class="upload-section">
-    <div class="upload-grid" id="upload-grid">
-
-      <!-- 平面图（所有功能公用） -->
-      <div class="upload-card" id="drop-img">
-        <div class="upload-icon">
-          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5">
-            <rect x="6" y="6" width="36" height="36" rx="4"/>
-            <circle cx="18" cy="18" r="4"/><path d="M6 30 l10-10 8 8 6-6 12 12"/>
-          </svg>
-        </div>
-        <div class="upload-text">
-          <strong>空间平面图</strong>
-          <span>PNG / JPG，拖入或点击上传</span>
-        </div>
-        <input type="file" id="input-img" accept="image/*" hidden>
-        <div class="upload-filename" id="fname-img">未选择</div>
-      </div>
-
-      <!-- 定位数据（默认显示） -->
-      <div class="upload-card data-loc" id="drop-loc">
-        <div class="upload-icon">
-          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5">
-            <rect x="6" y="6" width="36" height="36" rx="4"/>
-            <line x1="6" y1="18" x2="42" y2="18"/><line x1="6" y1="30" x2="42" y2="30"/>
-            <line x1="18" y1="6" x2="18" y2="42"/><line x1="30" y1="6" x2="30" y2="42"/>
-          </svg>
-        </div>
-        <div class="upload-text">
-          <strong>定位数据</strong>
-          <span>CSV / Excel，需含 X, Y 列</span>
-        </div>
-        <input type="file" id="input-loc" accept=".csv,.xlsx,.xls" hidden>
-        <div class="upload-filename" id="fname-loc">未选择</div>
-      </div>
-
-      <!-- 行为数据（行为类功能显示） -->
-      <div class="upload-card data-behavior" id="drop-behavior" style="display:none">
-        <div class="upload-icon">
-          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5">
-            <circle cx="24" cy="16" r="8"/><path d="M8 40a16 16 0 0132 0"/>
-          </svg>
-        </div>
-        <div class="upload-text">
-          <strong>行为数据</strong>
-          <span>需含 X,Y,BehaviorNum,Region,t 列</span>
-        </div>
-        <input type="file" id="input-behavior" accept=".csv,.xlsx,.xls" hidden>
-        <div class="upload-filename" id="fname-behavior">未选择</div>
-      </div>
-
-      <!-- 环境数据（环境功能显示） -->
-      <div class="upload-card data-env" id="drop-env" style="display:none">
-        <div class="upload-icon">
-          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5">
-            <circle cx="24" cy="24" r="16"/><line x1="24" y1="8" x2="24" y2="40"/>
-            <line x1="8" y1="24" x2="40" y2="24"/>
-          </svg>
-        </div>
-        <div class="upload-text">
-          <strong>环境数据</strong>
-          <span>需含 X,Y,ParameterNum,Value 列</span>
-        </div>
-        <input type="file" id="input-env" accept=".csv,.xlsx,.xls" hidden>
-        <div class="upload-filename" id="fname-env">未选择</div>
-      </div>
-
-      <!-- 问卷数据（满意度功能显示） -->
-      <div class="upload-card data-ques" id="drop-ques" style="display:none">
-        <div class="upload-icon">
-          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5">
-            <rect x="6" y="6" width="36" height="36" rx="4"/>
-            <line x1="14" y1="18" x2="34" y2="18"/><line x1="14" y1="26" x2="34" y2="26"/>
-            <line x1="14" y1="34" x2="24" y2="34"/>
-          </svg>
-        </div>
-        <div class="upload-text">
-          <strong>问卷数据</strong>
-          <span>需含 UserNum, Satisfaction 列</span>
-        </div>
-        <input type="file" id="input-ques" accept=".csv,.xlsx,.xls" hidden>
-        <div class="upload-filename" id="fname-ques">未选择</div>
-      </div>
-
-      <!-- 区域坐标（开放程度/功能利用率可选） -->
-      <div class="upload-card data-region" id="drop-region" style="display:none">
-        <div class="upload-icon">
-          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5">
-            <polygon points="24,6 42,18 42,30 24,42 6,30 6,18"/>
-          </svg>
-        </div>
-        <div class="upload-text">
-          <strong>区域坐标（可选）</strong>
-          <span>需含 Region,X,Y 列，用于计算面积</span>
-        </div>
-        <input type="file" id="input-region" accept=".csv,.xlsx,.xls" hidden>
-        <div class="upload-filename" id="fname-region">未选择</div>
-      </div>
-
-      <!-- 聚类参数（A5） -->
-      <div class="upload-card param-card" id="cluster-param" style="display:none">
-        <div class="upload-icon">
-          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5">
-            <circle cx="24" cy="24" r="16"/><line x1="24" y1="8" x2="24" y2="40"/>
-            <line x1="8" y1="24" x2="40" y2="24"/>
-          </svg>
-        </div>
-        <div class="upload-text">
-          <strong>聚类数 K</strong>
-          <span title="建议 3–8，根据区域数量设置" data-full-text="建议 3–8，根据区域数量设置">建议 3–8，根据区域数量设置</span>
-        </div>
-        <div class="k-control">
-          <button class="k-btn" id="k-minus">−</button>
-          <span class="k-val" id="k-val">5</span>
-          <button class="k-btn" id="k-plus">+</button>
-        </div>
-      </div>
-
-      <!-- 环境参数选择（B5） -->
-      <div class="upload-card param-card" id="env-param" style="display:none">
-        <div class="upload-text" style="flex:1">
-          <strong>参数类型</strong>
-          <span title="选择要显示的环境参数" data-full-text="选择要显示的环境参数">选择要显示的环境参数</span>
-        </div>
-        <select class="param-select" id="env-param-select">
-          <option value="1">1 · 温度 (°C)</option>
-          <option value="2">2 · 湿度 (%)</option>
-          <option value="3">3 · 光照 (lux)</option>
-          <option value="4">4 · 风速 (m/s)</option>
-          <option value="5">5 · 噪声 (dB)</option>
-        </select>
-      </div>
-
-    </div><!-- end upload-grid -->
-
-    <button class="run-btn" id="run-btn">
-      <svg viewBox="0 0 20 20" fill="currentColor" width="18" height="18">
-        <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
-      </svg>
-      开始分析
-    </button>
+    <div class="upload-grid" id="upload-grid"></div>
+    <button class="run-btn" id="run-btn" style="display:none">开始分析</button>
   </section>
 
-  <!-- 结果区域 -->
-  <section class="result-section" id="result-section" style="display:none">
+  <!-- 全量指标结果网格 -->
+  <div class="results-grid" id="results-grid"></div>
 
-    <!-- 统计卡片 -->
-    <div class="stats-row" id="stats-row"></div>
-
-    <!-- 可视化图 -->
-    <div class="chart-card">
-      <div class="chart-header">
-        <span class="chart-title" id="chart-title">分析结果</span>
-        <button class="download-btn" id="download-btn">
-          <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
-            <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z"/>
-            <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z"/>
-          </svg>
-          下载图片
-        </button>
-      </div>
-      <div class="chart-body">
-        <img id="result-img" src="" alt="分析结果">
-      </div>
-    </div>
-
-    <!-- 拓扑详情表（A8） -->
-    <div id="topology-detail" style="display:none">
-      <div class="chart-card">
-        <div class="chart-header"><span class="chart-title">区域流量详情</span></div>
-        <div class="table-wrap">
-          <table class="data-table" id="topology-table">
-            <thead><tr><th>区域</th><th>流入量</th><th>流出量</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- 聚类详情表（A5） -->
-    <div id="cluster-detail" style="display:none">
-      <div class="chart-card">
-        <div class="chart-header"><span class="chart-title">聚类详情</span></div>
-        <div class="table-wrap">
-          <table class="data-table" id="cluster-table">
-            <thead><tr><th>簇ID</th><th>点位数</th><th>占比</th><th>中心 X</th><th>中心 Y</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- 区域满意度表（D4） -->
-    <div id="sat-region-detail" style="display:none">
-      <div class="chart-card">
-        <div class="chart-header"><span class="chart-title">各区域满意度详情</span></div>
-        <div class="table-wrap">
-          <table class="data-table" id="sat-region-table">
-            <thead><tr><th>区域</th><th>平均满意度</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-  </section>
-
-  <!-- 加载遮罩 -->
+  <!-- 加载遮罩（单个指标计算时） -->
   <div class="loading-overlay" id="loading">
     <div class="spinner"></div>
-    <div class="loading-text">正在分析数据...</div>
+    <div class="loading-text" id="loading-text">正在计算…</div>
   </div>
 
 </main>
 
 <script src="/static/js/app.js"></script>
+<script>
+// ─── 结果页额外逻辑 ───
+// 所有指标定义（从 app.js VIEWS 复用）
+
+// 指标分组顺序
+const METRIC_ORDER = [
+  { id: 'heatmap',      badge: 'A1' },
+  { id: 'usetime',      badge: 'A2' },
+  { id: 'speed',        badge: 'A3' },
+  { id: 'duration',     badge: 'A4' },
+  { id: 'cluster',      badge: 'A5' },
+  { id: 'density',      badge: 'A6' },
+  { id: 'openness',     badge: 'A7' },
+  { id: 'topology',     badge: 'A8' },
+  { id: 'difference',   badge: 'A9' },
+  { id: 'trajectory',   badge: 'A10' },
+  { id: 'environment',  badge: 'B5' },
+  { id: 'behavior_count',    badge: 'C1' },
+  { id: 'behavior_duration', badge: 'C2' },
+  { id: 'behavior_rate',     badge: 'C3' },
+  { id: 'behavior_entropy',  badge: 'C4' },
+  { id: 'utilization',       badge: 'C5' },
+  { id: 'satisfaction',      badge: 'D3' },
+  { id: 'satisfaction_region', badge: 'D4' },
+];
+
+// 每个指标对应的「源文件」说明
+const SOURCE_FILE_LABEL = {
+  img:      '平面图',
+  loc:      '定位数据',
+  behavior: '行为数据',
+  env:      '环境数据',
+  ques:     '问卷数据',
+  region:   '区域坐标',
+};
+
+// 指标 → 主要源文件类型
+const METRIC_SOURCE = {
+  heatmap:           ['img', 'loc'],
+  usetime:           ['img', 'loc'],
+  speed:             ['img', 'loc'],
+  duration:          ['img', 'loc'],
+  cluster:           ['img', 'loc'],
+  density:           ['img', 'loc'],
+  openness:          ['img', 'loc', 'region'],
+  topology:          ['loc'],
+  difference:        ['img', 'loc'],
+  trajectory:        ['img', 'loc'],
+  environment:       ['img', 'env'],
+  behavior_count:    ['img', 'behavior'],
+  behavior_duration: ['img', 'behavior'],
+  behavior_rate:     ['behavior'],
+  behavior_entropy:  ['behavior'],
+  utilization:       ['behavior', 'region'],
+  satisfaction:      ['ques'],
+  satisfaction_region: ['ques'],
+};
+
+// 已存储的结果（指标id → data）
+const _results = {};
+
+function buildResultsGrid() {
+  const grid = document.getElementById('results-grid');
+  grid.innerHTML = '';
+
+  METRIC_ORDER.forEach(function(m) {
+    const cfg = VIEWS[m.id];
+    if (!cfg) return;
+    const card = document.createElement('div');
+    card.className = 'metric-card';
+    card.id = 'card-' + m.id;
+
+    // 源文件按钮
+    const sources = METRIC_SOURCE[m.id] || [];
+    const sourceBtns = sources.map(function(s) {
+      return `<button class="source-btn" onclick="openSourceFile('${m.id}','${s}')" title="查看${SOURCE_FILE_LABEL[s]}">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        ${SOURCE_FILE_LABEL[s]}
+      </button>`;
+    }).join('');
+
+    card.innerHTML = `
+      <div class="metric-card-header">
+        <div class="metric-card-title-wrap">
+          <span class="metric-badge">${m.badge}</span>
+          <span class="metric-card-title">${cfg.title}</span>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">${sourceBtns}</div>
+      </div>
+      <div class="metric-card-body">
+        <div class="metric-img-wrap" id="img-wrap-${m.id}">
+          <img id="result-img-${m.id}" src="" alt="${cfg.title}">
+          <div class="metric-img-placeholder" id="placeholder-${m.id}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
+            <span>等待数据</span>
+          </div>
+        </div>
+        <div class="metric-stats" id="stats-${m.id}"></div>
+        <div class="metric-status pending" id="status-${m.id}">等待计算</div>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+// 侧边栏导航 → 滚动到对应卡片
+function bindSidebarAnchors() {
+  document.querySelectorAll('.nav-item[data-anchor]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.nav-item').forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      var target = document.getElementById(btn.dataset.anchor);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+}
+
+// 打开源文件（占位，未来接入桌面文件管理器）
+function openSourceFile(metricId, sourceType) {
+  showToast('源文件：' + SOURCE_FILE_LABEL[sourceType] + ' （' + metricId + '）\n文件管理功能待开发', 'info');
+}
+
+// 渲染单个指标结果到卡片
+function renderMetricCard(id, data) {
+  _results[id] = data;
+  const cfg = VIEWS[id];
+  if (!cfg) return;
+
+  // 图片
+  const img = document.getElementById('result-img-' + id);
+  const placeholder = document.getElementById('placeholder-' + id);
+  if (data.image) {
+    img.src = 'data:image/png;base64,' + data.image;
+    img.style.display = 'block';
+    if (placeholder) placeholder.style.display = 'none';
+  }
+
+  // 统计
+  const statsEl = document.getElementById('stats-' + id);
+  if (statsEl && data.summary) {
+    statsEl.innerHTML = '';
+    (cfg.stats || []).forEach(function(s) {
+      var val = data.summary[s.key] ?? '—';
+      statsEl.insertAdjacentHTML('beforeend',
+        `<div class="metric-stat ${s.cls}">
+           <div class="metric-stat-label">${s.label}</div>
+           <div class="metric-stat-value">${val}<span class="unit">${s.unit}</span></div>
+         </div>`);
+    });
+  }
+
+  // 状态
+  var statusEl = document.getElementById('status-' + id);
+  if (statusEl) {
+    statusEl.className = 'metric-status done';
+    statusEl.textContent = '计算完成';
+  }
+}
+
+function markMetricError(id, msg) {
+  var statusEl = document.getElementById('status-' + id);
+  if (statusEl) {
+    statusEl.className = 'metric-status error';
+    statusEl.textContent = '⚠ ' + (msg || '计算失败');
+  }
+}
+
+// 引擎就绪后更新顶栏状态
+function onEngineReady() {
+  document.getElementById('status-dot').className = 'status-dot online';
+  document.getElementById('status-text').textContent = '系统就绪';
+}
+
+// 初始化
+document.addEventListener('DOMContentLoaded', function() {
+  buildResultsGrid();
+  bindSidebarAnchors();
+  bindThemeToggle();
+  bindColorSettings();
+  restoreAccentColor();
+  // 轮询引擎就绪
+  pollEngineReady();
+});
+
+function pollEngineReady() {
+  fetch('/api/ready')
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.ready) { onEngineReady(); }
+      else { setTimeout(pollEngineReady, 800); }
+    })
+    .catch(function(){ setTimeout(pollEngineReady, 1000); });
+}
+</script>
 </body>
 </html>

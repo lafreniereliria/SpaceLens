@@ -17,6 +17,16 @@ def index():
     return render_template('index.html')
 
 
+@app.route('/projects')
+def projects():
+    return render_template('projects.html')
+
+
+@app.route('/new_project')
+def new_project():
+    return render_template('new_project.html')
+
+
 if __name__ == '__main__':
     print("✨ 空间分析系统 Demo 启动中...")
     print("   访问 http://127.0.0.1:8080")

@@ -460,7 +460,7 @@ def _build_cover_html() -> str:
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
       <polygon points="5,3 19,12 5,21"/>
     </svg>
-    开始评价
+    开始使用
   </button>
 
   <div class="btn-row">
@@ -570,13 +570,13 @@ function setProgress(pct, text) {
 
 function setReady(port) {
   _flaskPort = port;
-  setProgress(100, '系统就绪，可以开始评价');
+  setProgress(100, '系统就绪，可以开始使用');
   document.getElementById('btn-start').disabled = false;
 }
 
 function startEvaluation() {
   if (_flaskPort) {
-    window.location.href = 'http://127.0.0.1:' + _flaskPort + '/';
+    window.location.href = 'http://127.0.0.1:' + _flaskPort + '/projects';
   }
 }
 
@@ -681,6 +681,14 @@ def _run_flask_impl(port: int, state: dict):
     @flask_app.route('/')
     def _index():
         return _flask.render_template('index.html')
+
+    @flask_app.route('/projects')
+    def _projects():
+        return _flask.render_template('projects.html')
+
+    @flask_app.route('/new_project')
+    def _new_project():
+        return _flask.render_template('new_project.html')
 
     @flask_app.route('/api/ready')
     def _api_ready():

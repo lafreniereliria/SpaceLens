@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>新建项目 — 建筑空间绩效评价平台</title>
+<script>
+(function(){
+  var t = localStorage.getItem('theme') || 'light';
+  document.documentElement.setAttribute('data-theme', t);
+  var a = localStorage.getItem('accentColor') || '#0ea5e9';
+  var m = a.match(/^#([0-9a-f]{6})$/i);
+  if(m){
+    var r=parseInt(m[1].slice(0,2),16), g=parseInt(m[1].slice(2,4),16), b=parseInt(m[1].slice(4,6),16);
+    document.documentElement.style.setProperty('--accent', a);
+    document.documentElement.style.setProperty('--accent-rgb', r+','+g+','+b);
+  }
+})();
+</script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --accent: #0ea5e9;
+  --accent-rgb: 14,165,233;
+  font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', sans-serif;
+}
+
+[data-theme="light"] {
+  --bg: #f4f7fb;
+  --bg-card: #ffffff;
+  --bg-hover: #f0f9ff;
+  --border: #e2e8f0;
+  --border-focus: #0ea5e9;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-dim: #94a3b8;
+  --shadow: 0 2px 16px rgba(0,0,0,0.07);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.10);
+}
+[data-theme="dark"] {
+  --bg: #0f1117;
+  --bg-card: #161b27;
+  --bg-hover: #1e2336;
+  --border: #2a2f45;
+  --border-focus: #0ea5e9;
+  --text-primary: #e8eaf0;
+  --text-secondary: #8b90a8;
+  --text-dim: #4a4f6a;
+  --shadow: 0 2px 16px rgba(0,0,0,0.35);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.45);
+}
+
+body {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ── 顶栏 ── */
+.topbar {
+  width: 100%;
+  padding: 0 40px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  transition: all 0.15s;
+  cursor: pointer;
+  background: transparent;
+}
+.back-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--bg-hover); }
+
+.topbar-title { font-size: 15px; font-weight: 600; }
+.topbar-sub { font-size: 13px; color: var(--text-secondary); }
+
+.topbar-logo-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.topbar-logo-icon {
+  width: 28px; height: 28px;
+  background: linear-gradient(135deg, var(--accent), #0284c7);
+  border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+}
+.topbar-logo-icon svg { width: 15px; height: 15px; color: #fff; }
+.topbar-brand { font-size: 14px; font-weight: 600; }
+
+.icon-btn {
+  width: 34px; height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.icon-btn:hover { background: var(--bg); color: var(--text-primary); }
+
+/* ── 步骤指示器 ── */
+.steps-bar {
+  width: 100%;
+  max-width: 760px;
+  display: flex;
+  align-items: center;
+  margin: 40px 0 32px;
+  padding: 0 24px;
+}
+
+.step-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.step-circle {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.step-item.active .step-circle {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 0 4px rgba(var(--accent-rgb),0.18);
+}
+
+.step-item.done .step-circle {
+  background: rgba(var(--accent-rgb), 0.12);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.step-label { font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
+.step-item.active .step-label { color: var(--text-primary); font-weight: 600; }
+
+.step-line {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+  margin: 0 12px;
+}
+
+/* ── 主体 ── */
+.page {
+  width: 100%;
+  max-width: 760px;
+  padding: 0 24px 80px;
+}
+
+/* ── 分区标题 ── */
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+
+.section-num {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+
+.section-block {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px 28px 24px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow);
+}
+
+/* ── 建筑类型网格 ── */
+.type-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.type-card {
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 14px;
+  cursor: pointer;
+  transition: all 0.18s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  position: relative;
+  background: transparent;
+  color: inherit;
+}
+
+.type-card:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.type-card.selected {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.07);
+}
+
+.type-card.selected::after {
+  content: '✓';
+  position: absolute;
+  top: 8px; right: 10px;
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.type-icon {
+  width: 44px; height: 44px;
+  border-radius: 10px;
+  background: rgba(var(--accent-rgb), 0.1);
+  display: flex; align-items: center; justify-content: center;
+}
+.type-icon svg { width: 22px; height: 22px; color: var(--accent); }
+.type-name { font-size: 13px; font-weight: 600; }
+.type-desc { font-size: 11px; color: var(--text-secondary); line-height: 1.4; }
+
+/* ── 导入方式切换 ── */
+.import-tabs {
+  display: flex;
+  gap: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 3px;
+  margin-bottom: 20px;
+  width: fit-content;
+}
+
+.import-tab {
+  padding: 8px 20px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+
+.import-tab.active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+}
+
+/* ── 上传区 ── */
+.upload-mode { display: none; }
+.upload-mode.active { display: block; }
+
+.drop-zone {
+  border: 1.5px dashed var(--border);
+  border-radius: 10px;
+  padding: 32px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.04);
+}
+
+.drop-zone.has-file {
+  border-style: solid;
+  border-color: rgba(var(--accent-rgb), 0.5);
+  background: rgba(var(--accent-rgb), 0.04);
+}
+
+.drop-icon { margin-bottom: 12px; color: var(--text-dim); }
+.drop-icon svg { width: 40px; height: 40px; }
+.drop-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.drop-hint { font-size: 12px; color: var(--text-secondary); }
+.drop-filename {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* 分别导入 — 小卡片列表 */
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.file-row:hover { border-color: var(--accent); background: var(--bg-hover); }
+.file-row.has-file { border-color: rgba(var(--accent-rgb), 0.5); }
+
+.file-row-icon {
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  background: rgba(var(--accent-rgb), 0.1);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.file-row-icon svg { width: 18px; height: 18px; color: var(--accent); }
+
+.file-row-info { flex: 1; min-width: 0; }
+.file-row-label { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+.file-row-hint { font-size: 11px; color: var(--text-secondary); }
+.file-row-name {
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-btn {
+  font-size: 12px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.file-btn:hover { border-color: var(--accent); color: var(--accent); }
+.file-row.has-file .file-btn { border-color: var(--accent); color: var(--accent); }
+
+/* ── 底部按钮 ── */
+.bottom-bar {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  padding: 16px 24px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.btn-cancel {
+  padding: 11px 24px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-cancel:hover { border-color: var(--text-secondary); color: var(--text-primary); }
+
+.btn-run {
+  padding: 11px 28px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent), #0284c7);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 16px rgba(var(--accent-rgb),0.35);
+  transition: all 0.18s;
+}
+.btn-run:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 22px rgba(var(--accent-rgb),0.45);
+}
+.btn-run:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+</style>
+</head>
+<body>
+
+<!-- 顶栏 -->
+<nav class="topbar">
+  <div class="topbar-left">
+    <a class="back-btn" href="/projects">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M19 12H5M12 5l-7 7 7 7"/>
+      </svg>
+      返回
+    </a>
+    <div>
+      <div class="topbar-title">新建项目</div>
+    </div>
+  </div>
+  <div class="topbar-logo-wrap">
+    <div class="topbar-logo-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <polygon points="12,2 22,8.5 22,15.5 12,22 2,15.5 2,8.5"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>
+    </div>
+    <span class="topbar-brand">建筑空间绩效评价平台</span>
+  </div>
+  <button class="icon-btn" id="theme-toggle" title="切换明暗">
+    <svg id="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
+      <circle cx="12" cy="12" r="5"/>
+      <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+      <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+    </svg>
+    <svg id="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16" style="display:none">
+      <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+    </svg>
+  </button>
+</nav>
+
+<!-- 步骤指示器 -->
+<div class="steps-bar">
+  <div class="step-item active">
+    <div class="step-circle">1</div>
+    <span class="step-label">类型 & 数据</span>
+  </div>
+  <div class="step-line"></div>
+  <div class="step-item">
+    <div class="step-circle">2</div>
+    <span class="step-label">计算中</span>
+  </div>
+  <div class="step-line"></div>
+  <div class="step-item">
+    <div class="step-circle">3</div>
+    <span class="step-label">评价结果</span>
+  </div>
+</div>
+
+<div class="page">
+
+  <!-- ① 建筑类型选择 -->
+  <div class="section-block">
+    <div class="section-title">
+      <div class="section-num">1</div>
+      建筑类型选择
+    </div>
+    <div class="type-grid" id="type-grid">
+
+      <button class="type-card" data-type="office" onclick="selectType(this)">
+        <div class="type-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <line x1="3" y1="9" x2="21" y2="9"/>
+            <line x1="9" y1="9" x2="9" y2="21"/>
+          </svg>
+        </div>
+        <div class="type-name">办公建筑</div>
+        <div class="type-desc">写字楼、科研院所、<br>政府机关</div>
+      </button>
+
+      <button class="type-card" data-type="education" onclick="selectType(this)">
+        <div class="type-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+        </div>
+        <div class="type-name">教育建筑</div>
+        <div class="type-desc">学校、图书馆、<br>培训机构</div>
+      </button>
+
+      <button class="type-card" data-type="medical" onclick="selectType(this)">
+        <div class="type-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <line x1="12" y1="8" x2="12" y2="16"/>
+            <line x1="8" y1="12" x2="16" y2="12"/>
+          </svg>
+        </div>
+        <div class="type-name">医疗建筑</div>
+        <div class="type-desc">医院、诊所、<br>康复中心</div>
+      </button>
+
+      <button class="type-card" data-type="commercial" onclick="selectType(this)">
+        <div class="type-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <path d="M16 10a4 4 0 01-8 0"/>
+          </svg>
+        </div>
+        <div class="type-name">商业建筑</div>
+        <div class="type-desc">购物中心、超市、<br>展览馆</div>
+      </button>
+
+      <button class="type-card" data-type="cultural" onclick="selectType(this)">
+        <div class="type-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <polygon points="12 2 22 8 22 16 12 22 2 16 2 8"/>
+            <circle cx="12" cy="12" r="4"/>
+          </svg>
+        </div>
+        <div class="type-name">文化建筑</div>
+        <div class="type-desc">博物馆、剧院、<br>文化中心</div>
+      </button>
+
+      <button class="type-card" data-type="residential" onclick="selectType(this)">
+        <div class="type-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+            <circle cx="12" cy="13" r="3"/>
+          </svg>
+        </div>
+        <div class="type-name">居住建筑</div>
+        <div class="type-desc">住宅、公寓、<br>宿舍楼</div>
+      </button>
+
+    </div>
+  </div>
+
+  <!-- ② 数据导入 -->
+  <div class="section-block">
+    <div class="section-title">
+      <div class="section-num">2</div>
+      数据导入
+    </div>
+
+    <!-- 导入方式切换 -->
+    <div class="import-tabs">
+      <button class="import-tab active" id="tab-folder" onclick="switchImport('folder')">📁 文件夹导入</button>
+      <button class="import-tab" id="tab-separate" onclick="switchImport('separate')">📄 分别导入</button>
+    </div>
+
+    <!-- 文件夹导入 -->
+    <div class="upload-mode active" id="mode-folder">
+      <div class="drop-zone" id="drop-folder" onclick="document.getElementById('input-folder').click()">
+        <input type="file" id="input-folder" webkitdirectory multiple hidden>
+        <div class="drop-icon">
+          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M4 12a4 4 0 014-4h12l4 4h16a4 4 0 014 4v20a4 4 0 01-4 4H8a4 4 0 01-4-4V12z"/>
+            <line x1="24" y1="20" x2="24" y2="32"/>
+            <polyline points="18 26 24 20 30 26"/>
+          </svg>
+        </div>
+        <div class="drop-title">点击选择数据文件夹</div>
+        <div class="drop-hint">或将文件夹拖入此处 — 平台将自动识别内部文件</div>
+        <div class="drop-filename" id="fname-folder"></div>
+      </div>
+    </div>
+
+    <!-- 分别导入 -->
+    <div class="upload-mode" id="mode-separate">
+      <div class="file-list">
+
+        <div class="file-row" id="row-img" onclick="triggerFile('input-img')">
+          <input type="file" id="input-img" accept="image/*" hidden>
+          <div class="file-row-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
+          </div>
+          <div class="file-row-info">
+            <div class="file-row-label">空间平面图</div>
+            <div class="file-row-hint">PNG / JPG 格式</div>
+            <div class="file-row-name" id="fname-img">未选择</div>
+          </div>
+          <button class="file-btn">选择</button>
+        </div>
+
+        <div class="file-row" id="row-loc" onclick="triggerFile('input-loc')">
+          <input type="file" id="input-loc" accept=".csv,.xlsx,.xls" hidden>
+          <div class="file-row-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <line x1="3" y1="9" x2="21" y2="9"/>
+              <line x1="3" y1="15" x2="21" y2="15"/>
+              <line x1="9" y1="3" x2="9" y2="21"/>
+              <line x1="15" y1="3" x2="15" y2="21"/>
+            </svg>
+          </div>
+          <div class="file-row-info">
+            <div class="file-row-label">定位数据</div>
+            <div class="file-row-hint">CSV / Excel，含 X、Y 列</div>
+            <div class="file-row-name" id="fname-loc">未选择</div>
+          </div>
+          <button class="file-btn">选择</button>
+        </div>
+
+        <div class="file-row" id="row-behavior" onclick="triggerFile('input-behavior')">
+          <input type="file" id="input-behavior" accept=".csv,.xlsx,.xls" hidden>
+          <div class="file-row-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 00-3-3.87"/>
+              <path d="M16 3.13a4 4 0 010 7.75"/>
+            </svg>
+          </div>
+          <div class="file-row-info">
+            <div class="file-row-label">行为数据</div>
+            <div class="file-row-hint">含 X、Y、BehaviorNum、Region、t 列</div>
+            <div class="file-row-name" id="fname-behavior">未选择</div>
+          </div>
+          <button class="file-btn">选择</button>
+        </div>
+
+        <div class="file-row" id="row-env" onclick="triggerFile('input-env')">
+          <input type="file" id="input-env" accept=".csv,.xlsx,.xls" hidden>
+          <div class="file-row-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/>
+            </svg>
+          </div>
+          <div class="file-row-info">
+            <div class="file-row-label">环境数据</div>
+            <div class="file-row-hint">含 X、Y、ParameterNum、Value 列</div>
+            <div class="file-row-name" id="fname-env">未选择</div>
+          </div>
+          <button class="file-btn">选择</button>
+        </div>
+
+        <div class="file-row" id="row-ques" onclick="triggerFile('input-ques')">
+          <input type="file" id="input-ques" accept=".csv,.xlsx,.xls" hidden>
+          <div class="file-row-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <line x1="8" y1="9" x2="16" y2="9"/>
+              <line x1="8" y1="13" x2="16" y2="13"/>
+              <line x1="8" y1="17" x2="12" y2="17"/>
+            </svg>
+          </div>
+          <div class="file-row-info">
+            <div class="file-row-label">问卷数据</div>
+            <div class="file-row-hint">含 UserNum、Satisfaction 列</div>
+            <div class="file-row-name" id="fname-ques">未选择</div>
+          </div>
+          <button class="file-btn">选择</button>
+        </div>
+
+      </div>
+    </div>
+
+  </div><!-- end section-block -->
+
+</div><!-- end page -->
+
+<!-- 底部操作栏 -->
+<div class="bottom-bar">
+  <button class="btn-cancel" onclick="history.back()">取消</button>
+  <button class="btn-run" id="btn-run" onclick="startCalc()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" fill="currentColor" stroke="none"/>
+    </svg>
+    开始计算
+  </button>
+</div>
+
+<script>
+// ── 主题切换 ──
+(function(){
+  var btn = document.getElementById('theme-toggle');
+  var sun = document.getElementById('icon-sun');
+  var moon = document.getElementById('icon-moon');
+  function applyTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    sun.style.display  = t === 'dark'  ? 'none' : '';
+    moon.style.display = t === 'light' ? 'none' : '';
+  }
+  applyTheme(localStorage.getItem('theme') || 'light');
+  btn.addEventListener('click', function(){
+    var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('theme', next);
+    applyTheme(next);
+  });
+})();
+
+// ── 建筑类型选择 ──
+var selectedType = null;
+
+function selectType(card) {
+  document.querySelectorAll('.type-card').forEach(function(c){ c.classList.remove('selected'); });
+  card.classList.add('selected');
+  selectedType = card.dataset.type;
+}
+
+// ── 导入方式切换 ──
+function switchImport(mode) {
+  document.getElementById('mode-folder').classList.toggle('active', mode === 'folder');
+  document.getElementById('mode-separate').classList.toggle('active', mode === 'separate');
+  document.getElementById('tab-folder').classList.toggle('active', mode === 'folder');
+  document.getElementById('tab-separate').classList.toggle('active', mode === 'separate');
+}
+
+// ── 文件夹选择 ──
+document.getElementById('input-folder').addEventListener('change', function(){
+  var files = this.files;
+  if (files.length) {
+    var el = document.getElementById('fname-folder');
+    el.textContent = '已选择 ' + files.length + ' 个文件（来自 ' + files[0].webkitRelativePath.split('/')[0] + '）';
+    document.getElementById('drop-folder').classList.add('has-file');
+  }
+});
+
+// ── 拖拽支持（文件夹导入区） ──
+var dropFolder = document.getElementById('drop-folder');
+dropFolder.addEventListener('dragover', function(e){ e.preventDefault(); this.classList.add('drag-over'); });
+dropFolder.addEventListener('dragleave', function(){ this.classList.remove('drag-over'); });
+dropFolder.addEventListener('drop', function(e){
+  e.preventDefault();
+  this.classList.remove('drag-over');
+  // 浏览器安全限制，仅标记
+  var el = document.getElementById('fname-folder');
+  el.textContent = '已拖入文件夹（文件夹导入在桌面端完整支持）';
+  this.classList.add('has-file');
+});
+
+// ── 分别导入 — 文件选择 ──
+function triggerFile(inputId) {
+  document.getElementById(inputId).click();
+}
+
+['img','loc','behavior','env','ques'].forEach(function(key){
+  var inp = document.getElementById('input-' + key);
+  inp.addEventListener('change', function(){
+    if (this.files[0]) {
+      document.getElementById('fname-' + key).textContent = this.files[0].name;
+      document.getElementById('row-' + key).classList.add('has-file');
+    }
+  });
+});
+
+// ── 开始计算 ──
+function startCalc() {
+  if (!selectedType) {
+    alert('请先选择建筑类型');
+    return;
+  }
+  // 跳转到主分析页（携带建筑类型参数）
+  window.location.href = '/?type=' + selectedType;
+}
+</script>
+</body>
+</html>

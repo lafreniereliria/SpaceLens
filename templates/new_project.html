@@ -523,31 +523,20 @@ function startCalc(){
   fd.append('theme', localStorage.getItem('theme')||'light');
   fd.append('accent', localStorage.getItem('accentColor')||'#0ea5e9');
 
-  // 显示计算中遮罩
+  // 显示跳转中遮罩
   var overlay=document.getElementById('computing-overlay');
-  var fill=document.getElementById('computing-fill');
   var sub=document.getElementById('computing-sub');
   overlay.classList.add('active');
-
-  var pct=0;
-  var timer=setInterval(function(){
-    pct=Math.min(pct+Math.random()*3,90);
-    fill.style.width=pct+'%';
-  },400);
+  if(sub) sub.textContent='正在启动计算…';
 
   fetch('/api/run_all',{method:'POST',body:fd})
     .then(function(r){return r.json();})
     .then(function(data){
-      clearInterval(timer);
-      fill.style.width='100%';
-      sub.textContent='计算完成，正在跳转…';
-      if(data.error){ overlay.classList.remove('active'); alert('计算失败：'+data.error); return; }
-      setTimeout(function(){
-        window.location.href='/?sid='+data.session_id;
-      },600);
+      if(data.error){ overlay.classList.remove('active'); alert('启动失败：'+data.error); return; }
+      // 立即跳转，结果页会实时显示计算进度
+      window.location.href='/?sid='+data.session_id;
     })
     .catch(function(e){
-      clearInterval(timer);
       overlay.classList.remove('active');
       alert('请求失败：'+e.message);
     });

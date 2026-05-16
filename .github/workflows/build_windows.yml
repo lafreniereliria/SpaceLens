@@ -1,9 +1,9 @@
-name: Build Windows exe
+name: Build Windows Installer
 
 on:
-  # 手动触发：在 GitHub 网页上点 "Run workflow" 按钮
+  # Trigger manually from the GitHub web UI → Actions tab → "Run workflow"
   workflow_dispatch:
-  # 或者每次推送 tag 时自动触发（可选）
+  # Auto-trigger on version tags (optional)
   # push:
   #   tags:
   #     - 'v*'
@@ -13,27 +13,112 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      # ------------------------------------------------------------------ #
+      #  1. Checkout
+      # ------------------------------------------------------------------ #
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # ------------------------------------------------------------------ #
+      #  2. Python — pin to 3.11 so DLL name is predictable
+      # ------------------------------------------------------------------ #
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      # ------------------------------------------------------------------ #
+      #  3. Install all dependencies
+      # ------------------------------------------------------------------ #
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build exe with PyInstaller
+      # ------------------------------------------------------------------ #
+      #  4. Build with PyInstaller
+      #     The spec already tries to locate python311.dll; the next step
+      #     adds a belt-and-suspenders copy just in case.
+      # ------------------------------------------------------------------ #
+      - name: Build with PyInstaller
         run: |
           pyinstaller build_windows.spec
 
-      - name: Upload artifact
+      # ------------------------------------------------------------------ #
+      #  5. Copy Python runtime DLLs into the output folder
+      #     (belt-and-suspenders in case the spec's glob missed them)
+      # ------------------------------------------------------------------ #
+      - name: Copy Python DLLs into dist
+        shell: pwsh
+        run: |
+          $pyDir = Split-Path (Get-Command python).Source
+          Write-Host "Python dir: $pyDir"
+
+          # python311.dll  (compact name used by CPython)
+          $dll311 = Join-Path $pyDir "python311.dll"
+          # python3.11.dll (dotted name, less common but possible)
+          $dll311dot = Join-Path $pyDir "python3.11.dll"
+
+          foreach ($dll in @($dll311, $dll311dot)) {
+            if (Test-Path $dll) {
+              Write-Host "Copying $dll -> dist\SpaceLens\"
+              Copy-Item $dll dist\SpaceLens\ -Force
+            }
+          }
+
+          # VC++ / CRT DLLs that may not have been picked up by PyInstaller
+          $crtPatterns = @("vcruntime140*.dll","msvcp140*.dll","api-ms-win-crt*.dll")
+          foreach ($pat in $crtPatterns) {
+            Get-ChildItem -Path $pyDir -Filter $pat -ErrorAction SilentlyContinue | ForEach-Object {
+              Write-Host "Copying CRT DLL: $($_.FullName)"
+              Copy-Item $_.FullName dist\SpaceLens\ -Force
+            }
+          }
+
+          Write-Host "=== Contents of dist\SpaceLens (DLLs only) ==="
+          Get-ChildItem dist\SpaceLens\*.dll | Select-Object Name, Length
+
+      # ------------------------------------------------------------------ #
+      #  6. Inno Setup — compile the installer
+      #     GitHub Actions windows-latest already has ISCC available via
+      #     the "Inno Setup" pre-installed app; if not, install it first.
+      # ------------------------------------------------------------------ #
+      - name: Install Inno Setup (if not present)
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            Write-Host "Installing Inno Setup 6 via winget..."
+            winget install --id JRSoftware.InnoSetup --silent --accept-package-agreements --accept-source-agreements
+          } else {
+            Write-Host "Inno Setup already present: $iscc"
+          }
+
+      - name: Compile installer with Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          New-Item -ItemType Directory -Force -Path installer_output | Out-Null
+          & $iscc installer.iss
+          Write-Host "=== Installer output ==="
+          Get-ChildItem installer_output\
+
+      # ------------------------------------------------------------------ #
+      #  7. Upload artifacts
+      #     • The raw onedir folder  (for debugging / advanced users)
+      #     • The polished installer .exe  (for end users)
+      # ------------------------------------------------------------------ #
+      - name: Upload raw onedir build
         uses: actions/upload-artifact@v4
         with:
-          name: SpaceLens-Windows
+          name: SpaceLens-Windows-onedir
           path: dist/SpaceLens/
           retention-days: 7
+
+      - name: Upload installer exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpaceLens-Windows-Installer
+          path: installer_output/*.exe
+          retention-days: 30

@@ -679,6 +679,10 @@ def _run_flask_impl(port: int, state: dict):
     flask_app.register_blueprint(analysis_bp, url_prefix='/api')
 
     @flask_app.route('/')
+    def _cover():
+        return _flask.render_template('cover.html')
+
+    @flask_app.route('/results')
     def _index():
         return _flask.render_template('index.html')
 

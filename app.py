@@ -13,6 +13,11 @@ app.register_blueprint(analysis_bp, url_prefix='/api')
 
 
 @app.route('/')
+def cover():
+    return render_template('cover.html')
+
+
+@app.route('/results')
 def index():
     return render_template('index.html')
 

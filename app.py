@@ -27,6 +27,11 @@ def projects():
     return render_template('projects.html')
 
 
+@app.route('/select_module')
+def select_module():
+    return render_template('select_module.html')
+
+
 @app.route('/new_project')
 def new_project():
     return render_template('new_project.html')

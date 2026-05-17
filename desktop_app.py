@@ -690,6 +690,10 @@ def _run_flask_impl(port: int, state: dict):
     def _projects():
         return _flask.render_template('projects.html')
 
+    @flask_app.route('/select_module')
+    def _select_module():
+        return _flask.render_template('select_module.html')
+
     @flask_app.route('/new_project')
     def _new_project():
         return _flask.render_template('new_project.html')

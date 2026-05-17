@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>项目管理 — 建筑空间绩效评价平台</title>
+<title>选择评价模块 — 建筑空间绩效评价平台</title>
 <script>
 (function(){
   var t = localStorage.getItem('theme') || 'light';
@@ -29,17 +29,21 @@
 [data-theme="light"] {
   --bg: #f4f7fb;
   --bg-card: #ffffff;
+  --bg-hover: rgba(0,0,0,0.04);
   --border: #e2e8f0;
   --text-primary: #0f172a;
   --text-secondary: #64748b;
+  --text-dim: #94a3b8;
   --shadow: 0 4px 24px rgba(0,0,0,0.08);
 }
 [data-theme="dark"] {
   --bg: #0f1117;
   --bg-card: #161b27;
+  --bg-hover: rgba(255,255,255,0.05);
   --border: #2a2f45;
   --text-primary: #e8eaf0;
   --text-secondary: #8b90a8;
+  --text-dim: #4b5268;
   --shadow: 0 4px 24px rgba(0,0,0,0.45);
 }
 
@@ -52,42 +56,7 @@ body {
   align-items: center;
 }
 
-/* 导航下拉 */
-.topnav-wrap { position: relative; }
-.topnav-btn {
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 7px 12px;
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: 8px; cursor: pointer; transition: all 0.15s;
-  font-size: 13px; font-weight: 500; color: var(--text-primary);
-}
-.topnav-btn:hover { border-color: var(--accent); color: var(--accent); }
-.topnav-caret { transition: transform 0.2s; flex-shrink: 0; }
-.topnav-wrap.open .topnav-caret { transform: rotate(180deg); }
-.topnav-dropdown {
-  display: none;
-  position: absolute; top: calc(100% + 6px); left: 0;
-  min-width: 200px;
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,0.14);
-  padding: 6px 0; z-index: 999;
-}
-.topnav-wrap.open .topnav-dropdown { display: block; }
-.topnav-section-label {
-  padding: 7px 14px 3px;
-  font-size: 10px; font-weight: 700; letter-spacing: 1px;
-  color: var(--text-secondary); text-transform: uppercase; opacity: 0.6;
-}
-.topnav-item {
-  display: flex; align-items: center; gap: 8px; width: 100%;
-  padding: 7px 16px;
-  font-size: 13px; color: var(--text-secondary);
-  background: transparent; border: none; cursor: pointer;
-  text-decoration: none; transition: all 0.12s;
-}
-.topnav-item:hover { background: var(--bg); color: var(--text-primary); }
-.topnav-item-current { color: var(--accent) !important; font-weight: 500; opacity: 0.75; }
-.topbar-left { display: flex; align-items: center; gap: 8px; }
+/* ── 顶栏 ── */
 .topbar {
   width: 100%;
   padding: 0 40px;
@@ -99,62 +68,89 @@ body {
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 100;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .topbar-logo {
   display: flex;
   align-items: center;
   gap: 10px;
-  cursor: pointer;
   text-decoration: none;
   color: inherit;
 }
 
 .topbar-logo-icon {
-  width: 32px;
-  height: 32px;
+  width: 32px; height: 32px;
   background: linear-gradient(135deg, var(--accent), #0284c7);
   border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex; align-items: center; justify-content: center;
 }
-
 .topbar-logo-icon svg { width: 18px; height: 18px; color: #fff; }
 
-.topbar-title {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-}
+.topbar-title { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
 
-.topbar-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+.topbar-right { display: flex; align-items: center; gap: 8px; }
 
+/* 导航下拉 */
+.topnav-wrap { position: relative; }
+
+.topnav-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 12px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; cursor: pointer; transition: all 0.15s;
+  font-size: 13px; font-weight: 500; color: var(--text-primary);
+}
+.topnav-btn:hover { border-color: var(--accent); color: var(--accent); }
+.topnav-caret { transition: transform 0.2s; flex-shrink: 0; }
+.topnav-wrap.open .topnav-caret { transform: rotate(180deg); }
+
+.topnav-dropdown {
+  display: none;
+  position: absolute; top: calc(100% + 6px); left: 0;
+  min-width: 200px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,0.14);
+  padding: 6px 0; z-index: 999;
+}
+.topnav-wrap.open .topnav-dropdown { display: block; }
+
+.topnav-section-label {
+  padding: 7px 14px 3px;
+  font-size: 10px; font-weight: 700; letter-spacing: 1px;
+  color: var(--text-dim); text-transform: uppercase;
+}
+.topnav-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 16px;
+  font-size: 13px; color: var(--text-secondary);
+  background: transparent; border: none; cursor: pointer;
+  text-decoration: none; transition: all 0.12s;
+}
+.topnav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.topnav-item-current { color: var(--accent) !important; font-weight: 500; opacity: 0.75; }
+
+/* icon-btn */
 .icon-btn {
-  width: 34px;
-  height: 34px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 34px; height: 34px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: transparent; color: var(--text-secondary);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
   transition: all 0.15s;
 }
-.icon-btn:hover { background: var(--bg); color: var(--text-primary); }
+.icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 
 /* ── 主体 ── */
 .page {
   width: 100%;
-  max-width: 960px;
-  padding: 60px 24px 80px;
+  max-width: 1040px;
+  padding: 64px 24px 80px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -162,52 +158,43 @@ body {
 
 .page-head {
   text-align: center;
-  margin-bottom: 56px;
+  margin-bottom: 60px;
 }
 
 .page-head-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--accent);
-  letter-spacing: 2px;
-  text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--accent);
+  letter-spacing: 2px; text-transform: uppercase;
   margin-bottom: 16px;
 }
 
 .page-head h1 {
-  font-size: 32px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  margin-bottom: 12px;
+  font-size: 32px; font-weight: 700;
+  letter-spacing: 1px; margin-bottom: 14px;
 }
 
 .page-head p {
-  font-size: 15px;
-  color: var(--text-secondary);
-  line-height: 1.7;
+  font-size: 15px; color: var(--text-secondary); line-height: 1.7;
 }
 
-/* ── 操作卡片网格 ── */
-.action-grid {
+/* ── 模块卡片网格 ── */
+.module-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
   width: 100%;
-  max-width: 720px;
 }
 
-.action-card {
+.module-card {
   background: var(--bg-card);
   border: 1.5px solid var(--border);
-  border-radius: 16px;
-  padding: 36px 32px;
+  border-radius: 20px;
+  padding: 40px 32px 36px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.22s;
   text-decoration: none;
   color: inherit;
   box-shadow: var(--shadow);
@@ -215,78 +202,122 @@ body {
   overflow: hidden;
 }
 
-.action-card::before {
+.module-card::before {
   content: '';
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 3px;
-  background: linear-gradient(90deg, var(--accent), rgba(var(--accent-rgb),0.3));
   opacity: 0;
   transition: opacity 0.2s;
 }
 
-.action-card:hover {
-  border-color: var(--accent);
-  transform: translateY(-3px);
-  box-shadow: 0 8px 32px rgba(var(--accent-rgb), 0.18);
+.module-card.available::before {
+  background: linear-gradient(90deg, var(--accent), rgba(var(--accent-rgb),0.3));
 }
 
-.action-card:hover::before { opacity: 1; }
+.module-card.available:hover {
+  border-color: var(--accent);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 36px rgba(var(--accent-rgb), 0.18);
+}
+.module-card.available:hover::before { opacity: 1; }
 
-.card-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 12px;
+/* 不可用模块 */
+.module-card.coming-soon {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+.module-card.coming-soon:hover {
+  transform: none;
+  border-color: var(--border);
+  box-shadow: var(--shadow);
+}
+
+/* 序号徽章 */
+.module-num {
+  position: absolute;
+  top: 22px; right: 24px;
+  font-size: 11px; font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+}
+
+/* 图标区 */
+.module-icon {
+  width: 60px; height: 60px;
+  border-radius: 16px;
   background: rgba(var(--accent-rgb), 0.1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 20px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 24px;
   transition: background 0.2s;
 }
-
-.action-card:hover .card-icon {
+.module-card.available:hover .module-icon {
   background: rgba(var(--accent-rgb), 0.18);
 }
+.module-icon svg { width: 30px; height: 30px; color: var(--accent); }
 
-.card-icon svg { width: 26px; height: 26px; color: var(--accent); }
-
-.card-title {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 8px;
+/* 文字 */
+.module-tag {
+  font-size: 11px; font-weight: 600;
+  color: var(--accent); letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.module-title {
+  font-size: 18px; font-weight: 700;
+  line-height: 1.4;
+  margin-bottom: 12px;
+}
+.module-desc {
+  font-size: 13px; color: var(--text-secondary);
+  line-height: 1.7;
+  flex: 1;
 }
 
-.card-desc {
+/* 底部状态行 */
+.module-footer {
+  margin-top: 28px;
+  display: flex; align-items: center; gap: 8px;
   font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.6;
 }
 
-.card-arrow {
-  position: absolute;
-  bottom: 28px;
-  right: 28px;
-  width: 28px;
-  height: 28px;
+.module-footer.active {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.module-footer.inactive {
+  color: var(--text-dim);
+}
+
+.module-arrow {
+  width: 30px; height: 30px;
   border-radius: 50%;
   background: rgba(var(--accent-rgb), 0.1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex; align-items: center; justify-content: center;
   transition: all 0.2s;
+  margin-left: auto;
 }
-
-.action-card:hover .card-arrow {
+.module-card.available:hover .module-arrow {
   background: var(--accent);
 }
+.module-arrow svg { width: 14px; height: 14px; color: var(--accent); transition: color 0.2s; }
+.module-card.available:hover .module-arrow svg { color: #fff; }
 
-.card-arrow svg { width: 14px; height: 14px; color: var(--accent); transition: color 0.2s; }
-.action-card:hover .card-arrow svg { color: #fff; }
+/* 角标 coming soon */
+.badge-soon {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 11px; color: var(--text-dim);
+}
 </style>
 </head>
 <body>
 
+<!-- 顶栏 -->
 <nav class="topbar">
   <div class="topbar-left">
     <!-- 导航下拉 -->
@@ -302,14 +333,14 @@ body {
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
           封面
         </a>
-        <a class="topnav-item" href="/select_module">
+        <div class="topnav-item topnav-item-current" style="cursor:default">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
           模块选择
-        </a>
-        <div class="topnav-item topnav-item-current" style="cursor:default">
+        </div>
+        <a class="topnav-item" href="/projects">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>
           项目管理
-        </div>
+        </a>
         <a class="topnav-item" href="/new_project">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           数据导入
@@ -317,6 +348,7 @@ body {
       </div>
     </div>
   </div>
+
   <a class="topbar-logo" href="/">
     <div class="topbar-logo-icon">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -326,6 +358,7 @@ body {
     </div>
     <span class="topbar-title">建筑空间绩效评价平台</span>
   </a>
+
   <div class="topbar-right">
     <button class="icon-btn" id="theme-toggle" title="切换明暗">
       <svg id="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
@@ -342,65 +375,101 @@ body {
   </div>
 </nav>
 
+<!-- 主体 -->
 <main class="page">
   <div class="page-head">
     <div class="page-head-label">
       <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><circle cx="6" cy="6" r="6"/></svg>
-      PROJECT MANAGEMENT
+      SELECT MODULE
     </div>
-    <h1>项目管理</h1>
-    <p>创建新的评价项目，或管理已有的项目记录</p>
+    <h1>选择评价模块</h1>
+    <p>请选择本次分析所需的评价模块，系统将加载对应的指标体系与计算流程</p>
   </div>
 
-  <div class="action-grid">
-    <!-- 新建项目 -->
-    <a class="action-card" href="/new_project">
-      <div class="card-icon">
+  <div class="module-grid">
+
+    <!-- 模块 1：建筑空间使用绩效评价（可用） -->
+    <a class="module-card available" href="/projects">
+      <div class="module-num">01</div>
+      <div class="module-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <circle cx="12" cy="12" r="9"/>
-          <line x1="12" y1="8" x2="12" y2="16"/>
-          <line x1="8" y1="12" x2="16" y2="12"/>
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
         </svg>
       </div>
-      <div class="card-title">新建项目</div>
-      <div class="card-desc">选择建筑类型，导入数据文件，<br>启动全量指标计算</div>
-      <div class="card-arrow">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M5 12h14M12 5l7 7-7 7"/>
-        </svg>
+      <div class="module-tag">Performance</div>
+      <div class="module-title">建筑空间使用<br>绩效评价</div>
+      <div class="module-desc">
+        综合定位轨迹、环境传感、行为观察与满意度调研数据，对建筑空间的使用绩效进行多维度量化评价。
+      </div>
+      <div class="module-footer active">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="9 12 11 14 15 10"/></svg>
+        已上线，点击进入
+        <div class="module-arrow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </div>
       </div>
     </a>
 
-    <!-- 项目管理 -->
-    <a class="action-card" href="#" onclick="alert('项目管理功能待开发'); return false;">
-      <div class="card-icon">
+    <!-- 模块 2：空间服务点布局与评价（即将上线） -->
+    <div class="module-card coming-soon">
+      <div class="module-num">02</div>
+      <div class="module-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <rect x="3" y="3" width="7" height="7" rx="1"/>
-          <rect x="14" y="3" width="7" height="7" rx="1"/>
-          <rect x="3" y="14" width="7" height="7" rx="1"/>
-          <rect x="14" y="14" width="7" height="7" rx="1"/>
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+          <path d="M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"/>
         </svg>
       </div>
-      <div class="card-title">项目管理</div>
-      <div class="card-desc">查看、编辑或删除<br>已创建的评价项目</div>
-      <div class="card-arrow">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M5 12h14M12 5l7 7-7 7"/>
+      <div class="module-tag">Layout</div>
+      <div class="module-title">空间服务点<br>布局与评价</div>
+      <div class="module-desc">
+        基于可达性、覆盖率与使用需求分析，对建筑内各类服务设施的空间布局合理性进行系统性评估。
+      </div>
+      <div class="module-footer inactive">
+        <span class="badge-soon">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          即将上线
+        </span>
+      </div>
+    </div>
+
+    <!-- 模块 3：空间句法与性能评价（即将上线） -->
+    <div class="module-card coming-soon">
+      <div class="module-num">03</div>
+      <div class="module-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="5" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
+          <circle cx="12" cy="5" r="2"/><circle cx="12" cy="19" r="2"/>
+          <line x1="7" y1="12" x2="17" y2="12"/>
+          <line x1="12" y1="7" x2="12" y2="17"/>
         </svg>
       </div>
-    </a>
+      <div class="module-tag">Syntax</div>
+      <div class="module-title">空间句法与<br>性能评价</div>
+      <div class="module-desc">
+        运用空间句法理论，通过整合度、可理解度等指标对建筑空间拓扑结构及其对使用行为的影响进行评价。
+      </div>
+      <div class="module-footer inactive">
+        <span class="badge-soon">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          即将上线
+        </span>
+      </div>
+    </div>
+
   </div>
 </main>
 
 <script>
+// ── 主题切换 ──
 (function(){
   var btn = document.getElementById('theme-toggle');
   var sun = document.getElementById('icon-sun');
   var moon = document.getElementById('icon-moon');
   function applyTheme(t) {
     document.documentElement.setAttribute('data-theme', t);
-    sun.style.display  = t === 'dark'  ? 'none'  : '';
-    moon.style.display = t === 'light' ? 'none'  : '';
+    sun.style.display  = t === 'dark'  ? 'none' : '';
+    moon.style.display = t === 'light' ? 'none' : '';
   }
   applyTheme(localStorage.getItem('theme') || 'light');
   btn.addEventListener('click', function(){
@@ -410,6 +479,7 @@ body {
   });
 })();
 
+// ── 导航下拉 ──
 function toggleTopNav() {
   document.getElementById('topnav-wrap').classList.toggle('open');
 }

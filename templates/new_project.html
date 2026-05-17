@@ -396,6 +396,7 @@ var MATCH_RULES = {
 
 // 存放已匹配的 File 对象（文件夹模式）
 var folderFiles = { img:null, loc:null, behavior:null, env:null, ques:null, region:null };
+var _folderName = '';  // 文件夹名称，用于结果页标题
 
 function matchFiles(fileList){
   var files = Array.from(fileList);
@@ -450,6 +451,7 @@ document.getElementById('input-folder').addEventListener('change',function(){
   var files=this.files;
   if(!files.length) return;
   var folderName=files[0].webkitRelativePath.split('/')[0];
+  _folderName = folderName;
   document.getElementById('fname-folder').textContent='已选择文件夹：'+folderName+'（'+files.length+' 个文件）';
   document.getElementById('drop-folder').classList.add('has-file');
   var assigned=matchFiles(files);
@@ -492,6 +494,7 @@ function startCalc(){
   var mode=document.getElementById('tab-folder').classList.contains('active')?'folder':'separate';
   var fd=new FormData();
   fd.append('building_type', selectedType);
+  fd.append('folder_name', _folderName);
 
   if(mode==='folder'){
     if(folderFiles.img)      fd.append('layout_img',     folderFiles.img);

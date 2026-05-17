@@ -227,6 +227,34 @@
 
 /* topbar 左侧导航区 */
 .topbar-left { display: flex; align-items: center; gap: 8px; }
+
+/* 顶栏项目标题 */
+.topbar-project-title {
+  display: inline-flex; align-items: center;
+  padding: 4px 10px;
+  background: var(--bg-hover); border-radius: 6px;
+  font-size: 12px; color: var(--text-secondary);
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.workflow-nav { gap: 2px; }
+.workflow-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-radius: var(--radius-sm);
+  font-size: 13px; color: var(--text-secondary);
+  text-decoration: none; background: transparent; border: none;
+  width: 100%; cursor: pointer; transition: all 0.12s;
+}
+.workflow-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.workflow-current {
+  background: var(--accent-glow) !important;
+  color: var(--accent) !important;
+  font-weight: 500;
+}
+.workflow-active-dot {
+  margin-left: auto; width: 6px; height: 6px;
+  border-radius: 50%; background: var(--accent);
+  box-shadow: 0 0 5px var(--accent);
+}
 </style>
 </head>
 <body>
@@ -240,111 +268,70 @@
         <circle cx="12" cy="12" r="3"/>
       </svg>
     </div>
-    <span class="logo-text"><strong>评价结果</strong></span>
+    <span class="logo-text"><strong>SpaceLens</strong></span>
   </div>
 
-  <nav class="sidebar-nav">
-    <!-- 定位分析 -->
-    <div class="nav-section-label">定位分析</div>
-    <button class="nav-item active" data-view="heatmap">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-      <span>到访频次</span>
-      <div class="nav-badge" id="nbadge-heatmap"></div>
-    </button>
-    <button class="nav-item" data-view="usetime">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg>
-      <span>使用时长</span>
-      <div class="nav-badge" id="nbadge-usetime"></div>
-    </button>
-    <button class="nav-item" data-view="speed">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-      <span>移动速率</span>
-      <div class="nav-badge" id="nbadge-speed"></div>
-    </button>
-    <button class="nav-item" data-view="duration">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-      <span>停留时长</span>
-      <div class="nav-badge" id="nbadge-duration"></div>
-    </button>
-    <button class="nav-item" data-view="cluster">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><circle cx="12" cy="17" r="3"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="8" x2="12" y2="17"/><line x1="16" y1="8" x2="12" y2="17"/></svg>
-      <span>空间聚类</span>
-      <div class="nav-badge" id="nbadge-cluster"></div>
-    </button>
-    <button class="nav-item" data-view="density">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="7" r="4"/><path d="M5.5 20a7 7 0 0113 0"/></svg>
-      <span>人员密度</span>
-      <div class="nav-badge" id="nbadge-density"></div>
-    </button>
-    <button class="nav-item" data-view="openness">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12l9-9 9 9M5 10v9a1 1 0 001 1h4v-5h4v5h4a1 1 0 001-1v-9"/></svg>
-      <span>开放程度</span>
-      <div class="nav-badge" id="nbadge-openness"></div>
-    </button>
-    <button class="nav-item" data-view="topology">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="12" cy="19" r="2"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="12" y1="7" x2="12" y2="17"/></svg>
-      <span>拓扑关系</span>
-      <div class="nav-badge" id="nbadge-topology"></div>
-    </button>
-    <button class="nav-item" data-view="difference">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-      <span>差异系数</span>
-      <div class="nav-badge" id="nbadge-difference"></div>
-    </button>
-    <button class="nav-item" data-view="trajectory">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 17 C6 12 8 8 12 8 C16 8 18 14 21 9"/><circle cx="3" cy="17" r="1.5" fill="currentColor"/><circle cx="21" cy="9" r="1.5" fill="currentColor"/></svg>
-      <span>轨迹长度</span>
-      <div class="nav-badge" id="nbadge-trajectory"></div>
-    </button>
+  <!-- 工作流步骤导航 -->
+  <nav class="sidebar-nav workflow-nav">
+    <div class="nav-section-label">工作流程</div>
 
-    <!-- 环境分析 -->
-    <div class="nav-section-label" style="margin-top:12px">环境分析</div>
-    <button class="nav-item" data-view="environment">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/></svg>
-      <span>环境参数</span>
-      <div class="nav-badge" id="nbadge-environment"></div>
-    </button>
+    <!-- 封面 -->
+    <a class="nav-item workflow-item" href="/">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <path d="M3 9h18M9 21V9"/>
+      </svg>
+      <span>封面</span>
+    </a>
 
-    <!-- 行为分析 -->
-    <div class="nav-section-label" style="margin-top:12px">行为分析</div>
-    <button class="nav-item" data-view="behavior_count">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-      <span>行为人次</span>
-      <div class="nav-badge" id="nbadge-behavior_count"></div>
-    </button>
-    <button class="nav-item" data-view="behavior_duration">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg>
-      <span>行为时长</span>
-      <div class="nav-badge" id="nbadge-behavior_duration"></div>
-    </button>
-    <button class="nav-item" data-view="behavior_rate">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-      <span>行为发生率</span>
-      <div class="nav-badge" id="nbadge-behavior_rate"></div>
-    </button>
-    <button class="nav-item" data-view="behavior_entropy">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 16l4-6 4 4 4-8"/></svg>
-      <span>行为复合度</span>
-      <div class="nav-badge" id="nbadge-behavior_entropy"></div>
-    </button>
-    <button class="nav-item" data-view="utilization">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-      <span>功能利用率</span>
-      <div class="nav-badge" id="nbadge-utilization"></div>
-    </button>
+    <!-- 新建项目 -->
+    <a class="nav-item workflow-item" href="/projects">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+        <line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/>
+      </svg>
+      <span>新建项目</span>
+    </a>
 
-    <!-- 满意度 -->
-    <div class="nav-section-label" style="margin-top:12px">满意度</div>
-    <button class="nav-item" data-view="satisfaction">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M8 13s1.5 3 4 3 4-3 4-3"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
-      <span>整体满意度</span>
-      <div class="nav-badge" id="nbadge-satisfaction"></div>
-    </button>
-    <button class="nav-item" data-view="satisfaction_region">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-      <span>空间满意度</span>
-      <div class="nav-badge" id="nbadge-satisfaction_region"></div>
-    </button>
+    <!-- 项目管理 -->
+    <a class="nav-item workflow-item" href="/projects">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="2" y="7" width="20" height="14" rx="2"/>
+        <path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/>
+        <line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/>
+      </svg>
+      <span>项目管理</span>
+    </a>
+
+    <div class="nav-section-label" style="margin-top:12px">当前项目</div>
+
+    <!-- 建筑类型选择 -->
+    <a class="nav-item workflow-item" href="/new_project">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <path d="M3 9h18M9 3v6M15 3v6"/>
+      </svg>
+      <span>建筑类型选择</span>
+    </a>
+
+    <!-- 数据导入 -->
+    <a class="nav-item workflow-item" href="/new_project">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      <span>数据导入</span>
+    </a>
+
+    <!-- 评价结果（当前步骤，高亮） -->
+    <div class="nav-item workflow-item workflow-current" style="cursor:default">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+      <span>评价结果</span>
+      <div class="workflow-active-dot"></div>
+    </div>
   </nav>
 
   <div class="sidebar-footer">
@@ -391,11 +378,15 @@
         </div>
       </div>
       <!-- 项目管理按钮 -->
-      <a href="/projects" class="topnav-mgr-btn" id="topnav-mgr-btn"
+      <a href="/new_project" class="topnav-mgr-btn" id="topnav-mgr-btn"
          onmouseover="this.classList.add('hover')" onmouseout="this.classList.remove('hover')">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
-        项目管理
+        返回导入数据
       </a>
+      <!-- 项目标题 -->
+      <div class="topbar-project-title" id="topbar-project-title" style="display:none">
+        <span id="topbar-project-text"></span>
+      </div>
     </div>
     <div class="topbar-right">
       <div class="status-dot online" id="status-dot"></div>
@@ -726,6 +717,26 @@ function startPolling(sid) {
 
         // 缓存最新会话数据（switchEnvParam 需要）
         _sessionData = data;
+
+        // ── 更新顶栏项目标题（folder_name – building_type） ──
+        (function() {
+          var titleEl = document.getElementById('topbar-project-title');
+          var textEl  = document.getElementById('topbar-project-text');
+          if (!titleEl || !textEl) return;
+          var TYPE_LABELS = {
+            office: '办公建筑', education: '教育建筑', medical: '医疗建筑',
+            commercial: '商业建筑', cultural: '文化建筑', residential: '居住建筑'
+          };
+          var folder  = data.folder_name || '';
+          var rawType = data.building_type || '';
+          var typeLabel = TYPE_LABELS[rawType] || rawType;
+          var title = folder && typeLabel ? folder + '  ·  ' + typeLabel
+                    : folder || typeLabel;
+          if (title) {
+            textEl.textContent = title;
+            titleEl.style.display = 'inline-flex';
+          }
+        })();
         var results = data.results || {};
         var computed = data.computed || [];
         var skipped  = data.skipped  || [];

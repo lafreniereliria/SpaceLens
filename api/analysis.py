@@ -883,6 +883,7 @@ def run_all():
         region_b, region_n = _read('region_data')
 
         building_type = request.form.get('building_type', 'unknown')
+        folder_name   = request.form.get('folder_name',   '')
         theme_name    = request.form.get('theme', 'dark')
         accent_param  = request.form.get('accent', '')
 
@@ -899,6 +900,7 @@ def run_all():
                 'computed': [],
                 'skipped':  [],
                 'type':     building_type,
+                'folder':   folder_name,
                 'ts':       _time.time(),
                 'status':   'running',
             }
@@ -931,6 +933,7 @@ def get_session(sid):
     return jsonify({
         'session_id':    sid,
         'building_type': sess['type'],
+        'folder_name':   sess.get('folder', ''),
         'computed':      sess.get('computed', []),
         'skipped':       sess.get('skipped',  []),
         'results':       sess.get('results',  {}),

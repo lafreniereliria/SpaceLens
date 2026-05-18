@@ -37,6 +37,11 @@ def new_project():
     return render_template('new_project.html')
 
 
+@app.route('/history')
+def history():
+    return render_template('history.html')
+
+
 if __name__ == '__main__':
     print("✨ 空间分析系统 Demo 启动中...")
     print("   访问 http://127.0.0.1:8080")

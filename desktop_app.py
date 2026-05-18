@@ -21,7 +21,7 @@ else:
 if _BASE_DIR not in sys.path:
     sys.path.insert(0, _BASE_DIR)
 
-from PyQt6.QtWidgets import QApplication, QMainWindow
+from PyQt6.QtWidgets import QApplication, QMainWindow, QFileDialog
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage
 from PyQt6.QtCore import QUrl, Qt, QTimer
@@ -576,7 +576,7 @@ function setReady(port) {
 
 function startEvaluation() {
   if (_flaskPort) {
-    window.location.href = 'http://127.0.0.1:' + _flaskPort + '/projects';
+    window.location.href = 'http://127.0.0.1:' + _flaskPort + '/select_module';
   }
 }
 
@@ -662,11 +662,27 @@ def _run_flask_impl(port: int, state: dict):
 
     _set("正在注册 API 路由...", 7)
     try:
-        from api.analysis import analysis_bp
+        from api.analysis import analysis_bp, register_save_dialog_hook
     except Exception as e:
         state['error'] = str(e)
         state['stage'] = -1
         return
+
+    # ── 注册 Qt 原生文件保存对话框钩子 ──
+    # Flask 线程不能直接调用 Qt，用 queue 桥接到主线程
+    import queue as _queue
+    _dialog_req  = _queue.Queue()   # Flask 线程发请求
+    _dialog_resp = _queue.Queue()   # Qt 主线程回应结果
+
+    def _qt_save_dialog(title, default_filename):
+        """Flask 线程调用：把请求放入队列，阻塞等待 Qt 主线程处理"""
+        _dialog_req.put((title, default_filename))
+        return _dialog_resp.get()   # 阻塞直到 Qt 线程返回路径（或 None）
+
+    register_save_dialog_hook(_qt_save_dialog)
+    # 把两个队列存入 state，供 MainWindow 轮询
+    state['_dialog_req']  = _dialog_req
+    state['_dialog_resp'] = _dialog_resp
 
     _set("正在启动服务...", 8)
 
@@ -697,6 +713,10 @@ def _run_flask_impl(port: int, state: dict):
     @flask_app.route('/new_project')
     def _new_project():
         return _flask.render_template('new_project.html')
+
+    @flask_app.route('/history')
+    def _history():
+        return _flask.render_template('history.html')
 
     @flask_app.route('/api/ready')
     def _api_ready():
@@ -750,10 +770,15 @@ class MainWindow(QMainWindow):
         self._last_stage = -1
         self._smooth_pct = 5.0    # 平滑进度值
 
-        # 轮询定时器
+        # 轮询定时器（加载进度）
         self._poll_timer = QTimer(self)
         self._poll_timer.timeout.connect(self._poll)
         self._poll_timer.start(80)
+
+        # 文件对话框请求轮询定时器
+        self._dialog_timer = QTimer(self)
+        self._dialog_timer.timeout.connect(self._check_dialog_request)
+        self._dialog_timer.start(100)
 
     def _js(self, code: str):
         """安全地向 WebView 推送 JS"""
@@ -810,6 +835,28 @@ class MainWindow(QMainWindow):
         if pct >= 100:
             self._finish_timer.stop()
             self._js(f"setReady({self.port})")
+
+    def _check_dialog_request(self):
+        """Qt 主线程：检查是否有 Flask 线程发来的文件保存对话框请求"""
+        import queue as _queue
+        req_q  = self.state.get('_dialog_req')
+        resp_q = self.state.get('_dialog_resp')
+        if req_q is None or resp_q is None:
+            return
+        try:
+            title, default_filename = req_q.get_nowait()
+        except _queue.Empty:
+            return
+
+        # 在 Qt 主线程弹出原生保存对话框
+        save_path, _ = QFileDialog.getSaveFileName(
+            self,
+            title,
+            default_filename,
+            'ZIP 压缩包 (*.zip);;所有文件 (*)',
+        )
+        # 把结果（字符串或空串）传回 Flask 线程
+        resp_q.put(save_path if save_path else None)
 
     def closeEvent(self, event):
         QApplication.quit()

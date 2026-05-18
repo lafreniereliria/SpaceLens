@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>历史项目 — 建筑空间绩效评价平台</title>
+<script>
+(function(){
+  var t = localStorage.getItem('theme') || 'light';
+  document.documentElement.setAttribute('data-theme', t);
+  var a = localStorage.getItem('accentColor') || '#0ea5e9';
+  var m = a.match(/^#([0-9a-f]{6})$/i);
+  if(m){
+    var r=parseInt(m[1].slice(0,2),16), g=parseInt(m[1].slice(2,4),16), b=parseInt(m[1].slice(4,6),16);
+    document.documentElement.style.setProperty('--accent', a);
+    document.documentElement.style.setProperty('--accent-rgb', r+','+g+','+b);
+  }
+})();
+</script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --accent: #0ea5e9; --accent-rgb: 14,165,233;
+  font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', sans-serif;
+}
+[data-theme="light"] {
+  --bg:#f4f7fb; --bg-card:#ffffff; --bg-hover:#f0f9ff; --bg-deep:#eef0f8;
+  --border:#e2e8f0; --text-primary:#0f172a; --text-secondary:#64748b; --text-dim:#94a3b8;
+  --shadow:0 2px 16px rgba(0,0,0,0.07); --danger:#ef4444; --success:#22c55e;
+  --tag-bg:#f1f5f9;
+}
+[data-theme="dark"] {
+  --bg:#0f1117; --bg-card:#161b27; --bg-hover:#1e2336; --bg-deep:#0a0d14;
+  --border:#2a2f45; --text-primary:#e8eaf0; --text-secondary:#8b90a8; --text-dim:#4a4f6a;
+  --shadow:0 2px 16px rgba(0,0,0,0.35); --danger:#f87171; --success:#4ade80;
+  --tag-bg:#1e2336;
+}
+
+body { min-height:100vh; background:var(--bg); color:var(--text-primary); display:flex; flex-direction:column; align-items:center; }
+
+/* ── topbar ── */
+.topbar { width:100%; padding:0 40px; height:60px; display:flex; align-items:center; justify-content:space-between; background:var(--bg-card); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:10; }
+.topbar-left { display:flex; align-items:center; gap:8px; }
+.topnav-wrap { position:relative; }
+.topnav-btn { display:inline-flex; align-items:center; gap:7px; padding:7px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; cursor:pointer; transition:all 0.15s; font-size:13px; font-weight:500; color:var(--text-primary); }
+.topnav-btn:hover { border-color:var(--accent); color:var(--accent); }
+.topnav-caret { transition:transform 0.2s; flex-shrink:0; }
+.topnav-wrap.open .topnav-caret { transform:rotate(180deg); }
+.topnav-dropdown { display:none; position:absolute; top:calc(100% + 6px); left:0; min-width:200px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; box-shadow:0 8px 28px rgba(0,0,0,0.14); padding:6px 0; z-index:999; }
+.topnav-wrap.open .topnav-dropdown { display:block; }
+.topnav-section-label { padding:7px 14px 3px; font-size:10px; font-weight:700; letter-spacing:1px; color:var(--text-secondary); text-transform:uppercase; opacity:0.6; }
+.topnav-item { display:flex; align-items:center; gap:8px; width:100%; padding:7px 16px; font-size:13px; color:var(--text-secondary); background:transparent; border:none; cursor:pointer; text-decoration:none; transition:all 0.12s; }
+.topnav-item:hover { background:var(--bg); color:var(--text-primary); }
+.topnav-item-current { color:var(--accent) !important; font-weight:500; opacity:0.75; }
+.back-btn { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--text-secondary); text-decoration:none; padding:6px 10px; border-radius:7px; border:1px solid var(--border); transition:all 0.15s; background:transparent; cursor:pointer; }
+.back-btn:hover { color:var(--accent); border-color:var(--accent); background:var(--bg-hover); }
+.topbar-title { font-size:15px; font-weight:600; }
+.topbar-logo-wrap { display:flex; align-items:center; gap:8px; }
+.topbar-logo-icon { width:28px; height:28px; background:linear-gradient(135deg,var(--accent),#0284c7); border-radius:7px; display:flex; align-items:center; justify-content:center; }
+.topbar-logo-icon svg { width:15px; height:15px; color:#fff; }
+.topbar-brand { font-size:14px; font-weight:600; }
+.icon-btn { width:34px; height:34px; border:1px solid var(--border); border-radius:8px; background:transparent; color:var(--text-secondary); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.15s; }
+.icon-btn:hover { background:var(--bg); color:var(--text-primary); }
+
+/* ── page ── */
+.page { width:100%; max-width:1100px; padding:40px 24px 80px; }
+
+.page-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:32px; }
+.page-head-left h1 { font-size:24px; font-weight:700; margin-bottom:4px; }
+.page-head-left p { font-size:13px; color:var(--text-secondary); }
+.btn-new-project { display:inline-flex; align-items:center; gap:8px; padding:10px 20px; background:linear-gradient(135deg,var(--accent),#0284c7); color:#fff; border:none; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer; text-decoration:none; transition:all 0.18s; box-shadow:0 3px 12px rgba(var(--accent-rgb),0.35); }
+.btn-new-project:hover { transform:translateY(-1px); box-shadow:0 5px 18px rgba(var(--accent-rgb),0.45); }
+
+/* ── empty state ── */
+.empty-state { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:100px 24px; gap:16px; }
+.empty-icon { width:72px; height:72px; border-radius:20px; background:rgba(var(--accent-rgb),0.08); display:flex; align-items:center; justify-content:center; }
+.empty-icon svg { width:36px; height:36px; color:var(--accent); }
+.empty-title { font-size:18px; font-weight:600; color:var(--text-secondary); }
+.empty-desc { font-size:13px; color:var(--text-dim); text-align:center; }
+
+/* ── loading state ── */
+.loading-state { display:flex; align-items:center; justify-content:center; padding:80px; gap:12px; color:var(--text-secondary); font-size:14px; }
+.loading-spinner { width:20px; height:20px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.7s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* ── project grid ── */
+.project-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:20px; }
+
+/* ── project card ── */
+.project-card { background:var(--bg-card); border:1px solid var(--border); border-radius:16px; overflow:hidden; box-shadow:var(--shadow); transition:all 0.2s; display:flex; flex-direction:column; }
+.project-card:hover { border-color:rgba(var(--accent-rgb),0.4); box-shadow:0 6px 28px rgba(var(--accent-rgb),0.14); transform:translateY(-2px); }
+
+/* thumbnail */
+.card-thumb { position:relative; height:180px; background:var(--bg-deep); overflow:hidden; }
+.card-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+.card-thumb-placeholder { width:100%; height:100%; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:10px; color:var(--text-dim); }
+.card-thumb-placeholder svg { width:40px; height:40px; }
+.card-thumb-placeholder span { font-size:12px; }
+.card-type-badge { position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.55); backdrop-filter:blur(6px); color:#fff; font-size:11px; font-weight:600; padding:4px 10px; border-radius:20px; }
+
+/* card body */
+.card-body { padding:16px 18px 14px; flex:1; display:flex; flex-direction:column; gap:8px; }
+.card-name { font-size:15px; font-weight:700; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.card-meta { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.card-meta-item { display:inline-flex; align-items:center; gap:4px; font-size:11px; color:var(--text-secondary); background:var(--tag-bg); padding:3px 8px; border-radius:6px; }
+.card-meta-item svg { width:10px; height:10px; flex-shrink:0; }
+.card-stats { display:flex; gap:12px; font-size:12px; color:var(--text-secondary); }
+.card-stat-ok { color:var(--success); font-weight:600; }
+.card-stat-skip { color:var(--text-dim); }
+
+/* card actions */
+.card-actions { display:flex; gap:8px; padding:12px 18px 16px; border-top:1px solid var(--border); background:var(--bg); }
+.card-btn { flex:1; padding:8px 0; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; border:1px solid var(--border); background:transparent; color:var(--text-secondary); display:flex; align-items:center; justify-content:center; gap:5px; }
+.card-btn:hover { background:var(--bg-hover); color:var(--text-primary); border-color:var(--accent); }
+.card-btn.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+.card-btn.primary:hover { opacity:0.88; }
+.card-btn.danger { color:var(--danger); }
+.card-btn.danger:hover { background:rgba(239,68,68,0.08); border-color:var(--danger); }
+
+/* ── expired banner ── */
+.expired-banner { background:rgba(var(--accent-rgb),0.07); border:1px solid rgba(var(--accent-rgb),0.2); border-radius:8px; padding:8px 12px; font-size:12px; color:var(--text-secondary); display:flex; align-items:center; gap:6px; }
+
+/* ── confirm dialog overlay ── */
+.confirm-overlay { display:none; position:fixed; inset:0; z-index:2000; background:rgba(15,23,42,0.5); backdrop-filter:blur(4px); align-items:center; justify-content:center; }
+.confirm-overlay.active { display:flex; }
+.confirm-box { background:var(--bg-card); border-radius:16px; padding:32px; width:380px; max-width:90vw; box-shadow:0 20px 60px rgba(0,0,0,0.2); }
+.confirm-box h3 { font-size:16px; font-weight:700; margin-bottom:10px; }
+.confirm-box p { font-size:13px; color:var(--text-secondary); line-height:1.6; margin-bottom:24px; }
+.confirm-btns { display:flex; gap:10px; justify-content:flex-end; }
+.confirm-btn { padding:9px 20px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; transition:all 0.15s; }
+.confirm-btn.cancel { background:transparent; border:1.5px solid var(--border); color:var(--text-secondary); }
+.confirm-btn.cancel:hover { border-color:var(--text-secondary); color:var(--text-primary); }
+.confirm-btn.danger { background:var(--danger); border:none; color:#fff; }
+.confirm-btn.danger:hover { opacity:0.87; }
+.confirm-btn.primary { background:var(--accent); border:none; color:#fff; }
+.confirm-btn.primary:hover { opacity:0.87; }
+
+/* ── specify-folder dialog ── */
+.folder-dialog-box { background:var(--bg-card); border-radius:16px; padding:32px; width:480px; max-width:92vw; box-shadow:0 20px 60px rgba(0,0,0,0.2); }
+.folder-dialog-box h3 { font-size:16px; font-weight:700; margin-bottom:8px; }
+.folder-dialog-box .fd-desc { font-size:13px; color:var(--text-secondary); line-height:1.6; margin-bottom:20px; }
+.folder-dialog-input-row { display:flex; gap:8px; margin-bottom:20px; }
+.folder-dialog-input { flex:1; padding:10px 14px; border:1.5px solid var(--border); border-radius:9px; background:var(--bg); color:var(--text-primary); font-size:13px; outline:none; transition:border-color 0.15s; }
+.folder-dialog-input:focus { border-color:var(--accent); }
+.folder-dialog-hint { font-size:11px; color:var(--text-dim); margin-bottom:20px; line-height:1.5; }
+.folder-dialog-btns { display:flex; gap:10px; justify-content:flex-end; }
+
+/* ── filter bar ── */
+.filter-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:24px; padding:14px 18px; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow); }
+.filter-label { font-size:12px; font-weight:600; color:var(--text-secondary); white-space:nowrap; }
+.filter-sep { width:1px; height:18px; background:var(--border); flex-shrink:0; margin:0 4px; }
+.filter-search { flex:1; min-width:160px; max-width:280px; display:flex; align-items:center; gap:6px; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:6px 10px; transition:border-color 0.15s; }
+.filter-search:focus-within { border-color:var(--accent); }
+.filter-search svg { flex-shrink:0; color:var(--text-dim); }
+.filter-search input { flex:1; border:none; background:transparent; outline:none; font-size:13px; color:var(--text-primary); }
+.filter-search input::placeholder { color:var(--text-dim); }
+.filter-type-group { display:flex; gap:6px; flex-wrap:wrap; }
+.type-pill { padding:5px 12px; border-radius:20px; border:1px solid var(--border); background:transparent; font-size:12px; font-weight:500; color:var(--text-secondary); cursor:pointer; transition:all 0.15s; white-space:nowrap; }
+.type-pill:hover { border-color:var(--accent); color:var(--accent); }
+.type-pill.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+.filter-date-group { display:flex; align-items:center; gap:6px; }
+.filter-date-input { padding:5px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text-primary); font-size:12px; outline:none; transition:border-color 0.15s; width:130px; }
+.filter-date-input:focus { border-color:var(--accent); }
+.filter-date-sep { font-size:12px; color:var(--text-dim); }
+.filter-clear { display:none; padding:5px 12px; border-radius:8px; border:1px solid var(--border); background:transparent; font-size:12px; color:var(--text-secondary); cursor:pointer; transition:all 0.15s; white-space:nowrap; }
+.filter-clear:hover { border-color:var(--danger); color:var(--danger); }
+.filter-clear.visible { display:block; }
+.no-result { display:none; flex-direction:column; align-items:center; padding:60px 24px; gap:12px; }
+.no-result svg { width:40px; height:40px; color:var(--text-dim); }
+.no-result-text { font-size:15px; color:var(--text-secondary); font-weight:500; }
+.no-result-sub { font-size:13px; color:var(--text-dim); }
+
+/* ── toast ── */
+.toast { position:fixed; bottom:28px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:12px 20px; font-size:13px; font-weight:500; color:var(--text-primary); box-shadow:0 8px 28px rgba(0,0,0,0.15); opacity:0; transition:all 0.3s; z-index:3000; white-space:nowrap; display:flex; align-items:center; gap:8px; pointer-events:none; }
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+.toast.success { border-left:3px solid var(--success); }
+.toast.error   { border-left:3px solid var(--danger); }
+</style>
+</head>
+<body>
+
+<nav class="topbar">
+  <div class="topbar-left">
+    <div class="topnav-wrap" id="topnav-wrap">
+      <button class="topnav-btn" onclick="toggleTopNav()" title="页面导航">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        导航
+        <svg class="topnav-caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="topnav-dropdown" id="topnav-dropdown">
+        <div class="topnav-section-label">工作流程</div>
+        <a class="topnav-item" href="/">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>封面
+        </a>
+        <a class="topnav-item" href="/select_module">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>模块选择
+        </a>
+        <a class="topnav-item" href="/projects">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>项目管理
+        </a>
+        <div class="topnav-item topnav-item-current" style="cursor:default">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>历史项目
+        </div>
+        <a class="topnav-item" href="/new_project">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>新建项目
+        </a>
+      </div>
+    </div>
+    <a class="back-btn" href="/projects">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>返回
+    </a>
+    <div class="topbar-title">历史项目</div>
+  </div>
+  <div class="topbar-logo-wrap">
+    <div class="topbar-logo-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <polygon points="12,2 22,8.5 22,15.5 12,22 2,15.5 2,8.5"/><circle cx="12" cy="12" r="3"/>
+      </svg>
+    </div>
+    <span class="topbar-brand">建筑空间绩效评价平台</span>
+  </div>
+  <button class="icon-btn" id="theme-toggle" title="切换明暗">
+    <svg id="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
+      <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+      <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+    </svg>
+    <svg id="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16" style="display:none">
+      <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+    </svg>
+  </button>
+</nav>
+
+<main class="page">
+
+  <div class="page-head">
+    <div class="page-head-left">
+      <h1>历史项目</h1>
+      <p id="page-subtitle">共 0 个项目</p>
+    </div>
+    <a class="btn-new-project" href="/new_project">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      新建项目
+    </a>
+  </div>
+
+  <!-- 筛选栏（加载完成后显示） -->
+  <div class="filter-bar" id="filter-bar" style="display:none">
+    <!-- 搜索框 -->
+    <div class="filter-search">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" id="filter-keyword" placeholder="搜索项目名称…" oninput="applyFilters()" autocomplete="off" />
+    </div>
+    <div class="filter-sep"></div>
+    <!-- 建筑类型 -->
+    <span class="filter-label">类型：</span>
+    <div class="filter-type-group" id="filter-type-group">
+      <button class="type-pill active" data-type="" onclick="selectTypePill(this)">全部</button>
+      <button class="type-pill" data-type="office" onclick="selectTypePill(this)">办公</button>
+      <button class="type-pill" data-type="education" onclick="selectTypePill(this)">教育</button>
+      <button class="type-pill" data-type="medical" onclick="selectTypePill(this)">医疗</button>
+      <button class="type-pill" data-type="commercial" onclick="selectTypePill(this)">商业</button>
+      <button class="type-pill" data-type="cultural" onclick="selectTypePill(this)">文化</button>
+      <button class="type-pill" data-type="residential" onclick="selectTypePill(this)">居住</button>
+    </div>
+    <div class="filter-sep"></div>
+    <!-- 创建时间段 -->
+    <span class="filter-label">时间：</span>
+    <div class="filter-date-group">
+      <input type="date" id="filter-date-from" class="filter-date-input" onchange="applyFilters()" title="开始日期" />
+      <span class="filter-date-sep">—</span>
+      <input type="date" id="filter-date-to" class="filter-date-input" onchange="applyFilters()" title="结束日期" />
+    </div>
+    <!-- 清除 -->
+    <button class="filter-clear" id="filter-clear-btn" onclick="clearFilters()">✕ 清除筛选</button>
+  </div>
+
+  <!-- 加载中 -->
+  <div class="loading-state" id="loading-state">
+    <div class="loading-spinner"></div>
+    加载历史项目…
+  </div>
+
+  <!-- 空状态 -->
+  <div class="empty-state" id="empty-state" style="display:none">
+    <div class="empty-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+    </div>
+    <div class="empty-title">暂无历史项目</div>
+    <div class="empty-desc">新建项目后，计算完成的结果将自动记录在此</div>
+    <a class="btn-new-project" href="/new_project" style="margin-top:8px">新建第一个项目</a>
+  </div>
+
+  <!-- 无结果提示 -->
+  <div class="no-result" id="no-result">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <div class="no-result-text">未找到匹配的项目</div>
+    <div class="no-result-sub">请尝试修改筛选条件或搜索关键词</div>
+  </div>
+
+  <!-- 项目卡片网格 -->
+  <div class="project-grid" id="project-grid" style="display:none"></div>
+
+</main>
+
+<!-- 删除确认弹窗 -->
+<div class="confirm-overlay" id="confirm-overlay">
+  <div class="confirm-box">
+    <h3>删除项目</h3>
+    <p id="confirm-text">确定要删除该项目记录吗？此操作不可撤销。</p>
+    <div class="confirm-btns">
+      <button class="confirm-btn cancel" onclick="closeConfirm()">取消</button>
+      <button class="confirm-btn danger" id="confirm-ok-btn" onclick="doDelete()">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 指定结果文件夹弹窗 -->
+<div class="confirm-overlay" id="folder-dialog-overlay">
+  <div class="folder-dialog-box">
+    <h3>指定结果文件夹</h3>
+    <p class="fd-desc">该项目的计算结果文件已找不到。请输入或粘贴结果文件夹的完整路径，系统将从中恢复数据。</p>
+    <div class="folder-dialog-input-row">
+      <input type="text" id="folder-dialog-input" class="folder-dialog-input"
+             placeholder="例：/Users/yourname/.spacelens/results/xxx" />
+    </div>
+    <p class="folder-dialog-hint">
+      结果文件夹通常位于 <code>~/.spacelens/results/&lt;session_id&gt;/</code>，包含 <code>meta.json</code>、<code>images/</code>、<code>summary.json</code> 等文件。<br>
+      也可以手动备份后重新指定其他路径。
+    </p>
+    <div class="folder-dialog-btns">
+      <button class="confirm-btn cancel" onclick="closeFolderDialog()">取消</button>
+      <button class="confirm-btn primary" onclick="loadFromSpecifiedFolder()">加载</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── 主题 ──
+(function(){
+  var btn=document.getElementById('theme-toggle');
+  var sun=document.getElementById('icon-sun');
+  var moon=document.getElementById('icon-moon');
+  function applyTheme(t){
+    document.documentElement.setAttribute('data-theme',t);
+    sun.style.display=t==='dark'?'none':'';
+    moon.style.display=t==='light'?'none':'';
+  }
+  applyTheme(localStorage.getItem('theme')||'light');
+  btn.addEventListener('click',function(){
+    var next=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';
+    localStorage.setItem('theme',next); applyTheme(next);
+  });
+})();
+
+function toggleTopNav() { document.getElementById('topnav-wrap').classList.toggle('open'); }
+document.addEventListener('click', function(e) {
+  var wrap = document.getElementById('topnav-wrap');
+  if (wrap && !wrap.contains(e.target)) wrap.classList.remove('open');
+});
+
+// ── 建筑类型中文名 ──
+var TYPE_NAMES = {
+  office:'办公建筑', education:'教育建筑', medical:'医疗建筑',
+  commercial:'商业建筑', cultural:'文化建筑', residential:'居住建筑',
+  unknown:'未知类型', '':'未知类型',
+};
+
+// ── 时间格式化 ──
+function formatDate(ts) {
+  if(!ts) return '';
+  var d = new Date(ts * 1000);
+  var pad = function(n){ return String(n).padStart(2,'0'); };
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())
+       +' '+pad(d.getHours())+':'+pad(d.getMinutes());
+}
+
+// ── Toast ──
+var _toastTimer;
+function showToast(msg, type) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast ' + (type||'');
+  clearTimeout(_toastTimer);
+  // 用两帧确保 transition 生效
+  requestAnimationFrame(function(){
+    requestAnimationFrame(function(){
+      el.classList.add('show');
+    });
+  });
+  _toastTimer = setTimeout(function(){ el.classList.remove('show'); }, 3000);
+}
+
+// ── 渲染卡片 ──
+function renderCard(p) {
+  var thumb = p.floorplan_b64
+    ? '<img src="'+p.floorplan_b64+'" alt="平面图缩略图" loading="lazy">'
+    : '<div class="card-thumb-placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span>暂无平面图</span></div>';
+
+  var typeName = TYPE_NAMES[p.building_type] || p.building_type || '未知类型';
+  var computed = Array.isArray(p.computed) ? p.computed : [];
+  var skipped  = Array.isArray(p.skipped)  ? p.skipped  : [];
+
+  var folderTag = p.input_folder
+    ? '<span class="card-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 2h9a2 2 0 012 2z"/></svg>'+_escHtml(p.input_folder)+'</span>'
+    : '';
+
+  var card = document.createElement('div');
+  card.className = 'project-card';
+  card.dataset.id = p.id;
+  card.innerHTML = [
+    '<div class="card-thumb">',
+      thumb,
+      '<div class="card-type-badge">'+_escHtml(typeName)+'</div>',
+    '</div>',
+    '<div class="card-body">',
+      '<div class="card-name" title="'+_escHtml(p.name)+'">'+_escHtml(p.name)+'</div>',
+      '<div class="card-meta">',
+        folderTag,
+        '<span class="card-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'+formatDate(p.created_at)+'</span>',
+      '</div>',
+      '<div class="card-stats">',
+        '<span class="card-stat-ok">✓ '+computed.length+' 项已计算</span>',
+        skipped.length ? '<span class="card-stat-skip">'+skipped.length+' 项跳过</span>' : '',
+      '</div>',
+    '</div>',
+    '<div class="card-actions">',
+      '<button class="card-btn primary" onclick="viewProject('+p.id+',\''+_escAttr(p.session_id)+'\')">',
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>查看',
+      '</button>',
+      '<button class="card-btn" onclick="exportProject('+p.id+')">',
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>另存为',
+      '</button>',
+      '<button class="card-btn danger" onclick="confirmDelete('+p.id+',\''+_escAttr(p.name)+'\')">',
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>删除',
+      '</button>',
+    '</div>',
+  ].join('');
+
+  return card;
+}
+
+function _escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function _escAttr(s) {
+  return String(s||'').replace(/'/g,'&#39;');
+}
+
+// ── 所有项目原始数据（过滤用） ──
+var _allProjects = [];
+
+// ── 加载项目列表 ──
+function loadProjects() {
+  document.getElementById('loading-state').style.display='flex';
+  document.getElementById('empty-state').style.display='none';
+  document.getElementById('project-grid').style.display='none';
+  document.getElementById('filter-bar').style.display='none';
+  document.getElementById('no-result').style.display='none';
+
+  fetch('/api/projects')
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      document.getElementById('loading-state').style.display='none';
+      _allProjects = data.projects || [];
+      if(_allProjects.length === 0) {
+        document.getElementById('empty-state').style.display='flex';
+        document.getElementById('page-subtitle').textContent = '共 0 个项目';
+        return;
+      }
+      document.getElementById('filter-bar').style.display='flex';
+      applyFilters();
+    })
+    .catch(function(e) {
+      document.getElementById('loading-state').style.display='none';
+      showToast('加载失败：'+e.message, 'error');
+    });
+}
+
+// ── 筛选类型按钮 ──
+function selectTypePill(btn) {
+  document.querySelectorAll('.type-pill').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  applyFilters();
+}
+
+// ── 清除所有筛选 ──
+function clearFilters() {
+  document.getElementById('filter-keyword').value = '';
+  document.getElementById('filter-date-from').value = '';
+  document.getElementById('filter-date-to').value = '';
+  // 重置类型为「全部」
+  document.querySelectorAll('.type-pill').forEach(function(b){ b.classList.remove('active'); });
+  document.querySelector('.type-pill[data-type=""]').classList.add('active');
+  applyFilters();
+}
+
+// ── 应用筛选并重新渲染 ──
+function applyFilters() {
+  var keyword   = (document.getElementById('filter-keyword').value || '').trim().toLowerCase();
+  var typeVal   = (document.querySelector('.type-pill.active') || {}).dataset.type || '';
+  var dateFrom  = document.getElementById('filter-date-from').value;   // 'YYYY-MM-DD' or ''
+  var dateTo    = document.getElementById('filter-date-to').value;
+
+  var tsFrom = dateFrom ? new Date(dateFrom + 'T00:00:00').getTime() / 1000 : null;
+  var tsTo   = dateTo   ? new Date(dateTo   + 'T23:59:59').getTime() / 1000 : null;
+
+  var hasFilter = keyword || typeVal || dateFrom || dateTo;
+  var clearBtn = document.getElementById('filter-clear-btn');
+  if(hasFilter) clearBtn.classList.add('visible'); else clearBtn.classList.remove('visible');
+
+  var filtered = _allProjects.filter(function(p) {
+    // 关键词检索：匹配项目名
+    if(keyword && p.name.toLowerCase().indexOf(keyword) === -1) return false;
+    // 建筑类型筛选
+    if(typeVal && p.building_type !== typeVal) return false;
+    // 时间段筛选
+    if(tsFrom && p.created_at < tsFrom) return false;
+    if(tsTo   && p.created_at > tsTo)   return false;
+    return true;
+  });
+
+  // 更新副标题
+  var total = _allProjects.length;
+  var shown = filtered.length;
+  document.getElementById('page-subtitle').textContent =
+    hasFilter ? ('共 '+total+' 个项目，筛选结果 '+shown+' 个') : ('共 '+total+' 个项目');
+
+  var grid = document.getElementById('project-grid');
+  var noResult = document.getElementById('no-result');
+
+  if(shown === 0) {
+    grid.style.display='none';
+    noResult.style.display='flex';
+    return;
+  }
+
+  noResult.style.display='none';
+  grid.innerHTML = '';
+  filtered.forEach(function(p) { grid.appendChild(renderCard(p)); });
+  grid.style.display='grid';
+}
+
+// ── 查看项目 ──
+var _currentViewPid = null;  // 当前正在查看的项目 id（用于手动指定文件夹）
+
+function viewProject(pid, sessionId) {
+  _currentViewPid = pid;
+  fetch('/api/projects/'+pid+'/view')
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if(data.error){ showToast(data.error, 'error'); return; }
+      if(data.status === 'done') {
+        // session 活跃或从磁盘恢复成功，直接跳转
+        window.location.href='/results?sid='+data.session_id;
+        return;
+      }
+      // expired：先提示，再给选项
+      var resultFolder = data.result_folder || '';
+      _showExpiredOptions(pid, resultFolder);
+    })
+    .catch(function(e){ showToast('操作失败：'+e.message, 'error'); });
+}
+
+function _showExpiredOptions(pid, resultFolder) {
+  _currentViewPid = pid;
+  if(resultFolder) {
+    // 有记录的结果路径，但加载失败（文件被删/移动），让用户选择
+    if(confirm(
+      '结果文件已从默认路径中找不到。\n\n' +
+      '上次保存路径：' + resultFolder + '\n\n' +
+      '点击「确定」手动指定结果文件夹；\n点击「取消」重新计算。'
+    )) {
+      openFolderDialog(resultFolder);
+    } else {
+      window.location.href='/new_project';
+    }
+  } else {
+    // 从未保存过结果文件
+    if(confirm('该项目的计算结果已过期（程序重启后内存清除）。\n\n点击「确定」手动指定已备份的结果文件夹；\n点击「取消」重新计算。')) {
+      openFolderDialog('');
+    } else {
+      window.location.href='/new_project';
+    }
+  }
+}
+
+function openFolderDialog(defaultPath) {
+  document.getElementById('folder-dialog-input').value = defaultPath || '';
+  document.getElementById('folder-dialog-overlay').classList.add('active');
+  setTimeout(function(){ document.getElementById('folder-dialog-input').focus(); }, 50);
+}
+
+function closeFolderDialog() {
+  document.getElementById('folder-dialog-overlay').classList.remove('active');
+}
+
+function loadFromSpecifiedFolder() {
+  var folderPath = document.getElementById('folder-dialog-input').value.trim();
+  if(!folderPath){ showToast('请输入文件夹路径', 'error'); return; }
+  if(!_currentViewPid){ closeFolderDialog(); return; }
+
+  closeFolderDialog();
+  var pid = _currentViewPid;
+  fetch('/api/projects/'+pid+'/view?result_folder='+encodeURIComponent(folderPath))
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if(data.error){ showToast('加载失败：'+data.error, 'error'); return; }
+      if(data.status === 'done') {
+        showToast('✓ 已从指定文件夹恢复结果', 'success');
+        window.location.href='/results?sid='+data.session_id;
+        return;
+      }
+      showToast('指定路径中未找到有效的结果文件（需包含 meta.json）', 'error');
+    })
+    .catch(function(e){ showToast('操作失败：'+e.message, 'error'); });
+}
+
+// ── 另存为 ──
+function exportProject(pid) {
+  fetch('/api/projects/'+pid+'/export', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({}),
+  })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if(data.expired) { showToast('结果已过期，请重新计算后再导出', 'error'); return; }
+      if(data.cancelled) { return; }
+      if(data.error)  { showToast('导出失败：'+data.error, 'error'); return; }
+      if(data.success){ showToast('✓ 已保存至：'+data.path, 'success'); }
+    })
+    .catch(function(e){ showToast('操作失败：'+e.message, 'error'); });
+}
+
+// ── 删除 ──
+var _pendingDeleteId = null;
+function confirmDelete(pid, name) {
+  _pendingDeleteId = pid;
+  document.getElementById('confirm-text').textContent = '确定要删除「'+name+'」吗？此操作不可撤销。';
+  document.getElementById('confirm-overlay').classList.add('active');
+}
+function closeConfirm() {
+  document.getElementById('confirm-overlay').classList.remove('active');
+  _pendingDeleteId = null;
+}
+function doDelete() {
+  if(!_pendingDeleteId) return;
+  var pid = _pendingDeleteId;
+  closeConfirm();
+  fetch('/api/projects/'+pid, { method: 'DELETE' })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if(data.success) {
+        // 从原始数组中移除
+        _allProjects = _allProjects.filter(function(p){ return p.id !== pid; });
+        // 移除卡片（动画后重新渲染）
+        var card = document.querySelector('.project-card[data-id="'+pid+'"]');
+        if(card){ card.style.opacity='0'; card.style.transform='scale(0.95)'; card.style.transition='all 0.2s'; setTimeout(function(){ _checkEmpty(); }, 220); }
+        showToast('项目已删除', 'success');
+      } else {
+        showToast('删除失败：'+(data.error||'未知错误'), 'error');
+      }
+    })
+    .catch(function(e){ showToast('删除失败：'+e.message, 'error'); });
+}
+
+function _checkEmpty() {
+  // 从原始数组中移除已删除的记录，然后重新过滤渲染
+  // 删除时会先从 _allProjects 里移除对应 id
+  if(_allProjects.length === 0) {
+    document.getElementById('project-grid').style.display='none';
+    document.getElementById('filter-bar').style.display='none';
+    document.getElementById('no-result').style.display='none';
+    document.getElementById('empty-state').style.display='flex';
+    document.getElementById('page-subtitle').textContent='共 0 个项目';
+  } else {
+    applyFilters();
+  }
+}
+
+// 点击遮罩关闭弹窗
+document.getElementById('confirm-overlay').addEventListener('click', function(e){
+  if(e.target === this) closeConfirm();
+});
+document.getElementById('folder-dialog-overlay').addEventListener('click', function(e){
+  if(e.target === this) closeFolderDialog();
+});
+// folder-dialog-input 按 Enter 触发加载
+document.getElementById('folder-dialog-input').addEventListener('keydown', function(e){
+  if(e.key === 'Enter') loadFromSpecifiedFolder();
+});
+
+// ── 初始化 ──
+loadProjects();
+</script>
+</body>
+</html>

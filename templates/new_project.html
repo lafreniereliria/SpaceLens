@@ -136,6 +136,38 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
 .btn-run:hover { transform:translateY(-1px); box-shadow:0 6px 22px rgba(var(--accent-rgb),0.45); }
 .btn-run:disabled { opacity:0.45; cursor:not-allowed; transform:none; box-shadow:none; }
 
+/* project name input */
+.project-name-wrap { display:flex; flex-direction:column; gap:8px; }
+.project-name-input { width:100%; padding:12px 16px; border:1.5px solid var(--border); border-radius:10px; background:var(--bg); color:var(--text-primary); font-size:14px; font-family:inherit; transition:border-color 0.15s, box-shadow 0.15s; outline:none; }
+.project-name-input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(var(--accent-rgb),0.12); }
+.project-name-hint { font-size:12px; color:var(--text-dim); }
+
+/* check duplicate button & banner */
+.dup-check-row { display:none; align-items:center; gap:10px; margin-top:14px; }
+.dup-check-row.visible { display:flex; }
+.btn-check-dup { display:inline-flex; align-items:center; gap:6px; padding:7px 16px; background:transparent; border:1.5px solid var(--border); border-radius:8px; font-size:12px; font-weight:600; color:var(--text-secondary); cursor:pointer; transition:all 0.18s; }
+.btn-check-dup:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); background:rgba(var(--accent-rgb),0.05); }
+.btn-check-dup:disabled { opacity:0.5; cursor:not-allowed; }
+.btn-check-dup .spin { display:none; width:12px; height:12px; border:2px solid currentColor; border-top-color:transparent; border-radius:50%; animation:spin 0.7s linear infinite; }
+.btn-check-dup.loading .spin { display:block; }
+.btn-check-dup.loading .ico { display:none; }
+.dup-check-hint { font-size:12px; color:var(--text-dim); }
+
+.dup-banner { display:none; align-items:flex-start; gap:14px; padding:16px 18px; background:rgba(var(--accent-rgb),0.06); border:1.5px solid rgba(var(--accent-rgb),0.3); border-radius:12px; margin-top:12px; }
+.dup-banner.visible { display:flex; }
+.dup-banner-icon { width:36px; height:36px; border-radius:10px; background:rgba(var(--accent-rgb),0.12); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.dup-banner-icon svg { width:18px; height:18px; color:var(--accent); }
+.dup-banner-body { flex:1; min-width:0; }
+.dup-banner-title { font-size:13px; font-weight:700; color:var(--text-primary); margin-bottom:4px; }
+.dup-banner-desc { font-size:12px; color:var(--text-secondary); line-height:1.6; }
+.dup-banner-actions { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+.dup-btn-view { display:inline-flex; align-items:center; gap:6px; padding:7px 16px; background:var(--accent); color:#fff; border:none; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; transition:opacity 0.15s; }
+.dup-btn-view:hover { opacity:0.85; }
+.dup-btn-ignore { display:inline-flex; align-items:center; gap:6px; padding:7px 14px; background:transparent; color:var(--text-secondary); border:1px solid var(--border); border-radius:8px; font-size:12px; font-weight:500; cursor:pointer; transition:all 0.15s; }
+.dup-btn-ignore:hover { border-color:var(--text-secondary); color:var(--text-primary); }
+.dup-no-dup { display:none; align-items:center; gap:6px; padding:10px 14px; background:rgba(34,197,94,0.06); border:1px solid rgba(34,197,94,0.25); border-radius:10px; font-size:12px; color:var(--success); margin-top:12px; }
+.dup-no-dup.visible { display:flex; }
+
 /* computing overlay */
 .computing-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:50; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
 .computing-overlay.active { display:flex; }
@@ -259,9 +291,22 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
     </div>
   </div>
 
-  <!-- ② 数据导入 -->
+  <!-- ② 项目名称 -->
   <div class="section-block">
-    <div class="section-title"><div class="section-num">2</div>数据导入</div>
+    <div class="section-title"><div class="section-num">2</div>项目名称</div>
+    <div class="project-name-wrap">
+      <input type="text" id="project-name-input" class="project-name-input"
+             placeholder="输入项目名称（将作为历史记录的标题）"
+             maxlength="60" />
+      <div class="project-name-hint" id="project-name-hint">
+        选择文件夹后将自动生成默认名称
+      </div>
+    </div>
+  </div>
+
+  <!-- ③ 数据导入 -->
+  <div class="section-block">
+    <div class="section-title"><div class="section-num">3</div>数据导入</div>
 
     <div class="import-tabs">
       <button class="import-tab active" id="tab-folder" onclick="switchImport('folder')">📁 文件夹导入</button>
@@ -323,6 +368,48 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
           <div class="match-none" id="mn-region">未找到 (可选)</div>
         </div>
       </div>
+    </div>
+
+    <!-- 查看重复项目触发按钮行（文件匹配后显示） -->
+    <div class="dup-check-row" id="dup-check-row">
+      <button class="btn-check-dup" id="btn-check-dup" onclick="triggerCheckDuplicate()">
+        <span class="ico">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </span>
+        <span class="spin"></span>
+        查找重复项目
+      </button>
+      <span class="dup-check-hint">检查当前文件是否已有历史计算记录</span>
+    </div>
+
+    <!-- 找到重复：提示 banner -->
+    <div class="dup-banner" id="dup-banner">
+      <div class="dup-banner-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </div>
+      <div class="dup-banner-body">
+        <div class="dup-banner-title">检测到相同数据的历史项目</div>
+        <div class="dup-banner-desc">
+          该建筑类型和文件内容与历史项目「<strong id="dup-proj-name">-</strong>」完全一致，无需重新计算。
+        </div>
+        <div class="dup-banner-actions">
+          <button class="dup-btn-view" onclick="viewDupProject()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            查看历史项目
+          </button>
+          <button class="dup-btn-ignore" onclick="ignoreDuplicate()">
+            继续新建（重新计算）
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 未找到重复：简洁提示 -->
+    <div class="dup-no-dup" id="dup-no-dup">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      未找到重复历史项目，可以直接开始计算
     </div>
 
     <!-- 分别导入 -->
@@ -418,10 +505,36 @@ document.addEventListener('click', function(e) {
 
 // ── 建筑类型 ──
 var selectedType = null;
+var TYPE_NAMES = {
+  office:'办公建筑', education:'教育建筑', medical:'医疗建筑',
+  commercial:'商业建筑', cultural:'文化建筑', residential:'居住建筑',
+};
 function selectType(card){
   document.querySelectorAll('.type-card').forEach(function(c){c.classList.remove('selected');});
   card.classList.add('selected'); selectedType=card.dataset.type;
+  _updateDefaultProjectName();
+  // 类型切换时重置去重状态（不自动查询）
+  _resetDupState();
 }
+
+// ── 项目名称自动生成 ──
+function _updateDefaultProjectName(){
+  var inp = document.getElementById('project-name-input');
+  var hint = document.getElementById('project-name-hint');
+  // 如果用户已手动修改，则不覆盖
+  if(inp.dataset.userEdited === '1') return;
+  var parts = [];
+  if(_folderName) parts.push(_folderName);
+  if(selectedType) parts.push(TYPE_NAMES[selectedType]||selectedType);
+  if(parts.length){
+    inp.value = parts.join(' - ');
+    hint.textContent = '默认名称 = 文件夹名 + 建筑类型，可自行修改';
+  }
+}
+
+document.getElementById('project-name-input').addEventListener('input', function(){
+  this.dataset.userEdited = this.value ? '1' : '0';
+});
 
 // ── 导入方式 ──
 function switchImport(mode){
@@ -433,14 +546,28 @@ function switchImport(mode){
 
 // ── 文件名匹配规则 ──
 // 每个槽位：若文件名（小写）含其中任一关键词则匹配
-var MATCH_RULES = {
-  img:      { keywords: ['space','floor','plan','平面','floorplan'], exts: ['.png','.jpg','.jpeg','.bmp','.webp'] },
-  loc:      { keywords: ['loc','location','定位','gps','position','coord'], exts: ['.csv','.xlsx','.xls'] },
-  behavior: { keywords: ['behav','行为','action'], exts: ['.csv','.xlsx','.xls'] },
-  env:      { keywords: ['env','environment','环境','temp','humid','light','noise'], exts: ['.csv','.xlsx','.xls'] },
-  ques:     { keywords: ['ques','question','questionnaire','survey','满意','satisfaction'], exts: ['.csv','.xlsx','.xls'] },
-  region:   { keywords: ['region','区域','coord','coordinate'], exts: ['.csv','.xlsx','.xls'] },
+// 精确文件名映射（忽略大小写），按优先级排列
+var EXACT_NAME_MAP = {
+  img:      ['space.png','space.jpg','space.jpeg',
+             'floorplan.png','floorplan.jpg',
+             'floor_plan.png','floor_plan.jpg',
+             'layout.png','layout.jpg','plan.png'],
+  loc:      ['location.xlsx','location.csv',
+             'loc.xlsx','loc.csv',
+             'gps.xlsx','gps.csv'],
+  behavior: ['behavior.xlsx','behavior.csv',
+             'behaviour.xlsx','behaviour.csv',
+             'behav.xlsx','behav.csv'],
+  env:      ['environment.xlsx','environment.csv',
+             'env.xlsx','env.csv'],
+  ques:     ['questionnaire.xlsx','questionnaire.csv',
+             'survey.xlsx','survey.csv',
+             'ques.xlsx','ques.csv'],
+  region:   ['region_coordinates.xlsx','region_coordinates.csv',
+             'region.xlsx','region.csv',
+             'coordinates.xlsx','coordinates.csv'],
 };
+var IMG_EXTS = ['.png','.jpg','.jpeg','.bmp','.webp'];
 
 // 存放已匹配的 File 对象（文件夹模式）
 var folderFiles = { img:null, loc:null, behavior:null, env:null, ques:null, region:null };
@@ -448,29 +575,38 @@ var _folderName = '';  // 文件夹名称，用于结果页标题
 
 function matchFiles(fileList){
   var files = Array.from(fileList);
-  var assigned = {};
 
-  // 先按图片扩展名找平面图
-  MATCH_RULES.img.exts.forEach(function(ext){
-    if(assigned.img) return;
+  // 建立 小写文件名 → File 对象 的映射
+  var nameMap = {};
+  files.forEach(function(f){ nameMap[f.name.toLowerCase()] = f; });
+
+  var assigned = {};
+  var usedFiles = new Set();
+
+  // 精确匹配：按候选名单顺序查找，找到即止，已用文件不重复分配
+  ['img','loc','behavior','env','ques','region'].forEach(function(slot){
+    var candidates = EXACT_NAME_MAP[slot];
+    for(var i = 0; i < candidates.length; i++){
+      var key = candidates[i].toLowerCase();
+      if(nameMap[key] && !usedFiles.has(key)){
+        assigned[slot] = nameMap[key];
+        usedFiles.add(key);
+        break;
+      }
+    }
+  });
+
+  // 兜底：img 仍未匹配时取第一个未使用的图片文件
+  if(!assigned.img){
     files.forEach(function(f){
       if(assigned.img) return;
-      var n=f.name.toLowerCase();
-      if(n.endsWith(ext)) assigned.img=f;
+      var n = f.name.toLowerCase();
+      if(!usedFiles.has(n) && IMG_EXTS.some(function(e){ return n.endsWith(e); })){
+        assigned.img = f;
+        usedFiles.add(n);
+      }
     });
-  });
-
-  // 其他数据文件
-  ['loc','behavior','env','ques','region'].forEach(function(slot){
-    var rule=MATCH_RULES[slot];
-    files.forEach(function(f){
-      if(assigned[slot]) return;
-      var n=f.name.toLowerCase();
-      var hasExt=rule.exts.some(function(e){return n.endsWith(e);});
-      var hasKw=rule.keywords.some(function(k){return n.includes(k);});
-      if(hasExt && hasKw) assigned[slot]=f;
-    });
-  });
+  }
 
   return assigned;
 }
@@ -492,6 +628,9 @@ function showMatchResult(assigned){
       mf.style.display='none'; mn.style.display='';
     }
   });
+  // 文件匹配完成后显示「查找重复项目」按钮，重置去重状态
+  _resetDupState();
+  document.getElementById('dup-check-row').classList.add('visible');
 }
 
 // 文件夹 input
@@ -504,6 +643,7 @@ document.getElementById('input-folder').addEventListener('change',function(){
   document.getElementById('drop-folder').classList.add('has-file');
   var assigned=matchFiles(files);
   showMatchResult(assigned);
+  _updateDefaultProjectName();
 });
 
 // 拖拽
@@ -535,14 +675,138 @@ function triggerFile(inputId){ document.getElementById(inputId).click(); }
   });
 });
 
-// ── 开始计算 ──
+// ── 重复项目检测 ──
+var _dupProject = null;
+var _dupIgnored = false;
+
+// 重置去重 UI 状态
+function _resetDupState() {
+  _dupProject = null;
+  _dupIgnored = false;
+  hideDupBanner();
+  document.getElementById('dup-no-dup').classList.remove('visible');
+  var btn = document.getElementById('btn-check-dup');
+  if(btn){ btn.classList.remove('loading'); btn.disabled = false; }
+}
+
+// 用户主动点击「查找重复项目」
+function triggerCheckDuplicate() {
+  if(!selectedType){
+    alert('请先选择建筑类型，再查找重复项目');
+    return;
+  }
+  var hasFiles = Object.values(folderFiles).some(function(f){ return f !== null; });
+  if(!hasFiles){
+    alert('请先导入文件，再查找重复项目');
+    return;
+  }
+  // 隐藏之前的结果，进入 loading 状态
+  hideDupBanner();
+  document.getElementById('dup-no-dup').classList.remove('visible');
+  _dupProject = null;
+  _dupIgnored = false;
+  var btn = document.getElementById('btn-check-dup');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  checkDuplicate(folderFiles);
+}
+
+async function checkDuplicate(files) {
+  var btn = document.getElementById('btn-check-dup');
+  try {
+    // 将文件通过 multipart 发给后端，由后端统一用 MD5 计算哈希
+    // 只发核心输入文件（img/loc/behavior/env/ques），region 可选不参与去重
+    var fd = new FormData();
+    fd.append('building_type', selectedType || '');
+    if(files.img)      fd.append('img',      files.img);
+    if(files.loc)      fd.append('loc',      files.loc);
+    if(files.behavior) fd.append('beh',      files.behavior);
+    if(files.env)      fd.append('env',      files.env);
+    if(files.ques)     fd.append('ques',     files.ques);
+    // region 不参与去重（可选文件，有无不影响核心数据）
+
+    var resp = await fetch('/api/projects/check_duplicate', {
+      method: 'POST',
+      body: fd,
+    });
+    var data = await resp.json();
+    if(data.duplicate && data.project) {
+      _dupProject = data.project;
+      showDupBanner(data.project);
+    } else {
+      _dupProject = null;
+      hideDupBanner();
+      document.getElementById('dup-no-dup').classList.add('visible');
+    }
+  } catch(e) {
+    hideDupBanner();
+    document.getElementById('dup-no-dup').classList.remove('visible');
+  } finally {
+    if(btn){ btn.classList.remove('loading'); btn.disabled = false; }
+  }
+}
+
+function showDupBanner(proj) {
+  var banner = document.getElementById('dup-banner');
+  document.getElementById('dup-proj-name').textContent = proj.name || '未命名项目';
+  banner.classList.add('visible');
+}
+
+function hideDupBanner() {
+  document.getElementById('dup-banner').classList.remove('visible');
+}
+
+function viewDupProject() {
+  if(!_dupProject) return;
+  // 先通过 view API 确认 session 是否有效
+  fetch('/api/projects/'+_dupProject.id+'/view')
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if(data.status === 'expired' || data.status === undefined && data.from_db) {
+        if(confirm('该历史项目的计算结果已过期（程序重启后失效）。\n\n是否仍前往历史项目页面查看记录？')) {
+          window.location.href='/history';
+        }
+        return;
+      }
+      window.location.href='/results?sid='+data.session_id;
+    })
+    .catch(function(){ window.location.href='/history'; });
+}
+
+function ignoreDuplicate() {
+  _dupIgnored = true;
+  hideDupBanner();
+  document.getElementById('dup-no-dup').classList.remove('visible');
+}
 function startCalc(){
   if(!selectedType){ alert('请先选择建筑类型'); return; }
+
+  // 若用户查找到了重复项目但未点「继续新建」，给一次二次确认
+  if(_dupProject && !_dupIgnored &&
+     document.getElementById('dup-banner').classList.contains('visible')) {
+    var go = confirm(
+      '已找到相同数据的历史项目「'+ _dupProject.name +'」。\n\n' +
+      '确定要重新计算并覆盖历史记录吗？\n' +
+      '（点「取消」可前往查看历史项目）'
+    );
+    if(!go) { viewDupProject(); return; }
+    _dupIgnored = true;
+  }
 
   var mode=document.getElementById('tab-folder').classList.contains('active')?'folder':'separate';
   var fd=new FormData();
   fd.append('building_type', selectedType);
   fd.append('folder_name', _folderName);
+
+  // 项目名称
+  var projectName = (document.getElementById('project-name-input').value||'').trim();
+  if(!projectName){
+    var parts=[];
+    if(_folderName) parts.push(_folderName);
+    if(selectedType) parts.push(TYPE_NAMES[selectedType]||selectedType);
+    projectName = parts.join(' - ') || '未命名项目';
+  }
+  fd.append('project_name', projectName);
 
   if(mode==='folder'){
     if(folderFiles.img)      fd.append('layout_img',     folderFiles.img);

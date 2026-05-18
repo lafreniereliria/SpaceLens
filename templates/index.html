@@ -257,6 +257,139 @@
   border-radius: 50%; background: var(--accent);
   box-shadow: 0 0 5px var(--accent);
 }
+
+/* ── 保存项目按钮 ── */
+.save-project-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 13px;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: 8px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: all 0.15s;
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb),0.35);
+}
+.save-project-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+.save-project-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+/* ── 保存项目 Modal ── */
+.sp-overlay {
+  position: fixed; inset: 0; z-index: 2000;
+  background: rgba(0,0,0,0.55); backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center;
+}
+.sp-modal {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 16px; box-shadow: 0 24px 64px rgba(0,0,0,0.3);
+  width: 520px; max-width: 95vw; max-height: 88vh;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.sp-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.sp-header h2 {
+  font-size: 16px; font-weight: 700; margin: 0;
+  display: flex; align-items: center; gap: 9px;
+}
+.sp-header h2 svg { color: var(--accent); }
+.sp-close {
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text-secondary); font-size: 18px; padding: 2px 6px;
+  border-radius: 6px; transition: all 0.12s;
+}
+.sp-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+.sp-body { padding: 18px 24px; overflow-y: auto; flex: 1; }
+.sp-section-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;
+  color: var(--text-dim); margin-bottom: 10px; margin-top: 16px;
+}
+.sp-section-label:first-child { margin-top: 0; }
+
+/* 文件夹名输入 */
+.sp-input-row {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg-deep); border: 1px solid var(--border);
+  border-radius: 9px; padding: 9px 14px;
+}
+.sp-input-row svg { flex-shrink: 0; color: var(--text-dim); }
+.sp-folder-input {
+  flex: 1; background: transparent; border: none; outline: none;
+  font-size: 13px; color: var(--text-primary);
+}
+
+/* 全选控制行 */
+.sp-check-ctrl {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.sp-check-ctrl-label { font-size: 12px; color: var(--text-secondary); }
+.sp-select-all {
+  font-size: 11px; color: var(--accent); cursor: pointer;
+  background: none; border: none; padding: 0;
+  transition: opacity 0.12s;
+}
+.sp-select-all:hover { opacity: 0.75; }
+
+/* 指标列表 */
+.sp-metric-list {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+}
+.sp-metric-item {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 11px; border-radius: 8px;
+  background: var(--bg-deep); border: 1px solid var(--border);
+  cursor: pointer; transition: all 0.12s; user-select: none;
+}
+.sp-metric-item:hover { border-color: rgba(var(--accent-rgb),0.45); }
+.sp-metric-item input[type=checkbox] { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+.sp-metric-item.checked { border-color: rgba(var(--accent-rgb),0.5); background: rgba(var(--accent-rgb),0.06); }
+.sp-metric-item.unavailable { opacity: 0.3; cursor: not-allowed; }
+.sp-metric-badge {
+  font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 4px;
+  background: rgba(var(--accent-rgb),0.12); color: var(--accent);
+  white-space: nowrap;
+}
+.sp-metric-name { font-size: 12px; color: var(--text-primary); flex: 1; }
+.sp-metric-item.unavailable .sp-metric-name { color: var(--text-dim); }
+.sp-metric-item.unavailable .sp-metric-badge { opacity: 0.4; }
+.sp-metric-status-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+}
+.sp-metric-status-dot.done { background: var(--teal); }
+.sp-metric-status-dot.skip { background: var(--text-dim); opacity: 0.4; }
+
+/* 脚注 */
+.sp-footer {
+  padding: 14px 24px 20px;
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.sp-count-hint { font-size: 12px; color: var(--text-secondary); }
+.sp-footer-btns { display: flex; gap: 10px; }
+.sp-btn-cancel {
+  padding: 9px 18px; border-radius: 8px;
+  background: var(--bg-deep); border: 1px solid var(--border);
+  font-size: 13px; color: var(--text-secondary); cursor: pointer;
+  transition: all 0.12s;
+}
+.sp-btn-cancel:hover { border-color: var(--accent); color: var(--accent); }
+.sp-btn-save {
+  padding: 9px 22px; border-radius: 8px;
+  background: var(--accent); color: #fff; border: none;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb),0.35);
+  transition: all 0.15s; display: flex; align-items: center; gap: 7px;
+}
+.sp-btn-save:hover { opacity: 0.88; transform: translateY(-1px); }
+.sp-btn-save:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+.sp-saving-spinner {
+  width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
 </style>
 </head>
 <body>
@@ -438,6 +571,11 @@
     <div class="topbar-right">
       <div class="status-dot online" id="status-dot"></div>
       <span class="status-text" id="status-text">加载中…</span>
+      <!-- 保存项目按钮 -->
+      <button class="save-project-btn" id="save-project-btn" onclick="openSaveModal()" title="保存项目结果" style="display:none">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        保存项目
+      </button>
       <button class="theme-toggle" id="theme-toggle" title="切换明暗">
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
           <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
@@ -502,6 +640,47 @@
   <div class="loading-overlay" id="loading">
     <div class="spinner"></div>
     <div class="loading-text" id="loading-text">正在加载…</div>
+  </div>
+
+  <!-- ── 保存项目 Modal ── -->
+  <div class="sp-overlay" id="sp-overlay" style="display:none" onclick="closeSaveModalOutside(event)">
+    <div class="sp-modal" id="sp-modal">
+      <div class="sp-header">
+        <h2>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          保存项目结果
+        </h2>
+        <button class="sp-close" onclick="closeSaveModal()">✕</button>
+      </div>
+      <div class="sp-body">
+        <!-- 文件夹名 -->
+        <div class="sp-section-label">文件夹名称</div>
+        <div class="sp-input-row">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+          <input class="sp-folder-input" id="sp-folder-input" type="text" placeholder="输入保存文件夹名称…" />
+        </div>
+
+        <!-- 指标选择 -->
+        <div class="sp-section-label" style="margin-top:18px">选择导出指标</div>
+        <div class="sp-check-ctrl">
+          <span class="sp-check-ctrl-label">默认全部导出，可反选去除不需要的指标</span>
+          <button class="sp-select-all" id="sp-select-all-btn" onclick="toggleSelectAll()">全不选</button>
+        </div>
+        <div class="sp-metric-list" id="sp-metric-list">
+          <!-- 由 JS 动态生成 -->
+        </div>
+      </div>
+      <div class="sp-footer">
+        <span class="sp-count-hint" id="sp-count-hint">已选 0 / 0 项</span>
+        <div class="sp-footer-btns">
+          <button class="sp-btn-cancel" onclick="closeSaveModal()">取消</button>
+          <button class="sp-btn-save" id="sp-save-btn" onclick="doSaveProject()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            保存到本地
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
 </main>
@@ -747,6 +926,11 @@ function startPolling(sid) {
           return;
         }
 
+        // 调试：在控制台输出错误详情
+        if (data.debug_errors && Object.keys(data.debug_errors).length > 0) {
+          console.warn('[SpaceLens] 指标计算错误:', data.debug_errors);
+        }
+
         // 缓存最新会话数据（switchEnvParam 需要）
         _sessionData = data;
 
@@ -818,6 +1002,9 @@ function startPolling(sid) {
           stopPolling();
           document.getElementById('status-text').textContent =
             '全部完成，共 ' + computed.length + ' 项结果';
+          // 计算完成后显示保存项目按钮
+          var saveBtn = document.getElementById('save-project-btn');
+          if (saveBtn && computed.length > 0) saveBtn.style.display = 'inline-flex';
         } else {
           _pollTimer = setTimeout(poll, 1500);
         }
@@ -885,6 +1072,160 @@ function pollEngineReady() {
       else { setTimeout(pollEngineReady, 800); }
     })
     .catch(function(){ setTimeout(pollEngineReady, 1000); });
+}
+
+// ════════════════════════════════════════════
+//  保存项目 Modal 逻辑
+// ════════════════════════════════════════════
+
+// 指标显示配置（id, badge, 中文名）
+var METRIC_DISPLAY = [
+  { id: 'heatmap',             badge: 'A1',  name: '到访频次热力图' },
+  { id: 'usetime',             badge: 'A2',  name: '使用时长' },
+  { id: 'speed',               badge: 'A3',  name: '移动速率' },
+  { id: 'duration',            badge: 'A4',  name: '停留时长' },
+  { id: 'cluster',             badge: 'A5',  name: '空间聚类' },
+  { id: 'density',             badge: 'A6',  name: '人员密度' },
+  { id: 'openness',            badge: 'A7',  name: '空间开放程度' },
+  { id: 'topology',            badge: 'A8',  name: '拓扑连接关系' },
+  { id: 'difference',          badge: 'A9',  name: '轨迹差异系数' },
+  { id: 'trajectory',          badge: 'A10', name: '轨迹长度' },
+  { id: 'environment_p1',      badge: 'B1',  name: '环境·温度' },
+  { id: 'environment_p2',      badge: 'B2',  name: '环境·湿度' },
+  { id: 'environment_p3',      badge: 'B3',  name: '环境·光照' },
+  { id: 'environment_p4',      badge: 'B4',  name: '环境·风速' },
+  { id: 'environment_p5',      badge: 'B5',  name: '环境·噪声' },
+  { id: 'behavior_count',      badge: 'C1',  name: '行为人次' },
+  { id: 'behavior_duration',   badge: 'C2',  name: '行为时长' },
+  { id: 'behavior_rate',       badge: 'C3',  name: '行为发生率' },
+  { id: 'behavior_entropy',    badge: 'C4',  name: '行为复合度' },
+  { id: 'utilization',         badge: 'C5',  name: '功能利用率' },
+  { id: 'satisfaction',        badge: 'D3',  name: '整体满意度' },
+  { id: 'satisfaction_region', badge: 'D4',  name: '空间满意度' },
+];
+
+function openSaveModal() {
+  if (!_sessionData) return;
+  var computed = _sessionData.computed || [];
+  var skipped  = _sessionData.skipped  || [];
+  var folder   = _sessionData.folder_name || '';
+
+  // 填充文件夹名输入框
+  document.getElementById('sp-folder-input').value = folder;
+
+  // 渲染指标复选列表
+  var listEl = document.getElementById('sp-metric-list');
+  listEl.innerHTML = '';
+  METRIC_DISPLAY.forEach(function(m) {
+    var isDone      = computed.indexOf(m.id) >= 0;
+    var isSkipped   = skipped.indexOf(m.id) >= 0 || (!isDone && computed.length > 0);
+    var available   = isDone;
+    var dotCls      = isDone ? 'done' : 'skip';
+
+    var item = document.createElement('label');
+    item.className = 'sp-metric-item' + (available ? ' checked' : ' unavailable');
+    item.dataset.id = m.id;
+    item.innerHTML = '<input type="checkbox"' + (available ? ' checked' : ' disabled')
+      + ' data-metric="' + m.id + '">'
+      + '<span class="sp-metric-badge">' + m.badge + '</span>'
+      + '<span class="sp-metric-name">' + m.name + '</span>'
+      + '<span class="sp-metric-status-dot ' + dotCls + '"></span>';
+
+    item.querySelector('input').addEventListener('change', function() {
+      item.classList.toggle('checked', this.checked);
+      updateSaveCount();
+    });
+    listEl.appendChild(item);
+  });
+
+  updateSaveCount();
+  document.getElementById('sp-overlay').style.display = 'flex';
+  document.getElementById('sp-select-all-btn').textContent = '全不选';
+}
+
+function closeSaveModal() {
+  document.getElementById('sp-overlay').style.display = 'none';
+}
+
+function closeSaveModalOutside(e) {
+  if (e.target === document.getElementById('sp-overlay')) closeSaveModal();
+}
+
+var _allSelected = true;
+function toggleSelectAll() {
+  var checkboxes = document.querySelectorAll('#sp-metric-list input[type=checkbox]:not(:disabled)');
+  _allSelected = !_allSelected;
+  checkboxes.forEach(function(cb) {
+    cb.checked = _allSelected;
+    cb.closest('.sp-metric-item').classList.toggle('checked', _allSelected);
+  });
+  document.getElementById('sp-select-all-btn').textContent = _allSelected ? '全不选' : '全选';
+  updateSaveCount();
+}
+
+function updateSaveCount() {
+  var total    = document.querySelectorAll('#sp-metric-list input[type=checkbox]:not(:disabled)').length;
+  var selected = document.querySelectorAll('#sp-metric-list input[type=checkbox]:not(:disabled):checked').length;
+  document.getElementById('sp-count-hint').textContent = '已选 ' + selected + ' / ' + total + ' 项';
+  document.getElementById('sp-save-btn').disabled = selected === 0;
+}
+
+function doSaveProject() {
+  var sid = getSessionId();
+  if (!sid) { alert('无会话 ID，无法导出'); return; }
+
+  var selectedMetrics = [];
+  document.querySelectorAll('#sp-metric-list input[type=checkbox]:checked:not(:disabled)').forEach(function(cb) {
+    selectedMetrics.push(cb.dataset.metric);
+  });
+  if (selectedMetrics.length === 0) { alert('请至少选择一项指标'); return; }
+
+  var folderName = document.getElementById('sp-folder-input').value.trim() || '评价项目';
+
+  // 禁用按钮 + 显示加载
+  var saveBtn = document.getElementById('sp-save-btn');
+  saveBtn.disabled = true;
+  saveBtn.innerHTML = '<div class="sp-saving-spinner"></div> 打包中…';
+
+  // 调用桌面端保存接口（弹出系统原生保存对话框）
+  fetch('/api/save_project/' + sid, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ metrics: selectedMetrics, folder_name: folderName }),
+  })
+  .then(function(resp) { return resp.json(); })
+  .then(function(data) {
+    if (data.cancelled) {
+      // 用户在对话框中点了"取消"，不做任何提示，仅恢复按钮
+      return;
+    }
+    if (data.error) {
+      throw new Error(data.error);
+    }
+    // 保存成功
+    closeSaveModal();
+    _showSaveSuccess(data.path);
+  })
+  .catch(function(err) {
+    alert('保存失败：' + err.message);
+  })
+  .finally(function() {
+    saveBtn.disabled = false;
+    saveBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> 保存到本地';
+  });
+}
+
+function _showSaveSuccess(filePath) {
+  // 在顶栏状态区短暂显示成功提示
+  var st = document.getElementById('status-text');
+  if (!st) return;
+  var old = st.textContent;
+  st.textContent = '✓ 已保存至：' + (filePath || '本地文件');
+  st.style.color = 'var(--success, #22c55e)';
+  setTimeout(function() {
+    st.textContent = old;
+    st.style.color = '';
+  }, 5000);
 }
 </script>
 </body>

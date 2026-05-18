@@ -15,6 +15,17 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.font_manager as _fm
 
+# ── 桌面端原生文件对话框钩子 ──────────────────────────────
+# desktop_app.py 启动时会注册此钩子，使 Flask 线程可安全触发 Qt 对话框
+# 签名: (title, default_filename) -> str | None
+_native_save_dialog_hook = None
+
+def register_save_dialog_hook(fn):
+    """由 desktop_app.py 调用，注册 Qt 原生保存对话框回调"""
+    global _native_save_dialog_hook
+    _native_save_dialog_hook = fn
+# ──────────────────────────────────────────────────────────
+
 # matplotlib 3.9+ 移除了 cm.get_cmap()，统一用此兼容函数
 def _get_cmap(name, n=None):
     """兼容 matplotlib 3.7+ 的 colormap 获取方式"""
@@ -61,7 +72,7 @@ if _CJK_FONT:
     matplotlib.rcParams['axes.unicode_minus'] = False
 from matplotlib.patches import FancyArrowPatch
 from scipy.cluster.vq import kmeans2 as _kmeans2
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter, binary_erosion, binary_dilation
 from PIL import Image
 
 analysis_bp = Blueprint('analysis', __name__)
@@ -127,6 +138,70 @@ def load_img(file_storage):
     return np.array(pil_img.convert('RGB'))
 
 
+def extract_walkable_mask(img_arr: np.ndarray,
+                          black_threshold: int = 60,
+                          erode_iters: int = 0,
+                          dilate_wall_iters: int = 2) -> np.ndarray:
+    """
+    从平面图中提取可行走区域 mask（True = 可通行，False = 墙/障碍物）。
+
+    算法：
+    1. 将 RGB 转为灰度
+    2. 亮度 < black_threshold 的像素视为黑色墙体 → mask = False
+    3. 形态学膨胀墙体 dilate_wall_iters 次，让墙体向外扩一圈缓冲区，
+       避免热力色紧贴墙边渗漏
+    4. 若结果 mask 全为 False（纯黑图/特殊图），降级为全 True（不过滤）
+
+    参数：
+        black_threshold   灰度阈值，低于此值视为黑色墙体（0-255，默认 60）
+        erode_iters       对可走区域做形态学腐蚀次数，去除孤立小白点（默认 0）
+        dilate_wall_iters 墙体向外膨胀的次数（默认 2px 缓冲区）
+
+    返回：bool 数组，shape (H, W)
+    """
+    # 灰度化
+    gray = np.dot(img_arr[..., :3], [0.299, 0.587, 0.114]).astype(np.uint8)
+    walkable = gray >= black_threshold          # True = 可走，False = 墙
+
+    # 对墙体区域做膨胀，给墙边缘留缓冲
+    if dilate_wall_iters > 0:
+        wall = ~walkable
+        wall_dilated = binary_dilation(wall, iterations=dilate_wall_iters)
+        walkable = ~wall_dilated
+
+    # 对可走区域做腐蚀，去除孤立噪点
+    if erode_iters > 0:
+        walkable = binary_erosion(walkable, iterations=erode_iters)
+
+    # 降级保护：若 mask 几乎全为 False，说明平面图背景很暗，不做过滤
+    if walkable.sum() < walkable.size * 0.05:
+        return np.ones(img_arr.shape[:2], dtype=bool)
+
+    return walkable
+
+
+def filter_points_in_mask(x: np.ndarray, y: np.ndarray,
+                          mask: np.ndarray,
+                          return_mask: bool = False):
+    """
+    过滤掉落在不可走区域（mask=False）的数据点。
+
+    参数：
+        x, y         像素坐标数组（float）
+        mask         walkable_mask，shape (H, W)
+        return_mask  若 True，额外返回布尔索引 valid_idx
+
+    返回：(x_valid, y_valid) 或 (x_valid, y_valid, valid_bool)
+    """
+    h, w = mask.shape
+    xi = np.clip(np.round(x).astype(int), 0, w - 1)
+    yi = np.clip(np.round(y).astype(int), 0, h - 1)
+    valid = mask[yi, xi]
+    if return_mask:
+        return x[valid], y[valid], valid
+    return x[valid], y[valid]
+
+
 # ─────────────────────────────────────────────
 # 功能 1：到访频次热力图
 # ─────────────────────────────────────────────
@@ -154,8 +229,12 @@ def heatmap():
         y = df['Y'].astype(float).values
         img = load_img(img_file)
 
-        # KDE 渐变热力图（无栅格）
-        overlay, density = _make_heatmap_overlay(img, x, y, alpha=0.70, cmap='plasma')
+        # 提取可行走区域 mask，屏蔽黑色墙体
+        walkable = extract_walkable_mask(img)
+
+        # KDE 渐变热力图（无栅格），热力不渗入墙体
+        overlay, density = _make_heatmap_overlay(img, x, y, alpha=0.70, cmap='plasma',
+                                                 walkable_mask=walkable)
 
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
@@ -246,6 +325,17 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
     def mk(b, n):
         return _make_fs(b, n) if b else None
 
+    # ── 一次性提取可行走区域 mask（后续所有指标共享）──
+    _walkable = None  # 延迟初始化，第一次用到 img_b 时计算
+    def _get_walkable():
+        nonlocal _walkable
+        if _walkable is None and img_b:
+            try:
+                _walkable = extract_walkable_mask(load_img(mk(img_b, img_n)))
+            except Exception:
+                _walkable = None
+        return _walkable
+
     def _update(name, result):
         """将单个指标结果写入会话缓存"""
         with _sess_lock:
@@ -256,6 +346,9 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             if result is not None and not result.get('error'):
                 sess['computed'].append(name)
             else:
+                # 记录跳过原因到 result
+                if result is None:
+                    sess['results'][name] = {'error': '数据不足，跳过（缺少必要文件或列）'}
                 sess['skipped'].append(name)
 
     def _run_metric(name, fn):
@@ -263,7 +356,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             r = fn()
             _update(name, r)
         except Exception as exc:
-            _update(name, {'error': str(exc)})
+            import traceback
+            _update(name, {'error': str(exc), 'traceback': traceback.format_exc()})
 
     # ── A1 到访频次热力图 ──
     def _heatmap():
@@ -275,7 +369,9 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         x = df['X'].astype(float).values
         y = df['Y'].astype(float).values
         img = load_img(mk(img_b, img_n))
-        overlay, density = _make_heatmap_overlay(img, x, y, alpha=0.70, cmap='plasma')
+        walkable = _get_walkable()
+        overlay, density = _make_heatmap_overlay(img, x, y, alpha=0.70, cmap='plasma',
+                                                  walkable_mask=walkable)
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
         ax0 = axes[0]; ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
@@ -310,7 +406,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         img=load_img(mk(img_b, img_n))
         reg_ids=np.sort(np.unique(regions))
         reg_dur=np.array([t[regions==r].sum() for r in reg_ids])
-        overlay,fg=_make_heatmap_overlay(img,x,y,weights=t,alpha=0.65,cmap='jet')
+        overlay,fg=_make_heatmap_overlay(img,x,y,weights=t,alpha=0.65,cmap='jet',
+                                          walkable_mask=_get_walkable())
         fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
         ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('空间使用时长热力图',color=th['text'],fontsize=13,pad=10)
@@ -347,7 +444,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         with np.errstate(divide='ignore',invalid='ignore'):
             mean_speed=np.where(reg_dwell>0,reg_length/reg_dwell,0)
         weights=np.array([mean_speed[np.where(reg_ids==r)[0][0]] if r in reg_ids else 0 for r in regions_all])
-        overlay,_=_make_heatmap_overlay(img,x_all,y_all,weights=weights,alpha=0.65,cmap='jet')
+        overlay,_=_make_heatmap_overlay(img,x_all,y_all,weights=weights,alpha=0.65,cmap='jet',
+                                         walkable_mask=_get_walkable())
         global_speed=reg_length.sum()/reg_dwell.sum() if reg_dwell.sum()>0 else 0
         fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
         ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
@@ -371,7 +469,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         img=load_img(mk(img_b,img_n))
         reg_ids=np.sort(np.unique(regions))
         reg_dwell=np.array([t[regions==r].sum() for r in reg_ids])
-        overlay,fg=_make_heatmap_overlay(img,x,y,weights=t,alpha=0.65,cmap='jet')
+        overlay,fg=_make_heatmap_overlay(img,x,y,weights=t,alpha=0.65,cmap='jet',
+                                          walkable_mask=_get_walkable())
         fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
         ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('空间停留时长热力图 (s)',color=th['text'],fontsize=13,pad=10)
@@ -390,11 +489,15 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not loc_b or not img_b: return None
         df=load_df(mk(loc_b,loc_n))
         if not {'X','Y'}.issubset(df.columns): return None
+        img=load_img(mk(img_b,img_n))
+        # 过滤不可走区域的点，再做聚类
+        walkable=_get_walkable()
         x=df['X'].astype(float).values; y=df['Y'].astype(float).values
+        if walkable is not None:
+            x,y=filter_points_in_mask(x,y,walkable)
         data_xy=np.column_stack([x,y]); k=max(2,min(5,len(data_xy)-1))
         centers,labels=_kmeans2(data_xy.astype(float),k,iter=10,minit='points',missing='warn',seed=42)
         inertia=float(sum(((data_xy[labels==i]-c)**2).sum() for i,c in enumerate(centers)))
-        img=load_img(mk(img_b,img_n))
         palette=_get_cmap('tab10',k)
         fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
         ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(img,alpha=0.35); ax0.axis('off')
@@ -423,7 +526,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         regions=df['Region'].astype(int).values; img=load_img(mk(img_b,img_n))
         reg_ids=np.sort(np.unique(regions))
         reg_uu=np.array([df[df['Region']==r]['UserID'].nunique() for r in reg_ids])
-        overlay,_=_make_heatmap_overlay(img,x,y,alpha=0.65,cmap='jet')
+        overlay,_=_make_heatmap_overlay(img,x,y,alpha=0.65,cmap='jet',walkable_mask=_get_walkable())
         fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
         ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('人员分布热力图',color=th['text'],fontsize=13,pad=10)
@@ -456,7 +559,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         with np.errstate(divide='ignore',invalid='ignore'):
             openness_val=np.where(reg_areas>0,reg_uu/reg_areas,0)
         global_open=df['UserID'].nunique()/reg_areas.sum() if reg_areas.sum()>0 else 0
-        overlay,_=_make_heatmap_overlay(img,x,y,alpha=0.65,cmap='jet')
+        overlay,_=_make_heatmap_overlay(img,x,y,alpha=0.65,cmap='jet',walkable_mask=_get_walkable())
         fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
         ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('空间开放程度热力图',color=th['text'],fontsize=13,pad=10)
@@ -555,12 +658,17 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         df=load_df(mk(loc_b,loc_n))
         if not {'X','Y','UserID'}.issubset(df.columns): return None
         img=load_img(mk(img_b,img_n))
+        walkable=_get_walkable()
         user_ids=df['UserID'].unique(); palette=_get_cmap('tab20',len(user_ids)); total_lengths={}
         fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
         ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(img,alpha=0.4); ax0.axis('off')
         for idx,uid in enumerate(user_ids):
             ud=df[df['UserID']==uid].reset_index(drop=True)
             x_arr=ud['X'].values; y_arr=ud['Y'].values; color=palette(idx)
+            # 过滤落在黑色区域（不可达）的数据点
+            if walkable is not None:
+                x_arr,y_arr=filter_points_in_mask(x_arr,y_arr,walkable)
+            if len(x_arr)<2: continue
             if len(x_arr)>3:
                 from scipy.interpolate import make_interp_spline
                 t_arr=np.linspace(0,1,len(x_arr)); t_new=np.linspace(0,1,min(500,len(x_arr)*10))
@@ -578,6 +686,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         handles=[plt.Line2D([0],[0],color=palette(i),lw=2) for i in range(leg_n)]
         ax0.legend(handles,[f'用户{uid}' for uid in user_ids[:leg_n]],loc='upper right',fontsize=7,ncol=2,facecolor=th['legend_bg'],edgecolor=th['legend_edge'],labelcolor=th['tick'])
         ax1=axes[1]; _styled_axes(ax1,th)
+        if not total_lengths:
+            return None
         sorted_len=sorted(total_lengths.items(),key=lambda x:x[1],reverse=True)
         uids_s=[str(u) for u,_ in sorted_len]; lens_s=[l for _,l in sorted_len]
         bars=ax1.barh(uids_s,lens_s,color='#00c9a7',alpha=0.85,height=0.6)
@@ -854,11 +964,108 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         return {'image':img_b64,'summary':{'region_count':int(len(reg_ids)),'avg_score':round(avg_score,1),'best_region':str(reg_ids[int(np.argmax(avg_vals))]),'worst_region':str(reg_ids[int(np.argmin(avg_vals))])}}
     _run_metric('satisfaction_region', _sat_region)
 
-    # ── 全部完成，标记 status ──
+    # ── 全部完成，标记 status + 存入数据库 ──
     with _sess_lock:
         sess = _sessions.get(sid)
         if sess is not None:
             sess['status'] = 'done'
+            _save_project_to_db(sid, sess)
+
+
+def _save_project_to_db(sid: str, sess: dict):
+    """将会话结果写入本地数据库，并把结果持久化到磁盘文件夹（在后台线程调用，已持锁）"""
+    try:
+        from api.db import save_project as _db_save
+        floorplan_b64  = _make_thumbnail(sess)
+        result_folder  = _persist_results_to_disk(sid, sess)
+        _db_save(
+            name          = sess.get('project_name') or sess.get('folder') or '未命名项目',
+            building_type = sess.get('type', ''),
+            input_folder  = sess.get('folder', ''),
+            session_id    = sid,
+            computed      = sess.get('computed', []),
+            skipped       = sess.get('skipped',  []),
+            floorplan_b64 = floorplan_b64,
+            files_md5     = sess.get('_files_md5'),
+            result_folder = result_folder,
+        )
+    except Exception:
+        pass  # 数据库写失败不影响主流程
+
+
+def _persist_results_to_disk(sid: str, sess: dict) -> str | None:
+    """
+    将会话中所有已计算指标的图片和摘要持久化到磁盘。
+    目录结构：~/.spacelens/results/<sid>/
+      images/<指标英文名>.png
+      summary.json
+      meta.json          ← building_type / project_name / computed / skipped
+    返回保存目录的绝对路径，失败返回 None。
+    """
+    try:
+        import os as _os
+        from pathlib import Path as _Path
+
+        base_dir = _os.environ.get('SPACELENS_DATA_DIR', '') or str(_Path.home() / '.spacelens')
+        result_dir = _os.path.join(base_dir, 'results', sid)
+        _os.makedirs(_os.path.join(result_dir, 'images'), exist_ok=True)
+
+        results  = sess.get('results',  {})
+        computed = sess.get('computed', [])
+
+        all_summary = {}
+        for metric_id in computed:
+            data = results.get(metric_id)
+            if not data:
+                continue
+            # 保存图片
+            if data.get('image'):
+                img_path = _os.path.join(result_dir, 'images', f'{metric_id}.png')
+                with open(img_path, 'wb') as f:
+                    f.write(base64.b64decode(data['image']))
+            # 收集摘要
+            if data.get('summary'):
+                all_summary[metric_id] = data['summary']
+
+        # 写 summary.json
+        with open(_os.path.join(result_dir, 'summary.json'), 'w', encoding='utf-8') as f:
+            _json.dump(all_summary, f, ensure_ascii=False, indent=2)
+
+        # 写 meta.json（存储 session 元信息，恢复时用）
+        meta = {
+            'sid':           sid,
+            'project_name':  sess.get('project_name', ''),
+            'building_type': sess.get('type', ''),
+            'folder_name':   sess.get('folder', ''),
+            'computed':      computed,
+            'skipped':       sess.get('skipped', []),
+            'theme':         sess.get('theme', 'light'),
+            'accent':        sess.get('accent', '#0ea5e9'),
+        }
+        with open(_os.path.join(result_dir, 'meta.json'), 'w', encoding='utf-8') as f:
+            _json.dump(meta, f, ensure_ascii=False, indent=2)
+
+        return result_dir
+    except Exception:
+        return None
+
+
+def _make_thumbnail(sess: dict, max_size: int = 200) -> str | None:
+    """从会话中取平面图，生成缩略图 base64"""
+    try:
+        # 优先取已存储的原始图片字节
+        img_bytes = sess.get('_raw_img_b')
+        if not img_bytes:
+            return None
+        from PIL import Image as _PIL_Image
+        img = _PIL_Image.open(io.BytesIO(img_bytes)).convert('RGB')
+        img.thumbnail((max_size, max_size), _PIL_Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format='JPEG', quality=75)
+        buf.seek(0)
+        return 'data:image/jpeg;base64,' + base64.b64encode(buf.read()).decode()
+    except Exception:
+        return None
 
 
 @analysis_bp.route('/run_all', methods=['POST'])
@@ -882,8 +1089,21 @@ def run_all():
         ques_b, ques_n     = _read('ques_data')
         region_b, region_n = _read('region_data')
 
+        # 计算各文件 MD5，用于去重
+        import hashlib as _hashlib
+        def _md5(b): return _hashlib.md5(b).hexdigest() if b else None
+        files_md5 = {
+            'img':    _md5(img_b),
+            'loc':    _md5(loc_b),
+            'beh':    _md5(beh_b),
+            'env':    _md5(env_b),
+            'ques':   _md5(ques_b),
+            'region': _md5(region_b),
+        }
+
         building_type = request.form.get('building_type', 'unknown')
         folder_name   = request.form.get('folder_name',   '')
+        project_name  = request.form.get('project_name',  '')
         theme_name    = request.form.get('theme', 'dark')
         accent_param  = request.form.get('accent', '')
 
@@ -901,8 +1121,24 @@ def run_all():
                 'skipped':  [],
                 'type':     building_type,
                 'folder':   folder_name,
+                'project_name': project_name or folder_name or '未命名项目',
                 'ts':       _time.time(),
                 'status':   'running',
+                '_raw_img_b': img_b,     # 保留原图用于生成缩略图
+                '_files_md5': files_md5, # 各文件 MD5，用于去重
+                '_debug_img_b': img_b[:4] if img_b else None,
+                '_debug_loc_b': loc_b[:4] if loc_b else None,
+                '_debug_beh_b': beh_b[:4] if beh_b else None,
+                '_debug_env_b': env_b[:4] if env_b else None,
+                '_debug_ques_b': ques_b[:4] if ques_b else None,
+                '_debug_files': {
+                    'img': (img_n, len(img_b) if img_b else 0),
+                    'loc': (loc_n, len(loc_b) if loc_b else 0),
+                    'beh': (beh_n, len(beh_b) if beh_b else 0),
+                    'env': (env_n, len(env_b) if env_b else 0),
+                    'ques': (ques_n, len(ques_b) if ques_b else 0),
+                    'region': (region_n, len(region_b) if region_b else 0),
+                },
             }
 
         # 启动后台线程
@@ -924,6 +1160,32 @@ def run_all():
 # ─────────────────────────────────────────────
 # /api/session/<sid>  —  读取会话缓存
 # ─────────────────────────────────────────────
+@analysis_bp.route('/session/<sid>/debug', methods=['GET'])
+def debug_session(sid):
+    """开发调试：返回每个指标的错误详情"""
+    with _sess_lock:
+        sess = _sessions.get(sid)
+    if sess is None:
+        return jsonify({'error': '会话不存在'}), 404
+    details = {}
+    for k, v in sess.get('results', {}).items():
+        if isinstance(v, dict):
+            details[k] = {
+                'has_image': bool(v.get('image')),
+                'error': v.get('error', ''),
+                'traceback': v.get('traceback', ''),
+            }
+        else:
+            details[k] = {'value': str(v)}
+    return jsonify({
+        'status': sess.get('status'),
+        'computed': sess.get('computed'),
+        'skipped': sess.get('skipped'),
+        'files_received': sess.get('_debug_files', {}),
+        'details': details,
+    })
+
+
 @analysis_bp.route('/session/<sid>', methods=['GET'])
 def get_session(sid):
     with _sess_lock:
@@ -934,11 +1196,561 @@ def get_session(sid):
         'session_id':    sid,
         'building_type': sess['type'],
         'folder_name':   sess.get('folder', ''),
+        'project_name':  sess.get('project_name', ''),
         'computed':      sess.get('computed', []),
         'skipped':       sess.get('skipped',  []),
         'results':       sess.get('results',  {}),
         'status':        sess.get('status', 'running'),
+        'debug_errors':  {k: v.get('error','') for k, v in sess.get('results', {}).items() if isinstance(v, dict) and v.get('error')},
     })
+
+
+# ─────────────────────────────────────────────
+# /api/export_project/<sid>  —  导出项目结果（ZIP）
+# ─────────────────────────────────────────────
+import zipfile as _zipfile
+import os as _os
+import json as _json
+
+# 指标中文名映射
+_METRIC_NAMES = {
+    'heatmap':             '到访频次热力图',
+    'usetime':             '使用时长',
+    'speed':               '移动速率',
+    'duration':            '停留时长',
+    'cluster':             '空间聚类',
+    'density':             '人员密度',
+    'openness':            '空间开放程度',
+    'topology':            '拓扑连接关系',
+    'difference':          '轨迹差异系数',
+    'trajectory':          '轨迹长度',
+    'environment_p1':      '环境参数_温度',
+    'environment_p2':      '环境参数_湿度',
+    'environment_p3':      '环境参数_光照',
+    'environment_p4':      '环境参数_风速',
+    'environment_p5':      '环境参数_噪声',
+    'behavior_count':      '行为人次',
+    'behavior_duration':   '行为时长',
+    'behavior_rate':       '行为发生率',
+    'behavior_entropy':    '行为复合度',
+    'utilization':         '功能利用率',
+    'satisfaction':        '整体满意度',
+    'satisfaction_region': '空间满意度',
+}
+
+
+def _build_project_zip(sid, sel_metrics, folder_name):
+    """
+    通用：将会话结果打包成 ZIP bytes。
+    返回 (zip_bytes, safe_folder_name, error_str)
+    """
+    with _sess_lock:
+        sess = _sessions.get(sid)
+    if sess is None:
+        return None, None, '会话不存在或已过期'
+
+    safe_folder = ''.join(c if c not in r'\/:*?"<>|' else '_' for c in (folder_name or 'SpaceLens项目'))
+    if not safe_folder:
+        safe_folder = 'SpaceLens项目'
+
+    results  = sess.get('results', {})
+    computed = sess.get('computed', [])
+    to_export = computed[:] if sel_metrics is None else [m for m in sel_metrics if m in computed]
+    if not to_export:
+        return None, safe_folder, '没有可导出的计算结果'
+
+    buf = io.BytesIO()
+    with _zipfile.ZipFile(buf, 'w', _zipfile.ZIP_DEFLATED) as zf:
+        all_summary = {}
+        for metric_id in to_export:
+            data = results.get(metric_id)
+            if not data:
+                continue
+            cn_name = _METRIC_NAMES.get(metric_id, metric_id)
+            if data.get('image'):
+                zf.writestr(f'images/{cn_name}.png', base64.b64decode(data['image']))
+            summary = data.get('summary')
+            if summary:
+                all_summary[cn_name] = summary
+                _write_summary_xlsx(zf, metric_id, cn_name, summary)
+
+        zf.writestr('summary.json', _json.dumps(all_summary, ensure_ascii=False, indent=2))
+        building_type = sess.get('type', '')
+        readme = (
+            f'项目名称：{folder_name}\n'
+            f'建筑类型：{building_type}\n'
+            f'导出指标数：{len(to_export)}\n'
+            f'导出时间：{_time.strftime("%Y-%m-%d %H:%M:%S")}\n'
+            '\n各子文件夹说明：\n'
+            '  images/  — 指标结果图片（PNG）\n'
+            '  data/    — 指标数值汇总（Excel）\n'
+            '  summary.json — 全量数值摘要\n'
+        )
+        zf.writestr('README.txt', readme.encode('utf-8'))
+
+    buf.seek(0)
+    return buf.read(), safe_folder, None
+
+
+@analysis_bp.route('/save_project/<sid>', methods=['POST'])
+def save_project(sid):
+    """
+    桌面端专用：弹出原生文件保存对话框，将 ZIP 写到用户选择的路径。
+    POST body JSON: { "metrics": [...], "folder_name": "..." }
+    成功返回: { "success": true, "path": "..." }
+    取消返回: { "cancelled": true }
+    失败返回: { "error": "..." }
+    """
+    try:
+        body        = request.get_json(silent=True) or {}
+        sel_metrics = body.get('metrics', None)
+        folder_name = body.get('folder_name', '') or 'SpaceLens项目'
+
+        zip_bytes, safe_folder, err = _build_project_zip(sid, sel_metrics, folder_name)
+        if err:
+            return jsonify({'error': err}), 400
+
+        zip_filename = f'{safe_folder}_评价结果.zip'
+
+        # ── 1. 优先使用 Qt 原生对话框（桌面端） ──
+        if _native_save_dialog_hook is not None:
+            save_path = _native_save_dialog_hook('选择保存路径', zip_filename)
+        else:
+            # ── 2. 尝试 tkinter ──
+            try:
+                import tkinter as _tk
+                import tkinter.filedialog as _fd
+                root = _tk.Tk()
+                root.withdraw()
+                root.lift()
+                root.attributes('-topmost', True)
+                save_path = _fd.asksaveasfilename(
+                    parent=root,
+                    title='选择保存路径',
+                    defaultextension='.zip',
+                    initialfile=zip_filename,
+                    filetypes=[('ZIP 压缩包', '*.zip'), ('所有文件', '*.*')],
+                )
+                root.destroy()
+            except Exception:
+                return jsonify({'error': '无法打开文件对话框（非桌面环境）'}), 500
+
+        if not save_path:
+            return jsonify({'cancelled': True})
+
+        with open(save_path, 'wb') as f:
+            f.write(zip_bytes)
+
+        return jsonify({'success': True, 'path': save_path})
+
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'detail': traceback.format_exc()}), 500
+
+
+@analysis_bp.route('/export_project/<sid>', methods=['POST'])
+def export_project(sid):
+    """原始 blob 下载端点（浏览器环境保留）"""
+    try:
+        body        = request.get_json(silent=True) or {}
+        sel_metrics = body.get('metrics', None)
+        folder_name = body.get('folder_name', '') or 'SpaceLens项目'
+
+        zip_bytes, safe_folder, err = _build_project_zip(sid, sel_metrics, folder_name)
+        if err:
+            status = 404 if '不存在' in err else 400
+            return jsonify({'error': err}), status
+
+        from flask import send_file
+        buf = io.BytesIO(zip_bytes)
+        return send_file(
+            buf,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=f'{safe_folder}_评价结果.zip',
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+def _write_summary_xlsx(zf, metric_id, cn_name, summary):
+    """将一个指标的 summary dict 写入 ZIP 内的 data/<cn_name>.xlsx"""
+    try:
+        # 将 summary 中的列表字段（如 clusters、behaviors）展开为独立 sheet
+        wb_buf = io.BytesIO()
+        with pd.ExcelWriter(wb_buf, engine='openpyxl') as writer:
+            # Sheet1: 主摘要（标量值）
+            scalar_rows = []
+            list_fields = {}
+            for k, v in summary.items():
+                if isinstance(v, list):
+                    list_fields[k] = v
+                else:
+                    scalar_rows.append({'指标': k, '数值': v})
+
+            if scalar_rows:
+                pd.DataFrame(scalar_rows).to_excel(
+                    writer, sheet_name='摘要', index=False)
+            else:
+                pd.DataFrame([{'说明': '无标量摘要'}]).to_excel(
+                    writer, sheet_name='摘要', index=False)
+
+            # 如有列表字段（如 clusters 详情），展开为额外 sheet
+            for field_name, field_val in list_fields.items():
+                if field_val and isinstance(field_val[0], dict):
+                    pd.DataFrame(field_val).to_excel(
+                        writer, sheet_name=field_name[:31], index=False)
+                else:
+                    pd.DataFrame({field_name: field_val}).to_excel(
+                        writer, sheet_name=field_name[:31], index=False)
+
+        wb_buf.seek(0)
+        zf.writestr(f'data/{cn_name}.xlsx', wb_buf.read())
+    except Exception:
+        pass  # 单个 xlsx 写失败不影响整体 ZIP
+
+
+# ─────────────────────────────────────────────
+# 历史项目 API
+# ─────────────────────────────────────────────
+
+@analysis_bp.route('/projects/check_duplicate', methods=['POST'])
+def api_check_duplicate():
+    """
+    检查即将创建的项目是否与历史记录重复。
+    接受 multipart/form-data：building_type + 核心文件（img/loc/beh/env/ques）。
+    后端统一用 MD5 计算哈希，与数据库中存储的 MD5 进行比对。
+    region 文件不参与去重（可选辅助文件）。
+    返回:
+      { duplicate: false }                          —— 未找到
+      { duplicate: true, project: {id, name, ...} } —— 找到匹配记录
+    """
+    try:
+        import hashlib as _hashlib
+        import json as _j
+        import sqlite3 as _sqlite3
+        from api.db import _dedup_key, DB_PATH, _lock
+
+        building_type = request.form.get('building_type', '').strip()
+        if not building_type:
+            return jsonify({'duplicate': False})
+
+        # 只对核心文件计算 MD5，与 run_all 保存时的键名完全一致
+        def _md5(f):
+            if f is None:
+                return None
+            b = f.read()
+            f.seek(0)
+            return _hashlib.md5(b).hexdigest() if b else None
+
+        files_md5 = {
+            'img':  _md5(request.files.get('img')),
+            'loc':  _md5(request.files.get('loc')),
+            'beh':  _md5(request.files.get('beh')),
+            'env':  _md5(request.files.get('env')),
+            'ques': _md5(request.files.get('ques')),
+        }
+        # 过滤掉 None 值后再计算 dedup_key
+        files_md5_nonempty = {k: v for k, v in files_md5.items() if v}
+
+        dedup_key = _dedup_key(files_md5_nonempty, building_type)
+        if not dedup_key:
+            return jsonify({'duplicate': False})
+
+        # 在数据库中查找相同 dedup_key
+        with _lock:
+            conn = _sqlite3.connect(DB_PATH, check_same_thread=False)
+            conn.row_factory = _sqlite3.Row
+            try:
+                rows = conn.execute(
+                    'SELECT * FROM projects WHERE building_type = ? AND files_md5 IS NOT NULL',
+                    (building_type,)
+                ).fetchall()
+                for row in rows:
+                    try:
+                        stored_md5_full = _j.loads(row['files_md5'] or '{}')
+                    except Exception:
+                        stored_md5_full = {}
+                    # 只取核心键参与比对（忽略 region）
+                    stored_md5_core = {k: v for k, v in stored_md5_full.items()
+                                       if k in ('img', 'loc', 'beh', 'env', 'ques') and v}
+                    if _dedup_key(stored_md5_core, row['building_type']) == dedup_key:
+                        p = dict(row)
+                        p['computed'] = _j.loads(p.get('computed') or '[]')
+                        p['skipped']  = _j.loads(p.get('skipped')  or '[]')
+                        p.pop('files_md5', None)
+                        return jsonify({'duplicate': True, 'project': p})
+            finally:
+                conn.close()
+
+        return jsonify({'duplicate': False})
+    except Exception as e:
+        return jsonify({'duplicate': False, 'error': str(e)})
+
+@analysis_bp.route('/projects', methods=['GET'])
+def api_list_projects():
+    """返回所有历史项目（不含 results 详情，只含基础信息+缩略图）"""
+    try:
+        from api.db import list_projects as _list
+        projects = _list()
+        # 每个记录只返回必要字段（不含完整 results 内容）
+        result = []
+        for p in projects:
+            result.append({
+                'id':            p['id'],
+                'name':          p['name'],
+                'building_type': p['building_type'],
+                'input_folder':  p['input_folder'],
+                'session_id':    p['session_id'],
+                'computed':      p['computed'],
+                'skipped':       p['skipped'],
+                'floorplan_b64': p['floorplan_b64'],
+                'created_at':    p['created_at'],
+            })
+        return jsonify({'projects': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@analysis_bp.route('/projects/<int:pid>', methods=['DELETE'])
+def api_delete_project(pid):
+    """删除历史项目记录"""
+    try:
+        from api.db import delete_project as _delete
+        ok = _delete(pid)
+        if ok:
+            return jsonify({'success': True})
+        return jsonify({'error': '记录不存在'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@analysis_bp.route('/projects/<int:pid>/rename', methods=['POST'])
+def api_rename_project(pid):
+    """重命名历史项目"""
+    try:
+        from api.db import update_project_name as _rename
+        body = request.get_json(silent=True) or {}
+        name = (body.get('name') or '').strip()
+        if not name:
+            return jsonify({'error': '名称不能为空'}), 400
+        ok = _rename(pid, name)
+        if ok:
+            return jsonify({'success': True})
+        return jsonify({'error': '记录不存在'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@analysis_bp.route('/projects/<int:pid>/view', methods=['GET'])
+def api_view_project(pid):
+    """
+    查看历史项目：
+    1. 若 session 仍在内存 → 直接用
+    2. 否则尝试从 result_folder（磁盘）恢复 session
+    3. 也可通过 ?result_folder=<path> 手动指定文件夹
+    4. 都不行 → 返回 expired
+    """
+    try:
+        from api.db import get_project as _get, save_project as _db_save
+        proj = _get(pid)
+        if proj is None:
+            return jsonify({'error': '项目不存在'}), 404
+
+        sid = proj['session_id']
+
+        # ── 1. session 仍在内存 ──
+        with _sess_lock:
+            sess = _sessions.get(sid)
+
+        if sess is not None and sess.get('status') == 'done':
+            return jsonify({
+                'session_id':    sid,
+                'building_type': sess.get('type', ''),
+                'folder_name':   sess.get('folder', ''),
+                'project_name':  sess.get('project_name', proj['name']),
+                'computed':      sess.get('computed', []),
+                'skipped':       sess.get('skipped',  []),
+                'results':       sess.get('results',  {}),
+                'status':        'done',
+                'from_db':       False,
+            })
+
+        # ── 2. 尝试从磁盘恢复（优先使用 DB 记录的 result_folder，可被 query 参数覆盖）──
+        manual_folder = request.args.get('result_folder', '').strip()
+        disk_folder   = manual_folder or proj.get('result_folder', '') or ''
+
+        if disk_folder:
+            restored = _restore_session_from_disk(sid, disk_folder)
+            if restored:
+                # 写回内存 session
+                with _sess_lock:
+                    _sessions[sid] = restored
+                # 如果是手动指定的路径，顺便更新 DB 里的 result_folder
+                if manual_folder and manual_folder != proj.get('result_folder'):
+                    try:
+                        _db_save(
+                            name          = proj['name'],
+                            building_type = proj['building_type'],
+                            input_folder  = proj['input_folder'],
+                            session_id    = sid,
+                            computed      = restored.get('computed', []),
+                            skipped       = restored.get('skipped',  []),
+                            files_md5     = proj.get('files_md5'),
+                            result_folder = manual_folder,
+                        )
+                    except Exception:
+                        pass
+                return jsonify({
+                    'session_id':    sid,
+                    'building_type': restored.get('type', ''),
+                    'folder_name':   restored.get('folder', ''),
+                    'project_name':  restored.get('project_name', proj['name']),
+                    'computed':      restored.get('computed', []),
+                    'skipped':       restored.get('skipped',  []),
+                    'results':       restored.get('results',  {}),
+                    'status':        'done',
+                    'from_db':       True,
+                    'restored_from': disk_folder,
+                })
+
+        # ── 3. Session 已过期且无法从磁盘恢复 ──
+        return jsonify({
+            'session_id':    sid,
+            'building_type': proj['building_type'],
+            'folder_name':   proj['input_folder'],
+            'project_name':  proj['name'],
+            'computed':      proj['computed'],
+            'skipped':       proj['skipped'],
+            'results':       {},
+            'status':        'expired',
+            'from_db':       True,
+            'result_folder': proj.get('result_folder', ''),
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+def _restore_session_from_disk(sid: str, result_folder: str) -> dict | None:
+    """
+    从磁盘结果文件夹恢复 session dict。
+    文件夹结构：
+      meta.json          ← 元信息（project_name / building_type / computed / skipped …）
+      images/<metric>.png
+      summary.json       ← {metric_id: summary_dict}
+    返回 session dict（已含 results），失败返回 None。
+    """
+    try:
+        import os as _os
+        meta_path    = _os.path.join(result_folder, 'meta.json')
+        summary_path = _os.path.join(result_folder, 'summary.json')
+        images_dir   = _os.path.join(result_folder, 'images')
+
+        if not _os.path.isfile(meta_path):
+            return None
+
+        with open(meta_path, encoding='utf-8') as f:
+            meta = _json.load(f)
+
+        summary_all = {}
+        if _os.path.isfile(summary_path):
+            with open(summary_path, encoding='utf-8') as f:
+                summary_all = _json.load(f)
+
+        computed = meta.get('computed', [])
+        results  = {}
+        for metric_id in computed:
+            img_path = _os.path.join(images_dir, f'{metric_id}.png')
+            img_b64  = None
+            if _os.path.isfile(img_path):
+                with open(img_path, 'rb') as f:
+                    img_b64 = base64.b64encode(f.read()).decode()   # 纯 base64，不带 data: 前缀
+            results[metric_id] = {
+                'image':   img_b64,
+                'summary': summary_all.get(metric_id, {}),
+            }
+
+        return {
+            'status':        'done',
+            'ts':            _time.time(),
+            'project_name':  meta.get('project_name', ''),
+            'type':          meta.get('building_type', ''),
+            'folder':        meta.get('folder_name', ''),
+            'computed':      computed,
+            'skipped':       meta.get('skipped', []),
+            'theme':         meta.get('theme', 'light'),
+            'accent':        meta.get('accent', '#0ea5e9'),
+            'results':       results,
+        }
+    except Exception:
+        return None
+
+
+@analysis_bp.route('/projects/<int:pid>/export', methods=['POST'])
+def api_export_project_by_id(pid):
+    """
+    历史项目另存为：从数据库获取 session_id，调用 save_project 接口。
+    若 session 已过期，返回 { "expired": true }
+    """
+    try:
+        from api.db import get_project as _get
+        proj = _get(pid)
+        if proj is None:
+            return jsonify({'error': '项目不存在'}), 404
+
+        sid = proj['session_id']
+
+        # 检查 session 是否存活
+        with _sess_lock:
+            sess = _sessions.get(sid)
+
+        if sess is None or sess.get('status') != 'done':
+            return jsonify({'expired': True,
+                            'message': '该项目的计算结果已过期，请重新计算后再导出'})
+
+        # 复用 save_project 端点逻辑
+        body = request.get_json(silent=True) or {}
+        body.setdefault('folder_name', proj['name'])
+        request._cached_json = (body, True)  # patch for nested call
+
+        zip_bytes, safe_folder, err = _build_project_zip(
+            sid,
+            body.get('metrics', None),
+            body.get('folder_name', proj['name'])
+        )
+        if err:
+            return jsonify({'error': err}), 400
+
+        zip_filename = f'{safe_folder}_评价结果.zip'
+
+        if _native_save_dialog_hook is not None:
+            save_path = _native_save_dialog_hook('另存为', zip_filename)
+        else:
+            try:
+                import tkinter as _tk
+                import tkinter.filedialog as _fd
+                root = _tk.Tk(); root.withdraw(); root.lift()
+                root.attributes('-topmost', True)
+                save_path = _fd.asksaveasfilename(
+                    parent=root, title='另存为',
+                    defaultextension='.zip', initialfile=zip_filename,
+                    filetypes=[('ZIP 压缩包', '*.zip'), ('所有文件', '*.*')],
+                )
+                root.destroy()
+            except Exception:
+                return jsonify({'error': '无法打开文件对话框'}), 500
+
+        if not save_path:
+            return jsonify({'cancelled': True})
+
+        with open(save_path, 'wb') as f:
+            f.write(zip_bytes)
+
+        return jsonify({'success': True, 'path': save_path})
+
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'detail': traceback.format_exc()}), 500
 
 
 # ─────────────────────────────────────────────
@@ -958,6 +1770,9 @@ def trajectory():
             return jsonify({'error': '定位数据需要 X, Y, UserID 列'}), 400
 
         img = load_img(img_file)
+
+        # 提取可行走区域 mask
+        walkable = extract_walkable_mask(img)
 
         theme_name = request.form.get('theme', 'dark')
         th = _theme(theme_name)
@@ -984,6 +1799,12 @@ def trajectory():
             y_arr = ud['Y'].values
             color = palette(idx)
 
+            # 过滤落在黑色区域（不可达）的数据点
+            x_arr, y_arr = filter_points_in_mask(x_arr, y_arr, walkable)
+            if len(x_arr) < 2:
+                continue
+
+            # 样条平滑
             if len(x_arr) > 3:
                 from scipy.interpolate import make_interp_spline
                 t_arr = np.linspace(0, 1, len(x_arr))
@@ -1072,8 +1893,16 @@ def cluster():
         if not {'X', 'Y'}.issubset(df.columns):
             return jsonify({'error': '定位数据需要 X, Y 列'}), 400
 
+        img = load_img(img_file)
+
+        # 提取可行走区域 mask，过滤掉落在黑色区域的点
+        walkable = extract_walkable_mask(img)
+
         x = df['X'].astype(float).values
         y = df['Y'].astype(float).values
+
+        # 过滤不可走区域的点，再做聚类
+        x, y = filter_points_in_mask(x, y, walkable)
         data_xy = np.column_stack([x, y])
 
         k = max(2, min(k, len(data_xy) - 1))
@@ -1089,8 +1918,6 @@ def cluster():
             ((data_xy[labels == i] - c) ** 2).sum()
             for i, c in enumerate(centers)
         ))
-
-        img = load_img(img_file)
 
         theme_name = request.form.get('theme', 'dark')
         th = _theme(theme_name)
@@ -1179,8 +2006,11 @@ def cluster():
 # ─────────────────────────────────────────────
 
 def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
-                          bandwidth=None, theme='dark'):
-    """KDE 像素级高斯密度热力图叠加，返回 (overlay RGB float[0,1], density_2d)"""
+                          bandwidth=None, theme='dark', walkable_mask=None):
+    """KDE 像素级高斯密度热力图叠加，返回 (overlay RGB float[0,1], density_2d)
+    
+    walkable_mask: bool 数组 (H,W)，False 的区域（黑色墙体）不叠加热力色。
+    """
     h, w = img_arr.shape[:2]
 
     xi = np.clip(np.round(x).astype(int), 0, w - 1)
@@ -1196,6 +2026,10 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
         bandwidth = max(int(min(h, w) * 0.025), 8)
 
     density_smooth = gaussian_filter(density, sigma=bandwidth)
+
+    # ── 屏蔽不可走区域（墙体/黑色区域）──
+    if walkable_mask is not None:
+        density_smooth = density_smooth * walkable_mask.astype(float)
 
     vmax = density_smooth.max()
     if vmax <= 0:

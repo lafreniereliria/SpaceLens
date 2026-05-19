@@ -37,17 +37,17 @@ APP_NAME = "建筑空间绩效评价平台"
 APP_NAME_EN = "Building Space Performance Evaluation Platform"
 
 def _find_free_port() -> int:
-    s = socket.socket()
-    try:
-        s.bind((FLASK_HOST, FLASK_PORT))
-        s.close()
-        return FLASK_PORT
-    except OSError:
-        s2 = socket.socket()
+    # 用 with 语句确保 socket 在任何情况下都会被关闭（包括意外异常）
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind((FLASK_HOST, FLASK_PORT))
+            return FLASK_PORT
+        except OSError:
+            pass
+    # 让 OS 分配一个空闲端口
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s2:
         s2.bind((FLASK_HOST, 0))
-        port = s2.getsockname()[1]
-        s2.close()
-        return port
+        return s2.getsockname()[1]
 
 
 # --------------------------------------------------------------------------- #
@@ -726,6 +726,14 @@ def _run_flask_impl(port: int, state: dict):
     def _api_ready():
         return _flask.jsonify({"ready": True, "error": None})
 
+    @flask_app.route('/api/shutdown', methods=['POST'])
+    def _api_shutdown():
+        """供桌面主进程在退出时调用，通知 Werkzeug 停止服务"""
+        func = _flask.request.environ.get('werkzeug.server.shutdown')
+        if func:
+            func()
+        return _flask.jsonify({"ok": True})
+
     flask_app.run(host=FLASK_HOST, port=port, debug=False, use_reloader=False)
 
 
@@ -863,6 +871,23 @@ class MainWindow(QMainWindow):
         resp_q.put(save_path if save_path else None)
 
     def closeEvent(self, event):
+        # 1. 停止轮询定时器，避免关闭过程中再触发 JS 调用
+        if hasattr(self, '_poll_timer') and self._poll_timer.isActive():
+            self._poll_timer.stop()
+        if hasattr(self, '_dialog_timer') and self._dialog_timer.isActive():
+            self._dialog_timer.stop()
+        if hasattr(self, '_finish_timer') and self._finish_timer.isActive():
+            self._finish_timer.stop()
+
+        # 2. 让 WebView 先加载空白页，通知 Chromium 子进程释放资源
+        #    这一步对 Windows 上 QtWebEngineProcess.exe 孤儿进程至关重要
+        try:
+            self.webview.setUrl(QUrl("about:blank"))
+            self.webview.page().deleteLater()
+        except Exception:
+            pass
+
+        # 3. 退出 Qt 事件循环 → main() 中 sys.exit(app.exec()) 返回
         QApplication.quit()
         event.accept()
 
@@ -891,7 +916,20 @@ def main():
     win = MainWindow(port, state)
     win.show()
 
-    sys.exit(app.exec())
+    exit_code = app.exec()
+
+    # app.exec() 返回后（窗口已关闭），主动通知 Flask/Werkzeug 停止
+    # Flask 线程是 daemon，进程退出时会被强杀，但主动关闭可立即释放端口（Windows 尤其重要）
+    try:
+        import urllib.request as _ur
+        _ur.urlopen(
+            _ur.Request(f'http://{FLASK_HOST}:{port}/api/shutdown', data=b''),
+            timeout=0.5
+        )
+    except Exception:
+        pass  # Flask 可能还没启动完，或已经停了，忽略错误
+
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":

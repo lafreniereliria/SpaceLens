@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>项目对比 — 建筑空间绩效评价平台</title>
+<script>
+(function(){
+  var t = localStorage.getItem('theme') || 'light';
+  document.documentElement.setAttribute('data-theme', t);
+  var a = localStorage.getItem('accentColor') || '#0ea5e9';
+  var m = a.match(/^#([0-9a-f]{6})$/i);
+  if(m){
+    var r=parseInt(m[1].slice(0,2),16), g=parseInt(m[1].slice(2,4),16), b=parseInt(m[1].slice(4,6),16);
+    document.documentElement.style.setProperty('--accent', a);
+    document.documentElement.style.setProperty('--accent-rgb', r+','+g+','+b);
+  }
+})();
+</script>
+<link rel="stylesheet" href="/static/css/app.css">
+<style>
+/* ─── Compare page ─── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --accent: #0ea5e9; --accent-rgb: 14,165,233;
+  font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', sans-serif;
+}
+[data-theme="light"] {
+  --bg:#f4f7fb; --bg-card:#ffffff; --bg-hover:#f0f9ff; --bg-deep:#eef0f8;
+  --border:#e2e8f0; --text-primary:#0f172a; --text-secondary:#64748b; --text-dim:#94a3b8;
+  --shadow:0 2px 16px rgba(0,0,0,0.07); --teal:#00c9a7; --success:#22c55e; --danger:#ef4444;
+}
+[data-theme="dark"] {
+  --bg:#0f1117; --bg-card:#161b27; --bg-hover:#1e2336; --bg-deep:#0a0d14;
+  --border:#2a2f45; --text-primary:#e8eaf0; --text-secondary:#8b90a8; --text-dim:#4a4f6a;
+  --shadow:0 2px 16px rgba(0,0,0,0.35); --teal:#00c9a7; --success:#4ade80; --danger:#f87171;
+}
+body { min-height:100vh; background:var(--bg); color:var(--text-primary); display:flex; flex-direction:column; }
+
+/* ── topbar ── */
+.topbar { width:100%; padding:0 32px; height:60px; display:flex; align-items:center; justify-content:space-between; background:var(--bg-card); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:30; flex-shrink:0; }
+.topbar-left { display:flex; align-items:center; gap:10px; min-width:0; }
+.back-btn { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--text-secondary); text-decoration:none; padding:6px 10px; border-radius:7px; border:1px solid var(--border); transition:all 0.15s; background:transparent; cursor:pointer; white-space:nowrap; flex-shrink:0; }
+.back-btn:hover { color:var(--accent); border-color:var(--accent); background:var(--bg-hover); }
+.topbar-title { font-size:15px; font-weight:600; white-space:nowrap; }
+.topbar-logo-wrap { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.topbar-logo-icon { width:28px; height:28px; background:linear-gradient(135deg,var(--accent),#0284c7); border-radius:7px; display:flex; align-items:center; justify-content:center; }
+.topbar-logo-icon svg { width:15px; height:15px; color:#fff; }
+.topbar-brand { font-size:14px; font-weight:600; }
+.icon-btn { width:34px; height:34px; border:1px solid var(--border); border-radius:8px; background:transparent; color:var(--text-secondary); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.15s; flex-shrink:0; }
+.icon-btn:hover { background:var(--bg); color:var(--text-primary); }
+
+/* ── sidebar ── */
+.layout { display:flex; flex:1; min-height:0; overflow:hidden; }
+.sidebar { width:200px; flex-shrink:0; background:var(--bg-card); border-right:1px solid var(--border); overflow-y:auto; padding:16px 0; }
+.sidebar-section-label { padding:8px 16px 4px; font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--text-dim); }
+.nav-item { display:flex; align-items:center; gap:9px; width:100%; padding:9px 16px; font-size:12px; color:var(--text-secondary); background:transparent; border:none; cursor:pointer; text-align:left; transition:all 0.12s; border-left:2.5px solid transparent; }
+.nav-item:hover { background:var(--bg-hover); color:var(--text-primary); border-left-color:var(--border); }
+.nav-item.active { background:rgba(var(--accent-rgb),0.07); color:var(--accent); font-weight:600; border-left-color:var(--accent); }
+.nav-icon { width:14px; height:14px; flex-shrink:0; }
+.nav-badge-pair { display:flex; gap:3px; margin-left:auto; }
+.nav-dot { width:7px; height:7px; border-radius:50%; background:var(--bg-deep); }
+.nav-dot.done { background:var(--teal); }
+.nav-dot.skip { background:var(--text-dim); opacity:0.35; }
+.nav-dot.computing { background:var(--accent); animation:badge-pulse 1.4s ease-in-out infinite; }
+@keyframes badge-pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* ── main content ── */
+.main { flex:1; overflow-y:auto; padding:0; }
+
+/* ── compare column headers ── */
+.compare-col-headers { display:grid; grid-template-columns:200px 1fr 1fr; gap:0; position:sticky; top:0; z-index:20; background:var(--bg-card); border-bottom:1px solid var(--border); box-shadow:0 2px 8px rgba(0,0,0,0.06); }
+.col-header-label { padding:12px 16px; font-size:11px; font-weight:700; letter-spacing:0.5px; color:var(--text-dim); text-transform:uppercase; display:flex; align-items:center; }
+.col-header-proj { padding:12px 20px; display:flex; align-items:center; gap:10px; }
+.col-header-proj:first-of-type { border-left:1px solid var(--border); }
+.proj-color-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.proj-color-dot.a { background:#0ea5e9; }
+.proj-color-dot.b { background:#a855f7; }
+.col-header-proj-name { font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.col-header-proj-sub { font-size:11px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
+
+/* ── compare rows ── */
+.compare-rows-wrap { padding:0 0 60px; }
+.compare-section-divider { padding:14px 20px 6px; font-size:10px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim); background:var(--bg); border-top:1px solid var(--border); }
+.compare-row { display:grid; grid-template-columns:200px 1fr 1fr; border-bottom:1px solid var(--border); min-height:80px; transition:background 0.15s; }
+.compare-row:hover { background:var(--bg-hover); }
+.compare-row.active { background:rgba(var(--accent-rgb),0.04); }
+.row-label-col { padding:16px; display:flex; flex-direction:column; justify-content:center; gap:4px; border-right:1px solid var(--border); cursor:pointer; }
+.row-metric-badge { font-size:9px; font-weight:700; padding:1px 6px; border-radius:4px; background:rgba(var(--accent-rgb),0.1); color:var(--accent); width:fit-content; }
+.row-metric-name { font-size:12px; font-weight:600; color:var(--text-primary); }
+.row-cell { padding:12px 16px; display:flex; flex-direction:column; gap:8px; border-right:1px solid var(--border); min-height:80px; }
+.row-cell:last-child { border-right:none; }
+
+/* 图片展开 */
+.cell-img-wrap { position:relative; background:var(--bg-deep); border-radius:8px; overflow:hidden; cursor:pointer; }
+.cell-img-wrap img { width:100%; height:auto; display:block; border-radius:8px; }
+.cell-img-wrap .expand-hint { position:absolute; bottom:6px; right:6px; background:rgba(0,0,0,0.45); color:#fff; font-size:10px; padding:2px 7px; border-radius:4px; opacity:0; transition:opacity 0.15s; }
+.cell-img-wrap:hover .expand-hint { opacity:1; }
+
+/* 空/跳过/过期状态 */
+.cell-placeholder { display:flex; align-items:center; justify-content:center; min-height:60px; border-radius:8px; background:var(--bg-deep); font-size:12px; color:var(--text-dim); text-align:center; padding:12px; }
+.cell-placeholder.skip { border:1px dashed var(--border); }
+.cell-placeholder.expired { border:1px dashed rgba(var(--accent-rgb),0.3); color:var(--text-secondary); }
+
+/* 统计数字行 */
+.cell-stats { display:flex; flex-wrap:wrap; gap:6px; }
+.cell-stat { background:var(--bg-deep); border:1px solid var(--border); border-radius:6px; padding:5px 10px; }
+.cell-stat-label { font-size:10px; color:var(--text-dim); margin-bottom:2px; }
+.cell-stat-value { font-size:13px; font-weight:700; }
+
+/* ── loading ── */
+.page-loading { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:60vh; gap:16px; color:var(--text-secondary); font-size:14px; }
+.spinner { width:32px; height:32px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* ── image lightbox ── */
+.lightbox { display:none; position:fixed; inset:0; z-index:500; background:rgba(0,0,0,0.78); backdrop-filter:blur(4px); align-items:center; justify-content:center; cursor:zoom-out; }
+.lightbox.open { display:flex; }
+.lightbox img { max-width:92vw; max-height:92vh; border-radius:10px; object-fit:contain; box-shadow:0 24px 80px rgba(0,0,0,0.5); }
+
+/* ── expired notice ── */
+.expired-notice { margin:0 20px 0; padding:12px 16px; background:rgba(var(--accent-rgb),0.06); border:1px solid rgba(var(--accent-rgb),0.25); border-radius:10px; font-size:12px; color:var(--text-secondary); display:flex; align-items:center; gap:8px; }
+
+/* ── toast ── */
+.toast { position:fixed; bottom:28px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:12px 20px; font-size:13px; font-weight:500; color:var(--text-primary); box-shadow:0 8px 28px rgba(0,0,0,0.15); opacity:0; transition:all 0.3s; z-index:3000; white-space:nowrap; display:flex; align-items:center; gap:8px; pointer-events:none; }
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+.toast.success { border-left:3px solid var(--success); }
+.toast.error   { border-left:3px solid var(--danger); }
+</style>
+</head>
+<body>
+
+<!-- topbar -->
+<nav class="topbar">
+  <div class="topbar-left">
+    <a class="back-btn" href="/history">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>返回历史项目
+    </a>
+    <div class="topbar-title">项目对比</div>
+  </div>
+  <div class="topbar-logo-wrap">
+    <div class="topbar-logo-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <polygon points="12,2 22,8.5 22,15.5 12,22 2,15.5 2,8.5"/><circle cx="12" cy="12" r="3"/>
+      </svg>
+    </div>
+    <span class="topbar-brand">建筑空间绩效评价平台</span>
+  </div>
+  <button class="icon-btn" id="theme-toggle" title="切换明暗">
+    <svg id="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
+      <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+      <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+    </svg>
+    <svg id="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16" style="display:none">
+      <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+    </svg>
+  </button>
+</nav>
+
+<div class="layout">
+  <!-- sidebar metric nav -->
+  <aside class="sidebar" id="sidebar">
+    <div class="page-loading" id="sidebar-loading" style="min-height:200px;padding:40px 16px">
+      <div class="spinner" style="width:20px;height:20px;border-width:2px"></div>
+    </div>
+  </aside>
+
+  <!-- main compare area -->
+  <main class="main" id="main-area">
+    <div class="page-loading" id="page-loading">
+      <div class="spinner"></div>
+      <div>正在加载对比数据…</div>
+    </div>
+  </main>
+</div>
+
+<!-- lightbox -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" src="" alt="">
+</div>
+
+<!-- toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ─────────────────────────────────────────────
+// 指标配置（与 index.html 保持一致）
+// ─────────────────────────────────────────────
+var METRIC_ORDER = [
+  { id:'heatmap',            badge:'A1',  name:'到访频次',    section:'定位分析' },
+  { id:'usetime',            badge:'A2',  name:'使用时长',    section:'定位分析' },
+  { id:'speed',              badge:'A3',  name:'移动速率',    section:'定位分析' },
+  { id:'duration',           badge:'A4',  name:'停留时长',    section:'定位分析' },
+  { id:'cluster',            badge:'A5',  name:'空间聚类',    section:'定位分析' },
+  { id:'density',            badge:'A6',  name:'人员密度',    section:'定位分析' },
+  { id:'openness',           badge:'A7',  name:'开放程度',    section:'定位分析' },
+  { id:'topology',           badge:'A8',  name:'拓扑关系',    section:'定位分析' },
+  { id:'difference',         badge:'A9',  name:'差异系数',    section:'定位分析' },
+  { id:'trajectory',         badge:'A10', name:'轨迹长度',    section:'定位分析' },
+  { id:'environment',        badge:'B5',  name:'环境参数',    section:'环境分析',  isEnv:true },
+  { id:'behavior_count',     badge:'C1',  name:'行为人次',    section:'行为分析' },
+  { id:'behavior_duration',  badge:'C2',  name:'行为时长',    section:'行为分析' },
+  { id:'behavior_rate',      badge:'C3',  name:'行为发生率',  section:'行为分析' },
+  { id:'behavior_entropy',   badge:'C4',  name:'行为复合度',  section:'行为分析' },
+  { id:'utilization',        badge:'C5',  name:'功能利用率',  section:'行为分析' },
+  { id:'satisfaction',       badge:'D3',  name:'整体满意度',  section:'满意度' },
+  { id:'satisfaction_region',badge:'D4',  name:'空间满意度',  section:'满意度' },
+];
+
+var VIEWS_STATS = {
+  heatmap:           [{key:'total_records',label:'总记录数',unit:''},{key:'unique_users',label:'独立用户',unit:''},{key:'peak_frequency',label:'峰值频次',unit:''},{key:'covered_area_pct',label:'覆盖面积',unit:'%'}],
+  usetime:           [{key:'total_users',label:'用户数',unit:''},{key:'avg_time_min',label:'平均使用时长',unit:'min'},{key:'max_time_min',label:'最长',unit:'min'}],
+  speed:             [{key:'avg_speed_mps',label:'平均速率',unit:'m/s'},{key:'max_speed_mps',label:'最大速率',unit:'m/s'}],
+  duration:          [{key:'avg_stay_min',label:'平均停留',unit:'min'},{key:'max_stay_min',label:'最长停留',unit:'min'}],
+  cluster:           [{key:'k',label:'聚类数',unit:''},{key:'total_points',label:'样本量',unit:''}],
+  density:           [{key:'avg_density',label:'平均密度',unit:'人/格'},{key:'max_density',label:'峰值密度',unit:'人/格'}],
+  openness:          [{key:'avg_openness',label:'平均开放度',unit:'%'}],
+  topology:          [{key:'node_count',label:'节点数',unit:''},{key:'edge_count',label:'连接数',unit:''}],
+  difference:        [{key:'cv',label:'变异系数 CV',unit:''}],
+  trajectory:        [{key:'total_users',label:'用户数',unit:''},{key:'avg_length_m',label:'平均轨迹',unit:'m'},{key:'max_length_m',label:'最长轨迹',unit:'m'}],
+  environment:       [{key:'avg_value',label:'均值',unit:''},{key:'max_value',label:'最大值',unit:''},{key:'min_value',label:'最小值',unit:''}],
+  behavior_count:    [{key:'total_count',label:'总人次',unit:''},{key:'behavior_types',label:'行为类型数',unit:''}],
+  behavior_duration: [{key:'avg_duration_min',label:'平均时长',unit:'min'}],
+  behavior_rate:     [{key:'rate_pct',label:'发生率',unit:'%'}],
+  behavior_entropy:  [{key:'entropy',label:'复合度指数',unit:''}],
+  utilization:       [{key:'utilization_pct',label:'利用率',unit:'%'}],
+  satisfaction:      [{key:'avg_score',label:'平均分',unit:'/5'},{key:'sample_count',label:'样本量',unit:''}],
+  satisfaction_region:[{key:'avg_score',label:'平均分',unit:'/5'}],
+};
+
+var TYPE_NAMES = {
+  office:'办公建筑', education:'教育建筑', medical:'医疗建筑',
+  commercial:'商业建筑', cultural:'文化建筑', residential:'居住建筑',
+};
+
+// ─────────────────────────────────────────────
+// 状态
+// ─────────────────────────────────────────────
+var _projects   = [];   // [{id,name,building_type,status,computed,skipped,results}]
+var _activeRow  = null; // 当前高亮的指标 id
+var _envParamN  = 1;    // 环境参数当前子页（1-5）
+
+// ─────────────────────────────────────────────
+// 主题
+// ─────────────────────────────────────────────
+(function(){
+  var btn=document.getElementById('theme-toggle');
+  var sun=document.getElementById('icon-sun');
+  var moon=document.getElementById('icon-moon');
+  function applyTheme(t){
+    document.documentElement.setAttribute('data-theme',t);
+    sun.style.display=t==='dark'?'none':'';
+    moon.style.display=t==='light'?'none':'';
+  }
+  applyTheme(localStorage.getItem('theme')||'light');
+  btn.addEventListener('click',function(){
+    var next=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';
+    localStorage.setItem('theme',next); applyTheme(next);
+  });
+})();
+
+// ─────────────────────────────────────────────
+// Toast
+// ─────────────────────────────────────────────
+var _toastTimer;
+function showToast(msg, type) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast '+(type||'');
+  clearTimeout(_toastTimer);
+  requestAnimationFrame(function(){ requestAnimationFrame(function(){ el.classList.add('show'); }); });
+  _toastTimer = setTimeout(function(){ el.classList.remove('show'); }, 3000);
+}
+
+// ─────────────────────────────────────────────
+// Lightbox
+// ─────────────────────────────────────────────
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() { document.getElementById('lightbox').classList.remove('open'); }
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeLightbox(); });
+
+// ─────────────────────────────────────────────
+// 获取 URL 参数
+// ─────────────────────────────────────────────
+function getPids() {
+  var m = location.search.match(/[?&]pids=([^&]+)/);
+  if (!m) return [];
+  return m[1].split(',').map(function(p){ return p.trim(); }).filter(Boolean);
+}
+
+// ─────────────────────────────────────────────
+// 渲染侧边栏 nav
+// ─────────────────────────────────────────────
+function buildSidebar() {
+  var sb = document.getElementById('sidebar');
+  var curSection = '';
+  var html = '';
+  METRIC_ORDER.forEach(function(m) {
+    if (m.section !== curSection) {
+      curSection = m.section;
+      html += '<div class="sidebar-section-label">'+curSection+'</div>';
+    }
+    html += '<button class="nav-item" id="nav-'+m.id+'" onclick="scrollToRow(\''+m.id+'\')">'+
+      '<span class="nav-icon" style="font-size:10px;font-weight:700;color:var(--accent)">'+m.badge+'</span>'+
+      '<span style="flex:1">'+m.name+'</span>'+
+      '<div class="nav-badge-pair">'+
+        '<div class="nav-dot computing" id="dot-a-'+m.id+'" title="项目A"></div>'+
+        '<div class="nav-dot computing" id="dot-b-'+m.id+'" title="项目B"></div>'+
+      '</div>'+
+    '</button>';
+  });
+  sb.innerHTML = html;
+}
+
+// ─────────────────────────────────────────────
+// 渲染对比主体
+// ─────────────────────────────────────────────
+function buildCompareArea() {
+  var main = document.getElementById('main-area');
+
+  // 项目过期提示
+  var expiredHtml = '';
+  _projects.forEach(function(p, i) {
+    if (p.status === 'expired') {
+      expiredHtml += '<div class="expired-notice" style="margin-top:'+(i===0?'16px':'4px')+'">'+
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'+
+        '项目'+(i===0?'A':'B')+'「'+_esc(p.name)+'」的计算结果已过期（程序重启后内存清除），无法显示图表。请重新计算该项目后再对比。'+
+      '</div>';
+    }
+  });
+
+  // 列头
+  var colHeaderHtml =
+    '<div class="compare-col-headers" id="col-headers">'+
+      '<div class="col-header-label">指标</div>'+
+      _projects.map(function(p, i){
+        return '<div class="col-header-proj">'+
+          '<div class="proj-color-dot '+(i===0?'a':'b')+'"></div>'+
+          '<div>'+
+            '<div class="col-header-proj-name">'+_esc(p.name)+'</div>'+
+            '<div class="col-header-proj-sub">'+(TYPE_NAMES[p.building_type]||p.building_type||'未知类型')+'</div>'+
+          '</div>'+
+        '</div>';
+      }).join('')+
+    '</div>';
+
+  // 各指标行
+  var rowsHtml = '<div class="compare-rows-wrap" id="compare-rows">';
+  var curSection = '';
+  METRIC_ORDER.forEach(function(m) {
+    if (m.section !== curSection) {
+      curSection = m.section;
+      rowsHtml += '<div class="compare-section-divider">'+curSection+'</div>';
+    }
+    rowsHtml += buildRow(m);
+  });
+  rowsHtml += '</div>';
+
+  main.innerHTML = expiredHtml + colHeaderHtml + rowsHtml;
+
+  // 绑定 IntersectionObserver 高亮侧边栏
+  bindScrollHighlight();
+}
+
+function buildRow(m) {
+  var cellsHtml = _projects.map(function(p, i) {
+    return buildCell(m, p, i);
+  }).join('');
+
+  return '<div class="compare-row" id="row-'+m.id+'">'+
+    '<div class="row-label-col" onclick="scrollToRow(\''+m.id+'\')">'+
+      '<span class="row-metric-badge">'+m.badge+'</span>'+
+      '<span class="row-metric-name">'+m.name+'</span>'+
+    '</div>'+
+    cellsHtml+
+  '</div>';
+}
+
+function buildCell(m, proj, projIdx) {
+  // 对于环境参数，默认显示 environment_p1
+  var resultKey = m.isEnv ? 'environment_p1' : m.id;
+  var result    = (proj.results || {})[resultKey];
+  var isSkipped = (proj.skipped||[]).indexOf(resultKey) >= 0 ||
+                  (m.isEnv && [1,2,3,4,5].every(function(n){
+                    return (proj.skipped||[]).indexOf('environment_p'+n) >= 0;
+                  }));
+
+  var content = '';
+  if (proj.status === 'expired') {
+    content = '<div class="cell-placeholder expired">结果已过期</div>';
+  } else if (isSkipped || !result) {
+    content = '<div class="cell-placeholder skip">数据不足，跳过</div>';
+  } else {
+    // 图片
+    if (result.image) {
+      var src = 'data:image/png;base64,'+result.image;
+      content += '<div class="cell-img-wrap" onclick="openLightbox(\''+src+'\')" id="cell-img-'+m.id+'-'+projIdx+'">'+
+        '<img src="'+src+'" alt="'+_esc(m.name)+'">'+
+        '<span class="expand-hint">放大</span>'+
+      '</div>';
+    }
+    // 统计数字
+    if (result.summary && VIEWS_STATS[m.id]) {
+      content += '<div class="cell-stats">';
+      VIEWS_STATS[m.id].forEach(function(s) {
+        var val = (result.summary[s.key] !== undefined && result.summary[s.key] !== null)
+          ? result.summary[s.key] : '—';
+        content += '<div class="cell-stat">'+
+          '<div class="cell-stat-label">'+s.label+'</div>'+
+          '<div class="cell-stat-value">'+val+(val!=='—'?'<span style="font-size:10px;font-weight:400;margin-left:2px;color:var(--text-secondary)">'+s.unit+'</span>':'')+'</div>'+
+        '</div>';
+      });
+      content += '</div>';
+    }
+  }
+
+  // 对环境参数显示子参数切换
+  if (m.isEnv && proj.status !== 'expired') {
+    var tabsHtml = '<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">';
+    ['温度','湿度','光照','风速','噪声'].forEach(function(label, ni) {
+      tabsHtml += '<button style="padding:3px 10px;border-radius:6px;border:1px solid var(--border);background:'+(ni===0?'var(--accent)':'transparent')+';color:'+(ni===0?'#fff':'var(--text-secondary)')+';font-size:11px;cursor:pointer;" '+
+        'id="env-tab-'+projIdx+'-'+(ni+1)+'" '+
+        'onclick="switchEnvParam('+projIdx+','+(ni+1)+',this)">'+label+'</button>';
+    });
+    tabsHtml += '</div>';
+    content = tabsHtml + '<div id="env-cell-content-'+projIdx+'">'+content+'</div>';
+  }
+
+  return '<div class="row-cell" id="cell-'+m.id+'-'+projIdx+'" data-metric="'+m.id+'" data-proj="'+projIdx+'">'+content+'</div>';
+}
+
+// ─────────────────────────────────────────────
+// 环境参数切换
+// ─────────────────────────────────────────────
+function switchEnvParam(projIdx, pn, btn) {
+  // 切换 tab 样式
+  for (var i=1;i<=5;i++) {
+    var t = document.getElementById('env-tab-'+projIdx+'-'+i);
+    if (!t) continue;
+    t.style.background = (i===pn) ? 'var(--accent)' : 'transparent';
+    t.style.color      = (i===pn) ? '#fff' : 'var(--text-secondary)';
+  }
+  var proj = _projects[projIdx];
+  var resultKey = 'environment_p'+pn;
+  var result = (proj.results||{})[resultKey];
+  var container = document.getElementById('env-cell-content-'+projIdx);
+  if (!container) return;
+  if (!result || proj.status==='expired') {
+    container.innerHTML = '<div class="cell-placeholder skip">该参数数据不足</div>';
+    return;
+  }
+  var html = '';
+  if (result.image) {
+    var src = 'data:image/png;base64,'+result.image;
+    html += '<div class="cell-img-wrap" onclick="openLightbox(\''+src+'\')">'+
+      '<img src="'+src+'" alt="环境参数"><span class="expand-hint">放大</span></div>';
+  }
+  if (result.summary && VIEWS_STATS['environment']) {
+    html += '<div class="cell-stats">';
+    VIEWS_STATS['environment'].forEach(function(s) {
+      var val = (result.summary[s.key] !== undefined) ? result.summary[s.key] : '—';
+      html += '<div class="cell-stat"><div class="cell-stat-label">'+s.label+'</div>'+
+        '<div class="cell-stat-value">'+val+'</div></div>';
+    });
+    html += '</div>';
+  }
+  container.innerHTML = html || '<div class="cell-placeholder skip">暂无数据</div>';
+}
+
+// ─────────────────────────────────────────────
+// nav badge 状态
+// ─────────────────────────────────────────────
+function updateNavBadges() {
+  METRIC_ORDER.forEach(function(m) {
+    _projects.forEach(function(p, i) {
+      var letter = i===0?'a':'b';
+      var el = document.getElementById('dot-'+letter+'-'+m.id);
+      if (!el) return;
+      el.className = 'nav-dot';
+      if (p.status === 'expired') { el.classList.add('skip'); return; }
+      var key = m.isEnv ? 'environment_p1' : m.id;
+      if ((p.computed||[]).indexOf(key) >= 0) el.classList.add('done');
+      else if ((p.skipped||[]).indexOf(key) >= 0) el.classList.add('skip');
+      else el.classList.add('skip');
+    });
+  });
+}
+
+// ─────────────────────────────────────────────
+// 滚动高亮 nav（IntersectionObserver）
+// ─────────────────────────────────────────────
+function bindScrollHighlight() {
+  if (!('IntersectionObserver' in window)) return;
+  var obs = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        var id = entry.target.id.replace('row-', '');
+        document.querySelectorAll('.nav-item').forEach(function(b){ b.classList.remove('active'); });
+        var navBtn = document.getElementById('nav-'+id);
+        if (navBtn) navBtn.classList.add('active');
+      }
+    });
+  }, { rootMargin:'-30% 0px -60% 0px', threshold:0 });
+
+  document.querySelectorAll('.compare-row').forEach(function(r){ obs.observe(r); });
+}
+
+function scrollToRow(id) {
+  var row = document.getElementById('row-'+id);
+  if (!row) return;
+  // 考虑列头 sticky 高度
+  var headerH = (document.getElementById('col-headers')||{}).offsetHeight || 60;
+  var topbarH = 60;
+  var y = row.getBoundingClientRect().top + window.scrollY - topbarH - headerH - 8;
+  // main-area 内部滚动
+  var main = document.getElementById('main-area');
+  var rowTop = row.offsetTop;
+  main.scrollTo({ top: rowTop - headerH - 8, behavior:'smooth' });
+}
+
+// ─────────────────────────────────────────────
+// 加载数据
+// ─────────────────────────────────────────────
+function loadData() {
+  var pids = getPids();
+  if (pids.length !== 2) {
+    document.getElementById('page-loading').innerHTML =
+      '<div style="color:var(--danger);font-size:14px">参数错误：需要恰好 2 个项目 ID</div>';
+    return;
+  }
+  fetch('/api/projects/compare?pids='+pids.join(','))
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if (data.error) throw new Error(data.error);
+      _projects = data.projects || [];
+      if (_projects.length !== 2) throw new Error('返回数据异常');
+
+      document.getElementById('page-loading').style.display = 'none';
+      buildSidebar();
+      buildCompareArea();
+      updateNavBadges();
+    })
+    .catch(function(e) {
+      document.getElementById('page-loading').innerHTML =
+        '<div style="color:var(--danger);font-size:14px">加载失败：'+e.message+'</div>';
+    });
+}
+
+function _esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─────────────────────────────────────────────
+// 初始化
+// ─────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', loadData);
+</script>
+</body>
+</html>

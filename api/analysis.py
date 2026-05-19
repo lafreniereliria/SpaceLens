@@ -1542,14 +1542,99 @@ def api_rename_project(pid):
         return jsonify({'error': str(e)}), 500
 
 
+@analysis_bp.route('/projects/compare', methods=['GET'])
+def api_compare_projects():
+    """
+    对比两个历史项目的结果数据。
+    GET /api/projects/compare?pids=1,2
+    返回:
+      {
+        projects: [
+          { id, name, building_type, session_id, status('done'|'expired'),
+            computed, skipped, results },
+          { ... }
+        ]
+      }
+    """
+    try:
+        from api.db import get_project as _get
+        pids_raw = request.args.get('pids', '')
+        pids = []
+        for p in pids_raw.split(','):
+            p = p.strip()
+            if p.isdigit():
+                pids.append(int(p))
+        if len(pids) != 2:
+            return jsonify({'error': '请传入恰好 2 个项目 ID，例如 ?pids=1,2'}), 400
+
+        out = []
+        for pid in pids:
+            proj = _get(pid)
+            if proj is None:
+                return jsonify({'error': f'项目 {pid} 不存在'}), 404
+
+            sid = proj['session_id']
+            # 1. session 在内存
+            with _sess_lock:
+                sess = _sessions.get(sid)
+
+            if sess is not None and sess.get('status') == 'done':
+                out.append({
+                    'id':            pid,
+                    'name':          proj['name'],
+                    'building_type': proj['building_type'],
+                    'session_id':    sid,
+                    'status':        'done',
+                    'computed':      sess.get('computed', []),
+                    'skipped':       sess.get('skipped',  []),
+                    'results':       sess.get('results',  {}),
+                })
+                continue
+
+            # 2. 磁盘恢复
+            disk_folder = proj.get('result_folder', '') or ''
+            if disk_folder:
+                restored = _restore_session_from_disk(sid, disk_folder)
+                if restored:
+                    with _sess_lock:
+                        _sessions[sid] = restored
+                    out.append({
+                        'id':            pid,
+                        'name':          proj['name'],
+                        'building_type': proj['building_type'],
+                        'session_id':    sid,
+                        'status':        'done',
+                        'computed':      restored.get('computed', []),
+                        'skipped':       restored.get('skipped',  []),
+                        'results':       restored.get('results',  {}),
+                    })
+                    continue
+
+            # 3. 过期
+            out.append({
+                'id':            pid,
+                'name':          proj['name'],
+                'building_type': proj['building_type'],
+                'session_id':    sid,
+                'status':        'expired',
+                'computed':      proj.get('computed', []),
+                'skipped':       proj.get('skipped',  []),
+                'results':       {},
+            })
+
+        return jsonify({'projects': out})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @analysis_bp.route('/projects/<int:pid>/view', methods=['GET'])
 def api_view_project(pid):
     """
     查看历史项目：
-    1. 若 session 仍在内存 → 直接用
+    1. 若 session 仍在内存 -- 直接用
     2. 否则尝试从 result_folder（磁盘）恢复 session
     3. 也可通过 ?result_folder=<path> 手动指定文件夹
-    4. 都不行 → 返回 expired
+    4. 都不行 -- 返回 expired
     """
     try:
         from api.db import get_project as _get, save_project as _db_save

@@ -170,6 +170,33 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
 .no-result-text { font-size:15px; color:var(--text-secondary); font-weight:500; }
 .no-result-sub { font-size:13px; color:var(--text-dim); }
 
+/* ── compare mode ── */
+.compare-toggle-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px; padding:12px 16px; background:rgba(var(--accent-rgb),0.06); border:1.5px solid rgba(var(--accent-rgb),0.28); border-radius:12px; animation:fadeIn 0.2s; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:none} }
+.compare-bar-text { font-size:13px; font-weight:600; color:var(--accent); flex:1; }
+.compare-bar-hint { font-size:12px; color:var(--text-secondary); }
+.compare-bar-count { font-size:12px; font-weight:700; color:var(--accent); background:rgba(var(--accent-rgb),0.12); padding:3px 10px; border-radius:20px; white-space:nowrap; }
+.btn-compare-go { display:inline-flex; align-items:center; gap:7px; padding:9px 20px; background:var(--accent); color:#fff; border:none; border-radius:9px; font-size:13px; font-weight:600; cursor:pointer; transition:all 0.15s; box-shadow:0 3px 12px rgba(var(--accent-rgb),0.35); }
+.btn-compare-go:hover { opacity:0.88; transform:translateY(-1px); }
+.btn-compare-go:disabled { opacity:0.4; cursor:not-allowed; transform:none; }
+.btn-compare-cancel { padding:8px 16px; border:1px solid var(--border); border-radius:8px; background:transparent; font-size:12px; color:var(--text-secondary); cursor:pointer; transition:all 0.15s; }
+.btn-compare-cancel:hover { border-color:var(--accent); color:var(--accent); }
+
+/* compare toggle button */
+.btn-compare-mode { display:inline-flex; align-items:center; gap:7px; padding:9px 18px; background:transparent; color:var(--text-secondary); border:1.5px solid var(--border); border-radius:10px; font-size:13px; font-weight:500; cursor:pointer; transition:all 0.15s; }
+.btn-compare-mode:hover { border-color:var(--accent); color:var(--accent); }
+.btn-compare-mode.active { background:rgba(var(--accent-rgb),0.08); border-color:var(--accent); color:var(--accent); }
+
+/* card select overlay */
+.project-card { position:relative; }
+.card-select-overlay { position:absolute; inset:0; z-index:5; display:none; cursor:pointer; border-radius:16px; transition:all 0.15s; }
+.compare-mode .card-select-overlay { display:block; }
+.project-card.selected .card-select-overlay { background:rgba(var(--accent-rgb),0.12); border:2.5px solid var(--accent); border-radius:16px; }
+.card-check { position:absolute; top:10px; right:10px; width:26px; height:26px; border-radius:50%; background:rgba(0,0,0,0.45); border:2px solid rgba(255,255,255,0.7); display:flex; align-items:center; justify-content:center; transition:all 0.15s; }
+.project-card.selected .card-check { background:var(--accent); border-color:var(--accent); }
+.card-check svg { display:none; }
+.project-card.selected .card-check svg { display:block; }
+
 /* ── toast ── */
 .toast { position:fixed; bottom:28px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:12px 20px; font-size:13px; font-weight:500; color:var(--text-primary); box-shadow:0 8px 28px rgba(0,0,0,0.15); opacity:0; transition:all 0.3s; z-index:3000; white-space:nowrap; display:flex; align-items:center; gap:8px; pointer-events:none; }
 .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
@@ -239,10 +266,30 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
       <h1>历史项目</h1>
       <p id="page-subtitle">共 0 个项目</p>
     </div>
-    <a class="btn-new-project" href="/new_project">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-      新建项目
-    </a>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <button class="btn-compare-mode" id="btn-compare-mode" onclick="toggleCompareMode()" style="display:none">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="9" height="18" rx="1"/><rect x="13" y="3" width="9" height="18" rx="1"/></svg>
+        项目对比
+      </button>
+      <a class="btn-new-project" href="/new_project">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        新建项目
+      </a>
+    </div>
+  </div>
+
+  <!-- 对比模式操作栏 -->
+  <div class="compare-toggle-bar" id="compare-bar" style="display:none">
+    <div>
+      <div class="compare-bar-text">🔲 对比模式已开启</div>
+      <div class="compare-bar-hint">请选择恰好 2 个项目进行对比</div>
+    </div>
+    <span class="compare-bar-count" id="compare-bar-count">已选 0 / 2</span>
+    <button class="btn-compare-go" id="btn-compare-go" onclick="goCompare()" disabled>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="3" width="9" height="18" rx="1"/><rect x="13" y="3" width="9" height="18" rx="1"/></svg>
+      开始对比
+    </button>
+    <button class="btn-compare-cancel" onclick="toggleCompareMode()">退出对比</button>
   </div>
 
   <!-- 筛选栏（加载完成后显示） -->
@@ -303,6 +350,7 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
 
   <!-- 项目卡片网格 -->
   <div class="project-grid" id="project-grid" style="display:none"></div>
+  <!-- 底部对比浮动按钮（小屏友好，滚动时固定显示） -->
 
 </main>
 
@@ -415,6 +463,12 @@ function renderCard(p) {
   card.className = 'project-card';
   card.dataset.id = p.id;
   card.innerHTML = [
+    // ── 对比模式选择覆盖层 ──
+    '<div class="card-select-overlay" onclick="toggleSelectCard('+p.id+')">',
+      '<div class="card-check">',
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>',
+      '</div>',
+    '</div>',
     '<div class="card-thumb">',
       thumb,
       '<div class="card-type-badge">'+_escHtml(typeName)+'</div>',
@@ -456,6 +510,61 @@ function _escAttr(s) {
 // ── 所有项目原始数据（过滤用） ──
 var _allProjects = [];
 
+// ── 对比模式 ──
+var _compareMode = false;
+var _compareIds  = [];   // 最多 2 个 project id
+
+function toggleCompareMode() {
+  _compareMode = !_compareMode;
+  _compareIds  = [];
+  var bar = document.getElementById('compare-bar');
+  var modeBtn = document.getElementById('btn-compare-mode');
+  if (_compareMode) {
+    bar.style.display = 'flex';
+    modeBtn.classList.add('active');
+    document.getElementById('project-grid').classList.add('compare-mode');
+  } else {
+    bar.style.display = 'none';
+    modeBtn.classList.remove('active');
+    document.getElementById('project-grid').classList.remove('compare-mode');
+    // 取消所有选中
+    document.querySelectorAll('.project-card.selected').forEach(function(c){ c.classList.remove('selected'); });
+    _updateCompareBar();
+  }
+}
+
+function toggleSelectCard(pid) {
+  if (!_compareMode) return;
+  var card = document.querySelector('.project-card[data-id="'+pid+'"]');
+  if (!card) return;
+  var idx = _compareIds.indexOf(pid);
+  if (idx >= 0) {
+    // 取消选中
+    _compareIds.splice(idx, 1);
+    card.classList.remove('selected');
+  } else {
+    if (_compareIds.length >= 2) {
+      showToast('最多只能选择 2 个项目进行对比', 'error');
+      return;
+    }
+    _compareIds.push(pid);
+    card.classList.add('selected');
+  }
+  _updateCompareBar();
+}
+
+function _updateCompareBar() {
+  var cnt = _compareIds.length;
+  document.getElementById('compare-bar-count').textContent = '已选 '+cnt+' / 2';
+  var goBtn = document.getElementById('btn-compare-go');
+  goBtn.disabled = cnt !== 2;
+}
+
+function goCompare() {
+  if (_compareIds.length !== 2) return;
+  window.location.href = '/compare?pids=' + _compareIds.join(',');
+}
+
 // ── 加载项目列表 ──
 function loadProjects() {
   document.getElementById('loading-state').style.display='flex';
@@ -472,8 +581,11 @@ function loadProjects() {
       if(_allProjects.length === 0) {
         document.getElementById('empty-state').style.display='flex';
         document.getElementById('page-subtitle').textContent = '共 0 个项目';
+        document.getElementById('btn-compare-mode').style.display='none';
         return;
       }
+      // 2 个以上才显示对比按钮
+      if(_allProjects.length >= 2) document.getElementById('btn-compare-mode').style.display='inline-flex';
       document.getElementById('filter-bar').style.display='flex';
       applyFilters();
     })

@@ -718,6 +718,10 @@ def _run_flask_impl(port: int, state: dict):
     def _history():
         return _flask.render_template('history.html')
 
+    @flask_app.route('/compare')
+    def _compare():
+        return _flask.render_template('compare.html')
+
     @flask_app.route('/api/ready')
     def _api_ready():
         return _flask.jsonify({"ready": True, "error": None})

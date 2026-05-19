@@ -42,6 +42,11 @@ def history():
     return render_template('history.html')
 
 
+@app.route('/compare')
+def compare():
+    return render_template('compare.html')
+
+
 if __name__ == '__main__':
     print("✨ 空间分析系统 Demo 启动中...")
     print("   访问 http://127.0.0.1:8080")

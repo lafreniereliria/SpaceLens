@@ -594,11 +594,21 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax0.set_yticks(range(n)); ax0.set_yticklabels(reg_ids,fontsize=8)
         ax0.set_xlabel('目标区域',color=th['subtext'],fontsize=10); ax0.set_ylabel('出发区域',color=th['subtext'],fontsize=10)
         ax0.set_title('区域人员转移矩阵',color=th['text'],fontsize=13,pad=10)
+        for i in range(n):
+            for j in range(n):
+                v=trans[i,j]
+                if v>0: ax0.text(j,i,str(int(v)),ha='center',va='center',fontsize=7,color='black' if v<trans.max()*0.6 else 'white',fontweight='bold')
         cbar=fig.colorbar(im,ax=ax0,fraction=0.04,pad=0.02); cbar.ax.tick_params(colors=th['cbar_tick'],labelsize=8)
         ax1=axes[1]; _styled_axes(ax1,th)
         in_deg=trans.sum(axis=0); out_deg=trans.sum(axis=1); bw=0.35; xs=np.arange(n)
-        ax1.bar(xs-bw/2,in_deg,width=bw,color=th['accent'],alpha=0.85,label='入流')
-        ax1.bar(xs+bw/2,out_deg,width=bw,color='#00c9a7',alpha=0.85,label='出流')
+        bars_in=ax1.bar(xs-bw/2,in_deg,width=bw,color=th['accent'],alpha=0.85,label='入流')
+        bars_out=ax1.bar(xs+bw/2,out_deg,width=bw,color='#00c9a7',alpha=0.85,label='出流')
+        for bar in bars_in:
+            h=bar.get_height()
+            if h>0: ax1.text(bar.get_x()+bar.get_width()/2,h+h*0.02,str(int(h)),ha='center',va='bottom',color=th['bar_label'],fontsize=7)
+        for bar in bars_out:
+            h=bar.get_height()
+            if h>0: ax1.text(bar.get_x()+bar.get_width()/2,h+h*0.02,str(int(h)),ha='center',va='bottom',color=th['bar_label'],fontsize=7)
         ax1.set_xticks(xs); ax1.set_xticklabels(reg_ids,fontsize=8)
         ax1.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax1.set_ylabel('流量',color=th['subtext'],fontsize=10)
         ax1.set_title('各区域人员流入/流出量',color=th['text'],fontsize=13)
@@ -635,14 +645,20 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         diff_coeff_reg=reg_means/global_mean
         fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
         ax0=axes[0]; _styled_axes(ax0,th)
-        ax0.bar([str(u) for u in per_ids],diff_coeff_per,color=th['accent'],alpha=0.85,width=0.6)
+        bars0=ax0.bar([str(u) for u in per_ids],diff_coeff_per,color=th['accent'],alpha=0.85,width=0.6)
+        for bar in bars0:
+            h=bar.get_height()
+            ax0.text(bar.get_x()+bar.get_width()/2,h+h*0.01,f'{h:.2f}',ha='center',va='bottom',color=th['bar_label'],fontsize=8)
         ax0.axhline(1.0,color='#ff5e5e',linestyle='--',linewidth=1.5,label='基准线(=1)')
         ax0.set_xlabel('人员编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('差异系数',color=th['subtext'],fontsize=10)
         ax0.set_title('人员轨迹长度差异系数',color=th['text'],fontsize=13,pad=10)
         ax0.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
         ax1=axes[1]; _styled_axes(ax1,th)
-        ax1.bar([str(r) for r in reg_ids],diff_coeff_reg,color='#f5a623',alpha=0.85,width=0.6)
+        bars1=ax1.bar([str(r) for r in reg_ids],diff_coeff_reg,color='#f5a623',alpha=0.85,width=0.6)
+        for bar in bars1:
+            h=bar.get_height()
+            ax1.text(bar.get_x()+bar.get_width()/2,h+h*0.01,f'{h:.2f}',ha='center',va='bottom',color=th['bar_label'],fontsize=8)
         ax1.axhline(1.0,color='#ff5e5e',linestyle='--',linewidth=1.5,label='基准线(=1)')
         ax1.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax1.set_ylabel('差异系数',color=th['subtext'],fontsize=10)
         ax1.set_title('区域流线长度差异系数',color=th['text'],fontsize=13)
@@ -729,6 +745,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             cbar.ax.tick_params(colors=th['cbar_tick'],labelsize=8); cbar.set_label(label,color=th['subtext'],fontsize=9)
             ax1=axes[1]; _styled_axes(ax1,th)
             ax1.scatter(range(len(vals)),vals,color=th['accent'],s=40,alpha=0.85,zorder=3)
+            for xi,vi in enumerate(vals):
+                ax1.annotate(f'{vi:.2f}',(xi,vi),xytext=(0,6),textcoords='offset points',ha='center',va='bottom',color=th['bar_label'],fontsize=7)
             ax1.axhline(float(vals.mean()),color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'均值 {vals.mean():.2f}')
             ax1.set_xlabel('测点编号',color=th['subtext'],fontsize=10); ax1.set_ylabel(label,color=th['subtext'],fontsize=10)
             ax1.set_title(f'各测点{label}值',color=th['text'],fontsize=13)
@@ -765,7 +783,10 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1=axes[1]; _styled_axes(ax1,th)
         bw=0.7/len(uniq_beh); xs=np.arange(len(uniq_reg))
         for j,b in enumerate(uniq_beh):
-            ax1.bar(xs+j*bw-0.35+bw/2,count_matrix[:,j],width=bw,color=palette(j),alpha=0.85,label=beh_labels[j])
+            bars_c=ax1.bar(xs+j*bw-0.35+bw/2,count_matrix[:,j],width=bw,color=palette(j),alpha=0.85,label=beh_labels[j])
+            for bar in bars_c:
+                h=bar.get_height()
+                if h>0: ax1.text(bar.get_x()+bar.get_width()/2,h+h*0.02,str(int(h)),ha='center',va='bottom',color=th['bar_label'],fontsize=7)
         ax1.set_xticks(xs); ax1.set_xticklabels(uniq_reg,fontsize=8)
         ax1.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax1.set_ylabel('人次',color=th['subtext'],fontsize=10)
         ax1.set_title('各区域行为发生人次',color=th['text'],fontsize=13)
@@ -794,7 +815,10 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1=axes[1]; _styled_axes(ax1,th)
         bw=0.7/len(uniq_beh); xs=np.arange(len(uniq_reg))
         for j,b in enumerate(uniq_beh):
-            ax1.bar(xs+j*bw-0.35+bw/2,dur_matrix[:,j],width=bw,color=palette(j),alpha=0.85,label=beh_labels[j])
+            bars_d=ax1.bar(xs+j*bw-0.35+bw/2,dur_matrix[:,j],width=bw,color=palette(j),alpha=0.85,label=beh_labels[j])
+            for bar in bars_d:
+                h=bar.get_height()
+                if h>0: ax1.text(bar.get_x()+bar.get_width()/2,h+h*0.02,f'{h:.0f}',ha='center',va='bottom',color=th['bar_label'],fontsize=7)
         ax1.set_xticks(xs); ax1.set_xticklabels(uniq_reg,fontsize=8)
         ax1.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax1.set_ylabel('时长 (s)',color=th['subtext'],fontsize=10)
         ax1.set_title('各区域行为时长',color=th['text'],fontsize=13)
@@ -819,7 +843,11 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
         ax0=axes[0]; _styled_axes(ax0,th); bottom=np.zeros(len(uniq_reg))
         for j,b in enumerate(uniq_beh):
-            ax0.bar(uniq_reg.astype(str),rate_matrix[:,j],bottom=bottom,color=palette(j),alpha=0.85,label=beh_labels[j]); bottom+=rate_matrix[:,j]
+            seg_bars=ax0.bar(uniq_reg.astype(str),rate_matrix[:,j],bottom=bottom,color=palette(j),alpha=0.85,label=beh_labels[j])
+            for bi,bar in enumerate(seg_bars):
+                h=rate_matrix[bi,j]
+                if h>0.02: ax0.text(bar.get_x()+bar.get_width()/2,bottom[bi]+h/2,f'{h:.1%}',ha='center',va='center',color='white',fontsize=7,fontweight='bold')
+            bottom+=rate_matrix[:,j]
         ax0.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('发生率',color=th['subtext'],fontsize=10)
         ax0.set_title('各区域行为发生率 (堆叠)',color=th['text'],fontsize=13,pad=10)
         ax0.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
@@ -827,7 +855,10 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1=axes[1]; _styled_axes(ax1,th)
         bw=0.7/len(uniq_beh); xs=np.arange(len(uniq_reg))
         for j,b in enumerate(uniq_beh):
-            ax1.bar(xs+j*bw-0.35+bw/2,rate_matrix[:,j],width=bw,color=palette(j),alpha=0.85,label=beh_labels[j])
+            bars_r=ax1.bar(xs+j*bw-0.35+bw/2,rate_matrix[:,j],width=bw,color=palette(j),alpha=0.85,label=beh_labels[j])
+            for bar in bars_r:
+                h=bar.get_height()
+                if h>0.01: ax1.text(bar.get_x()+bar.get_width()/2,h+h*0.04,f'{h:.1%}',ha='center',va='bottom',color=th['bar_label'],fontsize=7)
         ax1.set_xticks(xs); ax1.set_xticklabels(uniq_reg,fontsize=8)
         ax1.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax1.set_ylabel('发生率',color=th['subtext'],fontsize=10)
         ax1.set_title('各区域行为发生率 (分组)',color=th['text'],fontsize=13)
@@ -915,7 +946,10 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
         ax0=axes[0]; _styled_axes(ax0,th)
         colors=['#7c5cfc' if s>=avg_score else '#00c9a7' for s in scores]
-        ax0.bar([str(u) for u in user_ids],scores,color=colors,alpha=0.85,width=0.6)
+        bars_s=ax0.bar([str(u) for u in user_ids],scores,color=colors,alpha=0.85,width=0.6)
+        for bar in bars_s:
+            h=bar.get_height()
+            ax0.text(bar.get_x()+bar.get_width()/2,h+1,f'{h:.0f}',ha='center',va='bottom',color=th['bar_label'],fontsize=8)
         ax0.axhline(avg_score,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'均值 {avg_score:.1f}')
         ax0.set_xlabel('人员编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('满意度得分',color=th['subtext'],fontsize=10)
         ax0.set_title('空间整体满意度',color=th['text'],fontsize=13,pad=10)
@@ -923,7 +957,10 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
         ax1=axes[1]; _styled_axes(ax1,th)
         bins=[0,60,70,80,90,100]; counts,_=np.histogram(scores,bins=bins)
-        ax1.bar(['<60','60-70','70-80','80-90','90-100'],counts,color='#a78bfa',alpha=0.85,width=0.6)
+        bars_h=ax1.bar(['<60','60-70','70-80','80-90','90-100'],counts,color='#a78bfa',alpha=0.85,width=0.6)
+        for bar in bars_h:
+            h=bar.get_height()
+            if h>0: ax1.text(bar.get_x()+bar.get_width()/2,h+0.2,str(int(h)),ha='center',va='bottom',color=th['bar_label'],fontsize=9)
         ax1.set_xlabel('分数段',color=th['subtext'],fontsize=10); ax1.set_ylabel('人数',color=th['subtext'],fontsize=10)
         ax1.set_title('满意度分布',color=th['text'],fontsize=13)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
@@ -947,7 +984,10 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         fig=plt.figure(figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
         ax0=fig.add_subplot(121); _styled_axes(ax0,th)
         colors=['#7c5cfc' if v>=avg_score else '#00c9a7' for v in avg_vals]
-        ax0.bar([str(r) for r in reg_ids],avg_vals,color=colors,alpha=0.85,width=0.6)
+        bars_r=ax0.bar([str(r) for r in reg_ids],avg_vals,color=colors,alpha=0.85,width=0.6)
+        for bar in bars_r:
+            h=bar.get_height()
+            ax0.text(bar.get_x()+bar.get_width()/2,h+1,f'{h:.1f}',ha='center',va='bottom',color=th['bar_label'],fontsize=8)
         ax0.axhline(avg_score,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'均值 {avg_score:.1f}')
         ax0.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('满意度均值',color=th['subtext'],fontsize=10)
         ax0.set_title('各区域满意度',color=th['text'],fontsize=13,pad=10)
@@ -957,6 +997,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         theta=np.linspace(0,2*np.pi,len(reg_ids),endpoint=False)
         vals_r=np.append(avg_vals,avg_vals[0]); theta_r=np.append(theta,theta[0])
         ax1.plot(theta_r,vals_r,color=th['accent'],linewidth=2); ax1.fill(theta_r,vals_r,color=th['accent'],alpha=0.2)
+        for i,(th_i,val) in enumerate(zip(theta,avg_vals)):
+            ax1.annotate(f'{val:.1f}',(th_i,val),xytext=(0,6),textcoords='offset points',ha='center',va='bottom',color=th['bar_label'],fontsize=7)
         ax1.set_xticks(theta); ax1.set_xticklabels([str(r) for r in reg_ids],color=th['subtext'],fontsize=8)
         ax1.tick_params(colors=th['cbar_tick']); ax1.set_title('区域满意度雷达',color=th['text'],fontsize=13,pad=15)
         ax1.spines['polar'].set_color('#2d2d3d'); ax1.grid(color=th['grid'],linewidth=0.5)

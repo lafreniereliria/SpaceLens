@@ -82,13 +82,19 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
 /* ── compare rows ── */
 .compare-rows-wrap { padding:0 0 60px; }
 .compare-section-divider { padding:14px 20px 6px; font-size:10px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim); background:var(--bg); border-top:1px solid var(--border); }
-.compare-row { display:grid; grid-template-columns:200px 1fr 1fr; border-bottom:1px solid var(--border); min-height:80px; transition:background 0.15s; }
+/* 每个指标占两行 */
+.compare-row { display:grid; grid-template-columns:200px 1fr 1fr; border-bottom:1px dashed var(--border); min-height:72px; transition:background 0.15s; }
+.compare-row:last-of-type, .compare-row.row-bottom { border-bottom:1px solid var(--border); }
 .compare-row:hover { background:var(--bg-hover); }
 .compare-row.active { background:rgba(var(--accent-rgb),0.04); }
-.row-label-col { padding:16px; display:flex; flex-direction:column; justify-content:center; gap:4px; border-right:1px solid var(--border); cursor:pointer; }
+/* 指标标签列 */
+.row-label-col { padding:14px 14px 14px 16px; display:flex; flex-direction:column; justify-content:center; gap:4px; border-right:1px solid var(--border); cursor:pointer; }
+.row-label-col.row-top-label { border-bottom:none; padding-bottom:6px; }
+.row-label-col.row-bot-label { border-top:none; padding-top:4px; }
 .row-metric-badge { font-size:9px; font-weight:700; padding:1px 6px; border-radius:4px; background:rgba(var(--accent-rgb),0.1); color:var(--accent); width:fit-content; }
 .row-metric-name { font-size:12px; font-weight:600; color:var(--text-primary); }
-.row-cell { padding:12px 16px; display:flex; flex-direction:column; gap:8px; border-right:1px solid var(--border); min-height:80px; }
+.row-sub-label { font-size:11px; color:var(--text-secondary); }
+.row-cell { padding:10px 14px; display:flex; flex-direction:column; gap:6px; border-right:1px solid var(--border); min-height:72px; }
 .row-cell:last-child { border-right:none; }
 
 /* 图片展开 */
@@ -365,24 +371,94 @@ function buildCompareArea() {
 
   // 绑定 IntersectionObserver 高亮侧边栏
   bindScrollHighlight();
+
+  // 异步分割所有指标图片（在 DOM 插入后执行）
+  requestAnimationFrame(function() { splitAllImages(); });
+}
+
+// ── 批量分割所有指标图片 ──
+function splitAllImages() {
+  METRIC_ORDER.forEach(function(m) {
+    var resultKey = m.isEnv ? null : m.id;  // 环境参数单独处理
+    _projects.forEach(function(proj, projIdx) {
+      if (proj.status === 'expired') return;
+      var key = m.isEnv ? 'environment_p1' : m.id;
+      var result = (proj.results||{})[key];
+      if (!result || !result.image) return;
+      var src = 'data:image/png;base64,'+result.image;
+      splitImage(src).then(function(halves) {
+        fillHalfCell(m.id, projIdx, 'left',  halves.left);
+        fillHalfCell(m.id, projIdx, 'right', halves.right);
+      });
+    });
+  });
+}
+
+// ── 把裁剪后的图填入对应单元格 ──
+function fillHalfCell(metricId, projIdx, half, imgSrc) {
+  var ph = document.getElementById('img-ph-'+metricId+'-'+projIdx+'-'+half);
+  if (!ph) return;
+  if (!imgSrc) { ph.innerHTML = '<div class="cell-placeholder skip" style="min-height:48px">暂无图表</div>'; return; }
+  ph.className = 'cell-img-wrap';
+  ph.onclick = (function(s){ return function(){ openLightbox(s); }; })(imgSrc);
+  ph.innerHTML = '<img src="'+imgSrc+'" alt=""><span class="expand-hint">放大</span>';
 }
 
 function buildRow(m) {
-  var cellsHtml = _projects.map(function(p, i) {
-    return buildCell(m, p, i);
-  }).join('');
+  // 每个指标渲染两行：第一行对比左半图（平面分析），第二行对比右半图（统计图表）
+  var isEnv = !!m.isEnv;
 
-  return '<div class="compare-row" id="row-'+m.id+'">'+
-    '<div class="row-label-col" onclick="scrollToRow(\''+m.id+'\')">'+
-      '<span class="row-metric-badge">'+m.badge+'</span>'+
-      '<span class="row-metric-name">'+m.name+'</span>'+
-    '</div>'+
-    cellsHtml+
+  // 标签列：顶行 = badge + 名称 + "平面分析图"，底行 = "统计图表"
+  var labelTop = '<div class="row-label-col row-top-label" onclick="scrollToRow(\''+m.id+'\')" style="border-bottom:1px dashed var(--border)">'+
+    '<span class="row-metric-badge">'+m.badge+'</span>'+
+    '<span class="row-metric-name">'+m.name+'</span>'+
+    '<span class="row-sub-label">平面分析图</span>'+
   '</div>';
+  var labelBot = '<div class="row-label-col row-bot-label" onclick="scrollToRow(\''+m.id+'\')" style="border-top:none">'+
+    '<span class="row-sub-label" style="margin-top:2px">统计图表</span>'+
+  '</div>';
+
+  // 两行的单元格
+  var cellsTop = _projects.map(function(p, i){ return buildCell(m, p, i, 'left');  }).join('');
+  var cellsBot = _projects.map(function(p, i){ return buildCell(m, p, i, 'right'); }).join('');
+
+  var topRow = '<div class="compare-row row-top" id="row-'+m.id+'">'+
+    labelTop + cellsTop +
+  '</div>';
+  var botRow = '<div class="compare-row row-bottom row-bot" id="row-'+m.id+'-chart">'+
+    labelBot + cellsBot +
+  '</div>';
+
+  return topRow + botRow;
 }
 
-function buildCell(m, proj, projIdx) {
-  // 对于环境参数，默认显示 environment_p1
+// ── 用 canvas 把 base64 PNG 从中间切成左右两半 ──
+// 返回 Promise<{left:dataURL, right:dataURL}>
+function splitImage(b64src) {
+  return new Promise(function(resolve) {
+    var img = new Image();
+    img.onload = function() {
+      var w = img.naturalWidth;
+      var h = img.naturalHeight;
+      var half = Math.floor(w / 2);
+
+      var cvL = document.createElement('canvas');
+      cvL.width = half; cvL.height = h;
+      cvL.getContext('2d').drawImage(img, 0, 0, half, h, 0, 0, half, h);
+
+      var cvR = document.createElement('canvas');
+      cvR.width = w - half; cvR.height = h;
+      cvR.getContext('2d').drawImage(img, half, 0, w - half, h, 0, 0, w - half, h);
+
+      resolve({ left: cvL.toDataURL('image/png'), right: cvR.toDataURL('image/png') });
+    };
+    img.onerror = function() { resolve({ left: null, right: null }); };
+    img.src = b64src;
+  });
+}
+
+function buildCell(m, proj, projIdx, half) {
+  // half: 'left' (平面图) | 'right' (统计图)
   var resultKey = m.isEnv ? 'environment_p1' : m.id;
   var result    = (proj.results || {})[resultKey];
   var isSkipped = (proj.skipped||[]).indexOf(resultKey) >= 0 ||
@@ -390,37 +466,37 @@ function buildCell(m, proj, projIdx) {
                     return (proj.skipped||[]).indexOf('environment_p'+n) >= 0;
                   }));
 
-  var content = '';
+  // 单元格 id（用于异步填图）
+  var cellId = 'cell-'+m.id+'-'+projIdx+'-'+half;
+  var cellBorder = half==='left' ? 'border-bottom:1px dashed var(--border);' : '';
+
   if (proj.status === 'expired') {
-    content = '<div class="cell-placeholder expired">结果已过期</div>';
-  } else if (isSkipped || !result) {
-    content = '<div class="cell-placeholder skip">数据不足，跳过</div>';
-  } else {
-    // 图片
-    if (result.image) {
-      var src = 'data:image/png;base64,'+result.image;
-      content += '<div class="cell-img-wrap" onclick="openLightbox(\''+src+'\')" id="cell-img-'+m.id+'-'+projIdx+'">'+
-        '<img src="'+src+'" alt="'+_esc(m.name)+'">'+
-        '<span class="expand-hint">放大</span>'+
-      '</div>';
-    }
-    // 统计数字
-    if (result.summary && VIEWS_STATS[m.id]) {
-      content += '<div class="cell-stats">';
-      VIEWS_STATS[m.id].forEach(function(s) {
-        var val = (result.summary[s.key] !== undefined && result.summary[s.key] !== null)
-          ? result.summary[s.key] : '—';
-        content += '<div class="cell-stat">'+
-          '<div class="cell-stat-label">'+s.label+'</div>'+
-          '<div class="cell-stat-value">'+val+(val!=='—'?'<span style="font-size:10px;font-weight:400;margin-left:2px;color:var(--text-secondary)">'+s.unit+'</span>':'')+'</div>'+
-        '</div>';
-      });
-      content += '</div>';
-    }
+    return '<div class="row-cell" id="'+cellId+'" style="'+cellBorder+'">'+
+      '<div class="cell-placeholder expired">结果已过期</div></div>';
+  }
+  if (isSkipped || !result) {
+    return '<div class="row-cell" id="'+cellId+'" style="'+cellBorder+'">'+
+      '<div class="cell-placeholder skip">数据不足，跳过</div></div>';
   }
 
-  // 对环境参数显示子参数切换
-  if (m.isEnv && proj.status !== 'expired') {
+  var innerHtml = '';
+  if (half === 'right' && result.summary && VIEWS_STATS[m.id]) {
+    // 右半行：统计数字始终显示（图片异步填入）
+    innerHtml += '<div class="cell-stats">';
+    VIEWS_STATS[m.id].forEach(function(s) {
+      var val = (result.summary[s.key] !== undefined && result.summary[s.key] !== null)
+        ? result.summary[s.key] : '—';
+      innerHtml += '<div class="cell-stat">'+
+        '<div class="cell-stat-label">'+s.label+'</div>'+
+        '<div class="cell-stat-value">'+val+(val!=='—'?'<span style="font-size:10px;font-weight:400;margin-left:2px;color:var(--text-secondary)">'+s.unit+'</span>':'')+'</div>'+
+      '</div>';
+    });
+    innerHtml += '</div>';
+  }
+
+  // 对环境参数：左半行加子参数 tab，右半行不加
+  var wrapExtra = '';
+  if (m.isEnv && half === 'left') {
     var tabsHtml = '<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">';
     ['温度','湿度','光照','风速','噪声'].forEach(function(label, ni) {
       tabsHtml += '<button style="padding:3px 10px;border-radius:6px;border:1px solid var(--border);background:'+(ni===0?'var(--accent)':'transparent')+';color:'+(ni===0?'#fff':'var(--text-secondary)')+';font-size:11px;cursor:pointer;" '+
@@ -428,10 +504,18 @@ function buildCell(m, proj, projIdx) {
         'onclick="switchEnvParam('+projIdx+','+(ni+1)+',this)">'+label+'</button>';
     });
     tabsHtml += '</div>';
-    content = tabsHtml + '<div id="env-cell-content-'+projIdx+'">'+content+'</div>';
+    wrapExtra = tabsHtml;
   }
 
-  return '<div class="row-cell" id="cell-'+m.id+'-'+projIdx+'" data-metric="'+m.id+'" data-proj="'+projIdx+'">'+content+'</div>';
+  // 图片占位（异步分割后填入）
+  var imgPlaceholderId = 'img-ph-'+m.id+'-'+projIdx+'-'+half;
+  var imgHtml = result.image
+    ? '<div class="cell-img-wrap" id="'+imgPlaceholderId+'"><div class="cell-placeholder" style="min-height:48px;font-size:11px">图片加载中…</div></div>'
+    : '';
+
+  return '<div class="row-cell" id="'+cellId+'" style="'+cellBorder+'">'+
+    wrapExtra + imgHtml + innerHtml +
+  '</div>';
 }
 
 // ─────────────────────────────────────────────
@@ -448,28 +532,37 @@ function switchEnvParam(projIdx, pn, btn) {
   var proj = _projects[projIdx];
   var resultKey = 'environment_p'+pn;
   var result = (proj.results||{})[resultKey];
-  var container = document.getElementById('env-cell-content-'+projIdx);
-  if (!container) return;
-  if (!result || proj.status==='expired') {
-    container.innerHTML = '<div class="cell-placeholder skip">该参数数据不足</div>';
+
+  // 更新左半图（平面分析图）
+  var leftPh = document.getElementById('img-ph-environment-'+projIdx+'-left');
+  var rightPh = document.getElementById('img-ph-environment-'+projIdx+'-right');
+  if (!result || proj.status === 'expired') {
+    if (leftPh)  { leftPh.className='cell-img-wrap'; leftPh.innerHTML='<div class="cell-placeholder skip" style="min-height:48px">该参数数据不足</div>'; }
+    if (rightPh) { rightPh.className='cell-img-wrap'; rightPh.innerHTML='<div class="cell-placeholder skip" style="min-height:48px">该参数数据不足</div>'; }
     return;
   }
-  var html = '';
   if (result.image) {
     var src = 'data:image/png;base64,'+result.image;
-    html += '<div class="cell-img-wrap" onclick="openLightbox(\''+src+'\')">'+
-      '<img src="'+src+'" alt="环境参数"><span class="expand-hint">放大</span></div>';
+    splitImage(src).then(function(halves) {
+      fillHalfCell('environment', projIdx, 'left',  halves.left);
+      fillHalfCell('environment', projIdx, 'right', halves.right);
+    });
   }
-  if (result.summary && VIEWS_STATS['environment']) {
-    html += '<div class="cell-stats">';
+  // 更新右半行统计数字
+  var rightCell = document.getElementById('cell-environment-'+projIdx+'-right');
+  if (rightCell && result.summary && VIEWS_STATS['environment']) {
+    var statsHtml = '<div class="cell-stats">';
     VIEWS_STATS['environment'].forEach(function(s) {
       var val = (result.summary[s.key] !== undefined) ? result.summary[s.key] : '—';
-      html += '<div class="cell-stat"><div class="cell-stat-label">'+s.label+'</div>'+
+      statsHtml += '<div class="cell-stat"><div class="cell-stat-label">'+s.label+'</div>'+
         '<div class="cell-stat-value">'+val+'</div></div>';
     });
-    html += '</div>';
+    statsHtml += '</div>';
+    // 保留图片占位，替换 cell-stats
+    var existing = rightCell.querySelector('.cell-stats');
+    if (existing) existing.outerHTML = statsHtml;
+    else rightCell.insertAdjacentHTML('beforeend', statsHtml);
   }
-  container.innerHTML = html || '<div class="cell-placeholder skip">暂无数据</div>';
 }
 
 // ─────────────────────────────────────────────
@@ -499,9 +592,10 @@ function bindScrollHighlight() {
   var obs = new IntersectionObserver(function(entries) {
     entries.forEach(function(entry) {
       if (entry.isIntersecting) {
-        var id = entry.target.id.replace('row-', '');
+        // id 可能是 row-heatmap 或 row-heatmap-chart，都归到同一个 metric
+        var rawId = entry.target.id.replace('row-', '').replace(/-chart$/, '');
         document.querySelectorAll('.nav-item').forEach(function(b){ b.classList.remove('active'); });
-        var navBtn = document.getElementById('nav-'+id);
+        var navBtn = document.getElementById('nav-'+rawId);
         if (navBtn) navBtn.classList.add('active');
       }
     });

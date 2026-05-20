@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS projects (
 _MIGRATIONS = [
     ('files_md5',     'ALTER TABLE projects ADD COLUMN files_md5     TEXT DEFAULT NULL;'),
     ('result_folder', 'ALTER TABLE projects ADD COLUMN result_folder TEXT DEFAULT NULL;'),
+    ('source_files',  'ALTER TABLE projects ADD COLUMN source_files  TEXT DEFAULT NULL;'),
 ]
 
 
@@ -68,7 +69,8 @@ def init_db():
 
 
 # ── 去重 key 计算 ───────────────────────────────────────────
-def _dedup_key(files_md5: dict | None, building_type: str) -> str | None:
+def _dedup_key(files_md5, building_type):
+    # type: (object, str) -> object
     """
     用各文件 MD5（排序后）+ 建筑类型 拼成去重字符串。
     files_md5 格式：{'img': 'abc...', 'loc': 'def...', ...}
@@ -84,11 +86,13 @@ def _dedup_key(files_md5: dict | None, building_type: str) -> str | None:
 
 # ── CRUD ──────────────────────────────────────────────────
 
-def save_project(name: str, building_type: str, input_folder: str,
-                 session_id: str, computed: list, skipped: list,
-                 floorplan_b64: str | None = None,
-                 files_md5: dict | None = None,
-                 result_folder: str | None = None) -> int:
+def save_project(name, building_type, input_folder,
+                 session_id, computed, skipped,
+                 floorplan_b64=None,
+                 files_md5=None,
+                 result_folder=None,
+                 source_files=None):
+    # type: (str, str, str, str, list, list, object, object, object, object) -> int
     """
     保存项目记录，返回记录 id。
 
@@ -103,6 +107,7 @@ def save_project(name: str, building_type: str, input_folder: str,
             computed_j = json.dumps(computed, ensure_ascii=False)
             skipped_j  = json.dumps(skipped,  ensure_ascii=False)
             files_md5_j = json.dumps(files_md5, ensure_ascii=False) if files_md5 else None
+            source_files_j = json.dumps(source_files, ensure_ascii=False) if source_files else None
 
             dedup_key = _dedup_key(files_md5, building_type)
 
@@ -135,11 +140,11 @@ def save_project(name: str, building_type: str, input_folder: str,
                     '''UPDATE projects SET
                         name=?, building_type=?, input_folder=?, session_id=?,
                         computed=?, skipped=?, floorplan_b64=?, files_md5=?,
-                        result_folder=?
+                        result_folder=?, source_files=?
                        WHERE id=?''',
                     (name, building_type, input_folder, session_id,
                      computed_j, skipped_j, floorplan_b64,
-                     files_md5_j, result_folder, existing['id'])
+                     files_md5_j, result_folder, source_files_j, existing['id'])
                 )
                 conn.commit()
                 return existing['id']
@@ -147,11 +152,12 @@ def save_project(name: str, building_type: str, input_folder: str,
                 cur = conn.execute(
                     '''INSERT INTO projects
                        (name, building_type, input_folder, session_id,
-                        computed, skipped, floorplan_b64, files_md5, result_folder, created_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?)''',
+                        computed, skipped, floorplan_b64, files_md5, result_folder,
+                        source_files, created_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
                     (name, building_type, input_folder, session_id,
                      computed_j, skipped_j, floorplan_b64,
-                     files_md5_j, result_folder, time.time())
+                     files_md5_j, result_folder, source_files_j, time.time())
                 )
                 conn.commit()
                 return cur.lastrowid
@@ -159,7 +165,8 @@ def save_project(name: str, building_type: str, input_folder: str,
             conn.close()
 
 
-def list_projects() -> list[dict]:
+def list_projects():
+    # type: () -> list
     """返回所有项目，按创建时间倒序"""
     with _lock:
         conn = _connect()
@@ -180,7 +187,8 @@ def list_projects() -> list[dict]:
             conn.close()
 
 
-def get_project(project_id: int) -> dict | None:
+def get_project(project_id):
+    # type: (int) -> object
     """根据 id 获取单个项目"""
     with _lock:
         conn = _connect()
@@ -198,12 +206,18 @@ def get_project(project_id: int) -> dict | None:
                     d['files_md5'] = json.loads(d['files_md5'])
                 except Exception:
                     d['files_md5'] = {}
+            if d.get('source_files'):
+                try:
+                    d['source_files'] = json.loads(d['source_files'])
+                except Exception:
+                    d['source_files'] = {}
             return d
         finally:
             conn.close()
 
 
-def delete_project(project_id: int) -> bool:
+def delete_project(project_id):
+    # type: (int) -> bool
     """删除一条项目记录"""
     with _lock:
         conn = _connect()
@@ -215,7 +229,8 @@ def delete_project(project_id: int) -> bool:
             conn.close()
 
 
-def update_project_name(project_id: int, name: str) -> bool:
+def update_project_name(project_id, name):
+    # type: (int, str) -> bool
     """重命名项目"""
     with _lock:
         conn = _connect()

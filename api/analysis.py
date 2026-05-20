@@ -1032,7 +1032,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             _save_project_to_db(sid, sess)
 
 
-def _save_project_to_db(sid: str, sess: dict):
+def _save_project_to_db(sid, sess):
+    # type: (str, dict) -> None
     """将会话结果写入本地数据库，并把结果持久化到磁盘文件夹（在后台线程调用，已持锁）"""
     try:
         from api.db import save_project as _db_save
@@ -1048,6 +1049,7 @@ def _save_project_to_db(sid: str, sess: dict):
             floorplan_b64 = floorplan_b64,
             files_md5     = sess.get('_files_md5'),
             result_folder = result_folder,
+            source_files  = sess.get('source_files'),  # 绝对路径表，供历史项目点击打开
         )
     except Exception:
         pass  # 数据库写失败不影响主流程
@@ -1102,6 +1104,7 @@ def _persist_results_to_disk(sid, sess):
             'skipped':       sess.get('skipped', []),
             'theme':         sess.get('theme', 'light'),
             'accent':        sess.get('accent', '#0ea5e9'),
+            'source_files':  sess.get('source_files', {}),  # 绝对路径，用于"数据来源"点击打开
         }
         with open(_os.path.join(result_dir, 'meta.json'), 'w', encoding='utf-8') as f:
             _json.dump(meta, f, ensure_ascii=False, indent=2)
@@ -2170,7 +2173,8 @@ def api_view_project(pid):
         return jsonify({'error': str(e)}), 500
 
 
-def _restore_session_from_disk(sid: str, result_folder: str) -> dict | None:
+def _restore_session_from_disk(sid, result_folder):
+    # type: (str, str) -> object
     """
     从磁盘结果文件夹恢复 session dict。
     文件夹结构：
@@ -2209,6 +2213,16 @@ def _restore_session_from_disk(sid: str, result_folder: str) -> dict | None:
                 'summary': summary_all.get(metric_id, {}),
             }
 
+        source_files_meta = meta.get('source_files', {})
+
+        # 把历史绝对路径重新注入路径表，确保 open_source 可以查到
+        if source_files_meta:
+            import os as _os_r
+            with _file_paths_lock:
+                for _p in source_files_meta.values():
+                    if _p and _os_r.path.isabs(_p):
+                        _file_abs_paths[_os_r.path.basename(_p)] = _p
+
         return {
             'status':        'done',
             'ts':            _time.time(),
@@ -2220,6 +2234,7 @@ def _restore_session_from_disk(sid: str, result_folder: str) -> dict | None:
             'theme':         meta.get('theme', 'light'),
             'accent':        meta.get('accent', '#0ea5e9'),
             'results':       results,
+            'source_files':  source_files_meta,  # 恢复绝对路径，供"数据来源"点击打开
         }
     except Exception:
         return None

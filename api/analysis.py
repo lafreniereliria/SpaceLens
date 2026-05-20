@@ -1042,7 +1042,7 @@ def _save_project_to_db(sid, sess):
         _db_save(
             name          = sess.get('project_name') or sess.get('folder') or '未命名项目',
             building_type = sess.get('type', ''),
-            input_folder  = sess.get('folder', ''),
+            input_folder  = sess.get('folder_abs') or sess.get('folder', ''),  # 优先绝对路径
             session_id    = sid,
             computed      = sess.get('computed', []),
             skipped       = sess.get('skipped',  []),
@@ -1100,6 +1100,7 @@ def _persist_results_to_disk(sid, sess):
             'project_name':  sess.get('project_name', ''),
             'building_type': sess.get('type', ''),
             'folder_name':   sess.get('folder', ''),
+            'folder_abs':    sess.get('folder_abs', ''),   # 绝对路径
             'computed':      computed,
             'skipped':       sess.get('skipped', []),
             'theme':         sess.get('theme', 'light'),
@@ -1174,6 +1175,18 @@ def run_all():
         ques_path   = _best_path(ques_path,   ques_n)
         region_path = _best_path(region_path, region_n)
 
+        # 从已解析的绝对路径推导文件夹绝对路径
+        # 取第一个有绝对路径的源文件的上级目录，作为 input_folder 的绝对路径
+        import os as _os_r
+        def _abs_folder_from_sources(*paths):
+            for p in paths:
+                if p and _os_r.path.isabs(p) and _os_r.path.exists(p):
+                    return _os_r.path.dirname(p)
+            return None
+        _abs_folder = _abs_folder_from_sources(
+            img_path, loc_path, beh_path, env_path, ques_path, region_path
+        )
+
         # 计算各文件 MD5，用于去重
         import hashlib as _hashlib
         def _md5(b): return _hashlib.md5(b).hexdigest() if b else None
@@ -1206,6 +1219,7 @@ def run_all():
                 'skipped':  [],
                 'type':     building_type,
                 'folder':   folder_name,
+                'folder_abs': _abs_folder or '',   # 绝对路径（用于数据库展示）
                 'project_name': project_name or folder_name or '未命名项目',
                 'ts':       _time.time(),
                 'status':   'running',
@@ -2229,6 +2243,7 @@ def _restore_session_from_disk(sid, result_folder):
             'project_name':  meta.get('project_name', ''),
             'type':          meta.get('building_type', ''),
             'folder':        meta.get('folder_name', ''),
+            'folder_abs':    meta.get('folder_abs', ''),   # 恢复绝对路径
             'computed':      computed,
             'skipped':       meta.get('skipped', []),
             'theme':         meta.get('theme', 'light'),

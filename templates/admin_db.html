@@ -693,7 +693,16 @@ function renderTable() {
     html += '<div class="detail-inner">';
     html += '<div class="detail-grid">';
     html += kv('会话 ID', r.session_id||'—');
-    html += kv('输入文件夹', r.input_folder||'—');
+    // 输入文件夹：若非绝对路径则尝试从 source_files 推断上级目录
+    var displayFolder = r.input_folder || '';
+    if (displayFolder && !isAbsPath(displayFolder) && sfKeys.length) {
+      var firstAbsSf = sfKeys.map(function(k){ return sf[k]; }).find(function(p){ return p && isAbsPath(p); });
+      if (firstAbsSf) {
+        var inferred = firstAbsSf.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
+        displayFolder = inferred + '  （推断，原始名：' + displayFolder + '）';
+      }
+    }
+    html += kv('输入文件夹', displayFolder||'—');
     html += kv('结果文件夹', r.result_folder||'—');
     html += kv('创建时间', fmtDate(r.created_at, true));
     if (sfKeys.length) {
@@ -817,6 +826,12 @@ function fmtDate(ts, full) {
 
 function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function isAbsPath(p) {
+  if (!p) return false;
+  // Unix/macOS: 以 / 开头；Windows: C:\ 或 C:/
+  return p.startsWith('/') || /^[A-Za-z]:[\\\/]/.test(p);
 }
 
 function showToast(msg) {

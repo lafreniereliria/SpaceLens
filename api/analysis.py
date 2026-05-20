@@ -32,20 +32,23 @@ import threading as _file_paths_lock_mod
 _file_paths_lock = _file_paths_lock_mod.Lock()
 _file_abs_paths: dict = {}   # {filename_basename: absolute_path}
 
-def _register_chosen_paths(paths: list[str]):
+def _register_chosen_paths(paths):
+    # type: (list) -> None
     """由 desktop_app.py 的 chooseFiles() 调用，注册本次文件选择的绝对路径。"""
     import os as _os
     with _file_paths_lock:
         for p in paths:
             _file_abs_paths[_os.path.basename(p)] = p
 
-def _resolve_abs_path(basename_or_rel: str) -> str | None:
+def _resolve_abs_path(basename_or_rel):
+    # type: (str) -> str
     """
     将上传时的文件名（或 webkitRelativePath 末段）解析为绝对路径。
     优先从 Qt 注入的路径表中查找，找不到返回 None。
     """
     import os as _os
-    fname = _os.path.basename(basename_or_rel.replace('\\', '/'))
+    # 统一用 os.path.basename 处理（兼容 Windows 反斜杠）
+    fname = _os.path.basename(_os.path.normpath(basename_or_rel))
     with _file_paths_lock:
         return _file_abs_paths.get(fname)
 # ──────────────────────────────────────────────────────────
@@ -1050,7 +1053,8 @@ def _save_project_to_db(sid: str, sess: dict):
         pass  # 数据库写失败不影响主流程
 
 
-def _persist_results_to_disk(sid: str, sess: dict) -> str | None:
+def _persist_results_to_disk(sid, sess):
+    # type: (str, dict) -> object
     """
     将会话中所有已计算指标的图片和摘要持久化到磁盘。
     目录结构：~/.spacelens/results/<sid>/
@@ -1107,7 +1111,8 @@ def _persist_results_to_disk(sid: str, sess: dict) -> str | None:
         return None
 
 
-def _make_thumbnail(sess: dict, max_size: int = 200) -> str | None:
+def _make_thumbnail(sess, max_size=200):
+    # type: (dict, int) -> object
     """从会话中取平面图，生成缩略图 base64"""
     try:
         # 优先取已存储的原始图片字节
@@ -1343,7 +1348,8 @@ def open_source(sid, key):
         if platform == 'darwin':
             _sub.Popen(['open', '-R', abs_path])
         elif platform == 'win32':
-            _sub.Popen(['explorer', '/select,', abs_path.replace('/', '\\')])
+            # explorer /select, 需要整个命令作为单个字符串，否则含空格路径会出错
+            _sub.Popen('explorer /select,"' + abs_path.replace('/', '\\') + '"', shell=True)
         else:
             _sub.Popen(['xdg-open', _os.path.dirname(abs_path)])
 

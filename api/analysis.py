@@ -1122,6 +1122,14 @@ def run_all():
         ques_b, ques_n     = _read('ques_data')
         region_b, region_n = _read('region_data')
 
+        # 读取前端传来的源文件路径（用于结果页「数据来源」点击打开）
+        img_path    = request.form.get('layout_img_path',    img_n    or '')
+        loc_path    = request.form.get('loc_data_path',      loc_n    or '')
+        beh_path    = request.form.get('behavior_data_path', beh_n    or '')
+        env_path    = request.form.get('env_data_path',      env_n    or '')
+        ques_path   = request.form.get('ques_data_path',     ques_n   or '')
+        region_path = request.form.get('region_data_path',   region_n or '')
+
         # 计算各文件 MD5，用于去重
         import hashlib as _hashlib
         def _md5(b): return _hashlib.md5(b).hexdigest() if b else None
@@ -1159,6 +1167,14 @@ def run_all():
                 'status':   'running',
                 '_raw_img_b': img_b,     # 保留原图用于生成缩略图
                 '_files_md5': files_md5, # 各文件 MD5，用于去重
+                'source_files': {        # 各源文件名/相对路径（用于结果页展示）
+                    'img':    img_path    or None,
+                    'loc':    loc_path    or None,
+                    'beh':    beh_path    or None,
+                    'env':    env_path    or None,
+                    'ques':   ques_path   or None,
+                    'region': region_path or None,
+                },
                 '_debug_img_b': img_b[:4] if img_b else None,
                 '_debug_loc_b': loc_b[:4] if loc_b else None,
                 '_debug_beh_b': beh_b[:4] if beh_b else None,
@@ -1234,8 +1250,73 @@ def get_session(sid):
         'skipped':       sess.get('skipped',  []),
         'results':       sess.get('results',  {}),
         'status':        sess.get('status', 'running'),
+        'source_files':  sess.get('source_files', {}),
         'debug_errors':  {k: v.get('error','') for k, v in sess.get('results', {}).items() if isinstance(v, dict) and v.get('error')},
     })
+
+
+@analysis_bp.route('/open_source/<sid>/<key>', methods=['POST'])
+def open_source(sid, key):
+    """
+    桌面端专用：在资源管理器/Finder 中打开（或高亮）指定源文件。
+    key: img | loc | beh | env | ques | region
+    如果路径包含目录分隔符，尝试在父目录中高亮该文件；
+    否则仅打开所在文件夹。
+    """
+    import subprocess as _sub
+    import sys as _sys
+    try:
+        with _sess_lock:
+            sess = _sessions.get(sid)
+        if sess is None:
+            return jsonify({'error': '会话不存在或已过期'}), 404
+
+        source_files = sess.get('source_files', {})
+        rel_path = source_files.get(key)
+        if not rel_path:
+            return jsonify({'error': '未记录该文件路径'}), 404
+
+        # rel_path 可能是 "folderName/file.csv" 或仅 "file.csv"
+        # 尝试以项目文件夹名拼凑绝对路径（桌面、文档、下载等常用位置）
+        import os as _os
+        abs_path = None
+
+        # 1. rel_path 本身是绝对路径（未来扩展）
+        if _os.path.isabs(rel_path) and _os.path.exists(rel_path):
+            abs_path = rel_path
+
+        # 2. 以用户 Home 下的常见文件夹尝试拼接
+        if abs_path is None and '/' in rel_path:
+            home = _os.path.expanduser('~')
+            candidates = [
+                home, _os.path.join(home, 'Desktop'), _os.path.join(home, 'Documents'),
+                _os.path.join(home, 'Downloads'), _os.path.join(home, '桌面'),
+                _os.path.join(home, '文档'), _os.path.join(home, '下载'),
+            ]
+            for base in candidates:
+                p = _os.path.join(base, rel_path)
+                if _os.path.exists(p):
+                    abs_path = p
+                    break
+
+        # 3. 只有文件名，无法定位
+        if abs_path is None:
+            # 返回成功但带提示
+            return jsonify({'warning': f'无法定位文件完整路径，文件名：{_os.path.basename(rel_path)}'}), 200
+
+        # 在系统文件管理器中高亮/打开
+        platform = _sys.platform
+        if platform == 'darwin':
+            _sub.Popen(['open', '-R', abs_path])
+        elif platform == 'win32':
+            _sub.Popen(['explorer', '/select,', abs_path.replace('/', '\\')])
+        else:
+            _sub.Popen(['xdg-open', _os.path.dirname(abs_path)])
+
+        return jsonify({'success': True, 'path': abs_path})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # ─────────────────────────────────────────────

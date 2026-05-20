@@ -818,6 +818,13 @@ function startCalc(){
     if(!folderFiles.img && !folderFiles.loc && !folderFiles.behavior && !folderFiles.env && !folderFiles.ques){
       alert('未识别到任何数据文件，请检查文件夹内容'); return;
     }
+    // 传递文件相对路径（含文件夹名），后端可据此还原文件名
+    if(folderFiles.img)      fd.append('layout_img_path',    folderFiles.img.webkitRelativePath || folderFiles.img.name);
+    if(folderFiles.loc)      fd.append('loc_data_path',      folderFiles.loc.webkitRelativePath || folderFiles.loc.name);
+    if(folderFiles.behavior) fd.append('behavior_data_path', folderFiles.behavior.webkitRelativePath || folderFiles.behavior.name);
+    if(folderFiles.env)      fd.append('env_data_path',      folderFiles.env.webkitRelativePath || folderFiles.env.name);
+    if(folderFiles.ques)     fd.append('ques_data_path',     folderFiles.ques.webkitRelativePath || folderFiles.ques.name);
+    if(folderFiles.region)   fd.append('region_data_path',  folderFiles.region.webkitRelativePath || folderFiles.region.name);
   } else {
     var img=document.getElementById('sinput-img').files[0];
     var loc=document.getElementById('sinput-loc').files[0];
@@ -832,6 +839,13 @@ function startCalc(){
     if(env)  fd.append('env_data',      env);
     if(ques) fd.append('ques_data',     ques);
     if(reg)  fd.append('region_data',   reg);
+    // 单文件模式只有文件名，无完整路径
+    if(img)  fd.append('layout_img_path',    img.name);
+    if(loc)  fd.append('loc_data_path',      loc.name);
+    if(beh)  fd.append('behavior_data_path', beh.name);
+    if(env)  fd.append('env_data_path',      env.name);
+    if(ques) fd.append('ques_data_path',     ques.name);
+    if(reg)  fd.append('region_data_path',   reg.name);
   }
 
   // 附加主题

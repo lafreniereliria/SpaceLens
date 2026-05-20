@@ -68,6 +68,15 @@
   border: 1px solid var(--border); border-radius: 6px;
   background: transparent; color: var(--text-secondary);
   cursor: default; white-space: nowrap; transition: all 0.15s;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis;
+}
+.source-btn.clickable {
+  cursor: pointer;
+}
+.source-btn.clickable:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(var(--accent-rgb, 14, 165, 233), 0.06);
 }
 .source-btn svg { flex-shrink: 0; }
 
@@ -812,9 +821,10 @@ function buildPanels() {
     var sources = METRIC_SOURCE[m.id] || [];
     var sourceBtns = sources.map(function(s) {
       var sf = SOURCE_FILE_LABEL[s];
-      return '<button class="source-btn" title="' + sf.label + '">'
+      // 生成带唯一 ID 的芯片，文件名稍后由 _updateSourceBars() 填充
+      return '<button class="source-btn" id="src-chip-' + m.id + '-' + s + '" title="' + sf.label + '" data-source-key="' + s + '" data-metric-id="' + m.id + '" onclick="_openSourceFile(this)" disabled>'
         + '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
-        + sf.icon + ' ' + sf.label
+        + sf.icon + ' <span class="src-chip-name">' + sf.label + '</span>'
         + '</button>';
     }).join('');
 
@@ -1243,6 +1253,12 @@ function startPolling(sid) {
         // 缓存最新会话数据（switchEnvParam 需要）
         _sessionData = data;
 
+        // ── 更新数据来源芯片（只需执行一次，文件名不会变） ──
+        if (!_sourceBarsUpdated && data.source_files) {
+          _sourceBarsUpdated = true;
+          _updateSourceBars(data.source_files);
+        }
+
         // ── 更新顶栏项目标题（folder_name – building_type） ──
         (function() {
           var titleEl = document.getElementById('topbar-project-title');
@@ -1334,6 +1350,61 @@ function renderSession(sessData) {
   _sessionData = sessData;
 }
 
+// ── 更新所有面板的数据来源芯片（文件名 + 点击打开） ──
+var _sourceBarsUpdated = false;
+function _updateSourceBars(sourceFiles) {
+  if (!sourceFiles) return;
+  // sourceFiles = { img: "path/or/name.png", loc: "data.csv", ... }
+  // 遍历所有芯片，按 data-source-key 找到对应文件名，更新显示
+  document.querySelectorAll('.source-btn[data-source-key]').forEach(function(btn) {
+    var key = btn.dataset.sourceKey;
+    // SOURCE_FILE_LABEL 的 key 映射到 source_files 的 key
+    // METRIC_SOURCE 里用: img, loc, behavior, env, ques, region
+    // source_files  里用: img, loc, beh,      env, ques, region
+    var sfKey = key === 'behavior' ? 'beh' : key;
+    var filePath = sourceFiles[sfKey];
+    if (!filePath) return;
+
+    // 只取文件名部分显示（去掉目录）
+    var parts = filePath.replace(/\\/g, '/').split('/');
+    var fname = parts[parts.length - 1];
+
+    // 更新芯片文字
+    var nameSpan = btn.querySelector('.src-chip-name');
+    if (nameSpan) nameSpan.textContent = fname;
+
+    // 更新 title tooltip（显示完整路径）
+    btn.title = filePath;
+
+    // 若路径含目录信息（可能能定位到文件），标记为可点击
+    var hasDir = filePath.indexOf('/') >= 0 || filePath.indexOf('\\') >= 0;
+    if (hasDir) {
+      btn.classList.add('clickable');
+      btn.removeAttribute('disabled');
+    }
+  });
+}
+
+// ── 点击数据来源芯片：通知后端打开文件 ──
+function _openSourceFile(btn) {
+  if (btn.disabled) return;
+  var sid = getSessionId();
+  if (!sid) return;
+  var key = btn.dataset.sourceKey;
+  var sfKey = key === 'behavior' ? 'beh' : key;
+  fetch('/api/open_source/' + sid + '/' + sfKey, { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.warning) {
+        alert('提示：' + d.warning);
+      } else if (d.error) {
+        alert('无法打开文件：' + d.error);
+      }
+      // success: 系统文件管理器已打开，无需提示
+    })
+    .catch(function() {}); // 静默失败
+}
+
 // ── 导航绑定 ──
 function bindNav() {
   document.querySelectorAll('.nav-item[data-view]').forEach(function(btn) {
@@ -1348,6 +1419,7 @@ function loadSession(sid) {
   // 先把所有 nav badge 设为 computing 状态
   METRIC_ORDER.forEach(function(m) { setNavBadge(m.id, 'computing'); });
   document.getElementById('status-text').textContent = '正在计算…';
+  _sourceBarsUpdated = false;
   startPolling(sid);
 }
 

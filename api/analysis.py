@@ -1502,6 +1502,161 @@ def export_metric(sid, metric_id):
         return jsonify({'error': str(e)}), 500
 
 
+@analysis_bp.route('/save_metric/<sid>/<metric_id>/<file_type>', methods=['POST'])
+def save_metric(sid, metric_id, file_type):
+    """
+    桌面端专用：弹出原生保存对话框，将单指标的图片（PNG）或数值（Excel）写到用户选择路径。
+    file_type: 'img' | 'excel'
+    成功返回: { "success": true, "path": "..." }
+    取消返回: { "cancelled": true }
+    """
+    try:
+        with _sess_lock:
+            sess = _sessions.get(sid)
+        if sess is None:
+            return jsonify({'error': '会话不存在或已过期'}), 404
+
+        results  = sess.get('results', {})
+        computed = sess.get('computed', [])
+        folder_name = sess.get('folder', '') or 'SpaceLens'
+        safe_folder = ''.join(c if c not in r'\/:*?"<>|' else '_' for c in folder_name)
+
+        # environment → 找第一个有数据的子参数（图片）或全部（Excel）
+        actual_id = metric_id
+        if metric_id == 'environment' and file_type == 'img':
+            # 取当前激活子参数（通过 query string 传入 pn=1..5）
+            pn = request.args.get('pn', '1')
+            actual_id = f'environment_p{pn}'
+
+        cn_name = _METRIC_NAMES.get(actual_id, actual_id)
+
+        # ── 保存图片 ──
+        if file_type == 'img':
+            if metric_id == 'environment' and actual_id.startswith('environment_p'):
+                data = results.get(actual_id, {})
+                img_b64 = data.get('image')
+            elif metric_id == 'satisfaction':
+                data = results.get('satisfaction', {})
+                img_b64 = data.get('image_dist')
+            else:
+                data = results.get(metric_id, {})
+                img_b64 = data.get('image')
+
+            if not img_b64:
+                return jsonify({'error': '暂无图片数据'}), 400
+
+            png_bytes = base64.b64decode(img_b64)
+            default_name = f'{safe_folder}_{cn_name}.png'
+
+            if _native_save_dialog_hook is not None:
+                save_path = _native_save_dialog_hook('保存图片', default_name)
+            else:
+                try:
+                    import tkinter as _tk
+                    import tkinter.filedialog as _fd
+                    root = _tk.Tk(); root.withdraw(); root.lift()
+                    root.attributes('-topmost', True)
+                    save_path = _fd.asksaveasfilename(
+                        parent=root, title='保存图片',
+                        defaultextension='.png', initialfile=default_name,
+                        filetypes=[('PNG 图片', '*.png'), ('所有文件', '*.*')],
+                    )
+                    root.destroy()
+                except Exception:
+                    return jsonify({'error': '无法打开文件对话框'}), 500
+
+            if not save_path:
+                return jsonify({'cancelled': True})
+            with open(save_path, 'wb') as f:
+                f.write(png_bytes)
+            return jsonify({'success': True, 'path': save_path})
+
+        # ── 导出 Excel（打包为 ZIP，与 export_metric 逻辑相同） ──
+        elif file_type == 'excel':
+            # 环境参数：导出所有已计算子参数
+            if metric_id == 'environment':
+                env_ids = [f'environment_p{n}' for n in range(1, 6)
+                           if f'environment_p{n}' in computed]
+                if not env_ids:
+                    return jsonify({'error': '环境参数尚未计算'}), 400
+                buf = io.BytesIO()
+                with _zipfile.ZipFile(buf, 'w', _zipfile.ZIP_DEFLATED) as zf:
+                    for eid in env_ids:
+                        edata = results.get(eid, {})
+                        ecn = _METRIC_NAMES.get(eid, eid)
+                        if edata.get('image'):
+                            zf.writestr(f'{ecn}.png', base64.b64decode(edata['image']))
+                        if edata.get('summary'):
+                            _write_summary_xlsx(zf, eid, ecn, edata['summary'])
+                buf.seek(0); zip_bytes = buf.read()
+                default_name = f'{safe_folder}_环境参数.zip'
+            else:
+                # 满意度：bar_data + summary
+                if metric_id == 'satisfaction':
+                    data = results.get('satisfaction', {})
+                    buf = io.BytesIO()
+                    with _zipfile.ZipFile(buf, 'w', _zipfile.ZIP_DEFLATED) as zf:
+                        bar_data = data.get('bar_data')
+                        if bar_data:
+                            wb_buf = io.BytesIO()
+                            with pd.ExcelWriter(wb_buf, engine='openpyxl') as writer:
+                                pd.DataFrame(bar_data, columns=['人员编号', '满意度得分']).to_excel(
+                                    writer, sheet_name='个人评分', index=False)
+                                summary = data.get('summary')
+                                if summary:
+                                    scalar_rows = [{'指标': k, '数值': v}
+                                                   for k, v in summary.items()
+                                                   if not isinstance(v, list)]
+                                    pd.DataFrame(scalar_rows).to_excel(
+                                        writer, sheet_name='摘要', index=False)
+                            wb_buf.seek(0)
+                            zf.writestr('整体满意度.xlsx', wb_buf.read())
+                        if data.get('image_dist'):
+                            zf.writestr('满意度分布.png', base64.b64decode(data['image_dist']))
+                    buf.seek(0); zip_bytes = buf.read()
+                else:
+                    data = results.get(metric_id, {})
+                    cn_name = _METRIC_NAMES.get(metric_id, metric_id)
+                    buf = io.BytesIO()
+                    with _zipfile.ZipFile(buf, 'w', _zipfile.ZIP_DEFLATED) as zf:
+                        if data.get('image'):
+                            zf.writestr(f'{cn_name}.png', base64.b64decode(data['image']))
+                        if data.get('summary'):
+                            _write_summary_xlsx(zf, metric_id, cn_name, data['summary'])
+                    buf.seek(0); zip_bytes = buf.read()
+                default_name = f'{safe_folder}_{_METRIC_NAMES.get(metric_id, metric_id)}.zip'
+
+            if _native_save_dialog_hook is not None:
+                save_path = _native_save_dialog_hook('保存结果', default_name)
+            else:
+                try:
+                    import tkinter as _tk
+                    import tkinter.filedialog as _fd
+                    root = _tk.Tk(); root.withdraw(); root.lift()
+                    root.attributes('-topmost', True)
+                    save_path = _fd.asksaveasfilename(
+                        parent=root, title='保存结果',
+                        defaultextension='.zip', initialfile=default_name,
+                        filetypes=[('ZIP 压缩包', '*.zip'), ('所有文件', '*.*')],
+                    )
+                    root.destroy()
+                except Exception:
+                    return jsonify({'error': '无法打开文件对话框'}), 500
+
+            if not save_path:
+                return jsonify({'cancelled': True})
+            with open(save_path, 'wb') as f:
+                f.write(zip_bytes)
+            return jsonify({'success': True, 'path': save_path})
+
+        else:
+            return jsonify({'error': f'未知文件类型: {file_type}'}), 400
+
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'detail': traceback.format_exc()}), 500
+
+
 def _write_summary_xlsx(zf, metric_id, cn_name, summary):
     """将一个指标的 summary dict 写入 ZIP 内的 data/<cn_name>.xlsx"""
     try:

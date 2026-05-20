@@ -1103,47 +1103,31 @@ function _enableMetricBtns(metricId, hasImg, hasExcel) {
 
 // ── 保存当前指标图片 ──
 function saveMetricImg(metricId) {
-  if (!_sessionData) return;
-  var results = _sessionData.results || {};
+  var sid = getSessionId();
+  if (!sid) return;
+  var btn = document.getElementById('btn-save-img-' + metricId);
+  var origHTML = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '保存中…'; }
 
-  // 确定实际 metric key（environment → 取当前激活参数）
-  var actualId = metricId;
+  // environment 需要传当前激活子参数
+  var url = '/api/save_metric/' + sid + '/' + metricId + '/img';
   if (metricId === 'environment') {
     var activeEnvBtn = document.querySelector('#env-tabs .env-tab.active');
-    var pn = activeEnvBtn ? parseInt(activeEnvBtn.dataset.pn) : 1;
-    actualId = 'environment_p' + pn;
+    var pn = activeEnvBtn ? activeEnvBtn.dataset.pn : '1';
+    url += '?pn=' + pn;
   }
 
-  var data = results[actualId];
-  if (!data) return;
-
-  // satisfaction 使用 image_dist；其余用 image
-  var b64 = (metricId === 'satisfaction') ? data.image_dist : data.image;
-  if (!b64) return;
-
-  var cn = ({
-    heatmap:'到访频次热力图', usetime:'使用时长', speed:'移动速率',
-    duration:'停留时长', cluster:'空间聚类', density:'人员密度',
-    openness:'空间开放程度', topology:'拓扑连接关系', difference:'轨迹差异系数',
-    trajectory:'轨迹长度',
-    environment_p1:'环境参数_温度', environment_p2:'环境参数_湿度',
-    environment_p3:'环境参数_光照', environment_p4:'环境参数_风速',
-    environment_p5:'环境参数_噪声',
-    behavior_count:'行为人次', behavior_duration:'行为时长',
-    behavior_rate:'行为发生率', behavior_entropy:'行为复合度',
-    utilization:'功能利用率', satisfaction:'整体满意度',
-    satisfaction_region:'空间满意度',
-  })[actualId] || actualId;
-
-  var folder = (_sessionData.folder_name || 'SpaceLens').replace(/[\\/:*?"<>|]/g, '_');
-  var filename = folder + '_' + cn + '.png';
-
-  var link = document.createElement('a');
-  link.href = 'data:image/png;base64,' + b64;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  fetch(url, { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.cancelled) return;
+      if (data.error) throw new Error(data.error);
+      _showSaveSuccess(data.path);
+    })
+    .catch(function(e) { alert('保存失败：' + e.message); })
+    .finally(function() {
+      if (btn) { btn.disabled = false; btn.innerHTML = origHTML; }
+    });
 }
 
 // ── 导出当前指标 Excel ──
@@ -1151,43 +1135,19 @@ function exportMetricExcel(metricId) {
   var sid = getSessionId();
   if (!sid) return;
   var btn = document.getElementById('btn-export-xls-' + metricId);
-  var origText = btn ? btn.innerHTML : '';
+  var origHTML = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '导出中…'; }
 
-  // 对于 environment，后端只接受 environment_pX，但我们统一传 environment（后端会自动选第一个有数据的）
-  var url = '/api/export_metric/' + sid + '/' + metricId;
-
-  fetch(url)
-    .then(function(r) {
-      if (!r.ok) return r.json().then(function(j){ throw new Error(j.error || '导出失败'); });
-      return r.blob();
+  fetch('/api/save_metric/' + sid + '/' + metricId + '/excel', { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.cancelled) return;
+      if (data.error) throw new Error(data.error);
+      _showSaveSuccess(data.path);
     })
-    .then(function(blob) {
-      var folder = ((_sessionData && _sessionData.folder_name) || 'SpaceLens').replace(/[\\/:*?"<>|]/g, '_');
-      var cn = ({
-        heatmap:'到访频次热力图', usetime:'使用时长', speed:'移动速率',
-        duration:'停留时长', cluster:'空间聚类', density:'人员密度',
-        openness:'空间开放程度', topology:'拓扑连接关系', difference:'轨迹差异系数',
-        trajectory:'轨迹长度', environment:'环境参数',
-        behavior_count:'行为人次', behavior_duration:'行为时长',
-        behavior_rate:'行为发生率', behavior_entropy:'行为复合度',
-        utilization:'功能利用率', satisfaction:'整体满意度',
-        satisfaction_region:'空间满意度',
-      })[metricId] || metricId;
-      var url2 = URL.createObjectURL(blob);
-      var link = document.createElement('a');
-      link.href = url2;
-      link.download = folder + '_' + cn + '.zip';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setTimeout(function(){ URL.revokeObjectURL(url2); }, 2000);
-    })
-    .catch(function(e) {
-      alert('导出失败：' + e.message);
-    })
+    .catch(function(e) { alert('导出失败：' + e.message); })
     .finally(function() {
-      if (btn) { btn.disabled = false; btn.innerHTML = origText; }
+      if (btn) { btn.disabled = false; btn.innerHTML = origHTML; }
     });
 }
 

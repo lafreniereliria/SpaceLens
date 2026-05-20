@@ -301,6 +301,23 @@
 .save-project-btn:hover { opacity: 0.88; transform: translateY(-1px); }
 .save-project-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
+/* ── 指标单独导出按钮 ── */
+.metric-actions {
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+}
+.metric-action-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 11px;
+  font-size: 12px; font-weight: 500;
+  border-radius: 7px; border: 1px solid var(--border);
+  background: var(--bg-card); color: var(--text-secondary);
+  cursor: pointer; transition: all 0.15s; white-space: nowrap;
+}
+.metric-action-btn:hover { border-color: var(--accent); color: var(--accent); }
+.metric-action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.metric-action-btn.teal:hover { border-color: var(--teal); color: var(--teal); }
+.metric-action-btn svg { flex-shrink: 0; }
+
 /* ── 保存项目 Modal ── */
 .sp-overlay {
   position: fixed; inset: 0; z-index: 2000;
@@ -823,6 +840,16 @@ function buildPanels() {
       + '    <div class="result-panel-subtitle">' + cfg.subtitle + '</div>'
       + '    <div class="source-file-bar"><span class="source-label">数据来源：</span>' + sourceBtns + '</div>'
       + '  </div>'
+      + '  <div class="metric-actions" id="metric-actions-' + m.id + '">'
+      + '    <button class="metric-action-btn teal" id="btn-save-img-' + m.id + '" onclick="saveMetricImg(\'' + m.id + '\')" disabled title="保存图片">'
+      + '      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'
+      + '      保存图片'
+      + '    </button>'
+      + '    <button class="metric-action-btn" id="btn-export-xls-' + m.id + '" onclick="exportMetricExcel(\'' + m.id + '\')" disabled title="导出Excel">'
+      + '      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>'
+      + '      导出 Excel'
+      + '    </button>'
+      + '  </div>'
       + '</div>'
       + extraCtrl
       + (m.id === 'satisfaction'
@@ -893,6 +920,8 @@ function fillPanel(metricId, data) {
           + '</div>');
       });
     }
+    // 激活导出按钮
+    _enableMetricBtns('satisfaction', true, true);
     return;
   }
 
@@ -901,6 +930,7 @@ function fillPanel(metricId, data) {
   if (data.image) {
     if (img) { img.src = 'data:image/png;base64,' + data.image; img.style.display = 'block'; }
     if (ph)  { ph.style.display = 'none'; }
+    _enableMetricBtns(metricId, true, !!data.summary);
   } else if (data.error) {
     if (ph) {
       ph.innerHTML = '<div style="padding:40px;font-size:13px;color:#ef4444;text-align:center;">计算失败：' + data.error + '</div>';
@@ -921,6 +951,8 @@ function fillPanel(metricId, data) {
         + '</div>');
     });
   }
+  // 无论是否有 summary，只要有 image 就激活图片按钮
+  if (data.image) _enableMetricBtns(metricId, true, !!data.summary);
 }
 
 // ── 绘制整体满意度交互式柱状图 ──
@@ -1059,6 +1091,104 @@ function _drawSatBarChart(barData) {
       if (tt) tt.style.display = 'none';
     });
   }
+}
+
+// ── 激活/禁用指标导出按钮 ──
+function _enableMetricBtns(metricId, hasImg, hasExcel) {
+  var imgBtn = document.getElementById('btn-save-img-' + metricId);
+  var xlsBtn = document.getElementById('btn-export-xls-' + metricId);
+  if (imgBtn) imgBtn.disabled = !hasImg;
+  if (xlsBtn) xlsBtn.disabled = !hasExcel;
+}
+
+// ── 保存当前指标图片 ──
+function saveMetricImg(metricId) {
+  if (!_sessionData) return;
+  var results = _sessionData.results || {};
+
+  // 确定实际 metric key（environment → 取当前激活参数）
+  var actualId = metricId;
+  if (metricId === 'environment') {
+    var activeEnvBtn = document.querySelector('#env-tabs .env-tab.active');
+    var pn = activeEnvBtn ? parseInt(activeEnvBtn.dataset.pn) : 1;
+    actualId = 'environment_p' + pn;
+  }
+
+  var data = results[actualId];
+  if (!data) return;
+
+  // satisfaction 使用 image_dist；其余用 image
+  var b64 = (metricId === 'satisfaction') ? data.image_dist : data.image;
+  if (!b64) return;
+
+  var cn = ({
+    heatmap:'到访频次热力图', usetime:'使用时长', speed:'移动速率',
+    duration:'停留时长', cluster:'空间聚类', density:'人员密度',
+    openness:'空间开放程度', topology:'拓扑连接关系', difference:'轨迹差异系数',
+    trajectory:'轨迹长度',
+    environment_p1:'环境参数_温度', environment_p2:'环境参数_湿度',
+    environment_p3:'环境参数_光照', environment_p4:'环境参数_风速',
+    environment_p5:'环境参数_噪声',
+    behavior_count:'行为人次', behavior_duration:'行为时长',
+    behavior_rate:'行为发生率', behavior_entropy:'行为复合度',
+    utilization:'功能利用率', satisfaction:'整体满意度',
+    satisfaction_region:'空间满意度',
+  })[actualId] || actualId;
+
+  var folder = (_sessionData.folder_name || 'SpaceLens').replace(/[\\/:*?"<>|]/g, '_');
+  var filename = folder + '_' + cn + '.png';
+
+  var link = document.createElement('a');
+  link.href = 'data:image/png;base64,' + b64;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// ── 导出当前指标 Excel ──
+function exportMetricExcel(metricId) {
+  var sid = getSessionId();
+  if (!sid) return;
+  var btn = document.getElementById('btn-export-xls-' + metricId);
+  var origText = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '导出中…'; }
+
+  // 对于 environment，后端只接受 environment_pX，但我们统一传 environment（后端会自动选第一个有数据的）
+  var url = '/api/export_metric/' + sid + '/' + metricId;
+
+  fetch(url)
+    .then(function(r) {
+      if (!r.ok) return r.json().then(function(j){ throw new Error(j.error || '导出失败'); });
+      return r.blob();
+    })
+    .then(function(blob) {
+      var folder = ((_sessionData && _sessionData.folder_name) || 'SpaceLens').replace(/[\\/:*?"<>|]/g, '_');
+      var cn = ({
+        heatmap:'到访频次热力图', usetime:'使用时长', speed:'移动速率',
+        duration:'停留时长', cluster:'空间聚类', density:'人员密度',
+        openness:'空间开放程度', topology:'拓扑连接关系', difference:'轨迹差异系数',
+        trajectory:'轨迹长度', environment:'环境参数',
+        behavior_count:'行为人次', behavior_duration:'行为时长',
+        behavior_rate:'行为发生率', behavior_entropy:'行为复合度',
+        utilization:'功能利用率', satisfaction:'整体满意度',
+        satisfaction_region:'空间满意度',
+      })[metricId] || metricId;
+      var url2 = URL.createObjectURL(blob);
+      var link = document.createElement('a');
+      link.href = url2;
+      link.download = folder + '_' + cn + '.zip';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(function(){ URL.revokeObjectURL(url2); }, 2000);
+    })
+    .catch(function(e) {
+      alert('导出失败：' + e.message);
+    })
+    .finally(function() {
+      if (btn) { btn.disabled = false; btn.innerHTML = origText; }
+    });
 }
 
 // ── 填充环境参数（多个子结果） ──

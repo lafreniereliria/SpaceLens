@@ -1406,6 +1406,102 @@ def export_project(sid):
         return jsonify({'error': str(e)}), 500
 
 
+# ─────────────────────────────────────────────
+# /api/export_metric/<sid>/<metric_id>  —  单指标导出
+# ─────────────────────────────────────────────
+
+@analysis_bp.route('/export_metric/<sid>/<metric_id>', methods=['GET'])
+def export_metric(sid, metric_id):
+    """
+    单指标导出：返回包含图片（PNG）和数值（Excel）的 ZIP 文件。
+    支持 satisfaction 特殊处理（image_dist + bar_data）。
+    """
+    try:
+        with _sess_lock:
+            sess = _sessions.get(sid)
+        if sess is None:
+            return jsonify({'error': '会话不存在或已过期'}), 404
+
+        results = sess.get('results', {})
+        computed = sess.get('computed', [])
+
+        # environment → 导出所有可用的 environment_pX 子结果
+        actual_id = metric_id
+        if metric_id == 'environment':
+            env_ids = [f'environment_p{n}' for n in range(1, 6) if f'environment_p{n}' in computed]
+            if not env_ids:
+                return jsonify({'error': '环境参数尚未计算或无结果'}), 400
+            cn_name_zip = '环境参数'
+            folder_name = sess.get('folder', '') or 'SpaceLens'
+            safe_folder = ''.join(c if c not in r'\/:*?"<>|' else '_' for c in folder_name)
+            buf = io.BytesIO()
+            with _zipfile.ZipFile(buf, 'w', _zipfile.ZIP_DEFLATED) as zf:
+                for eid in env_ids:
+                    edata = results.get(eid)
+                    if not edata:
+                        continue
+                    ecn = _METRIC_NAMES.get(eid, eid)
+                    img_b64 = edata.get('image')
+                    if img_b64:
+                        zf.writestr(f'{ecn}.png', base64.b64decode(img_b64))
+                    summary = edata.get('summary')
+                    if summary:
+                        _write_summary_xlsx(zf, eid, ecn, summary)
+            buf.seek(0)
+            from flask import send_file as _send
+            return _send(buf, mimetype='application/zip', as_attachment=True,
+                         download_name=f'{safe_folder}_{cn_name_zip}.zip')
+
+        data = results.get(actual_id)
+        if not data:
+            return jsonify({'error': f'指标 {metric_id} 尚未计算或无结果'}), 400
+
+        cn_name = _METRIC_NAMES.get(actual_id, actual_id)
+        folder_name = sess.get('folder', '') or 'SpaceLens'
+        safe_folder = ''.join(c if c not in r'\/:*?"<>|' else '_' for c in folder_name)
+
+        buf = io.BytesIO()
+        with _zipfile.ZipFile(buf, 'w', _zipfile.ZIP_DEFLATED) as zf:
+            # 图片：优先 image，其次 image_dist（satisfaction 专用）
+            img_b64 = data.get('image') or data.get('image_dist')
+            if img_b64:
+                zf.writestr(f'{cn_name}.png', base64.b64decode(img_b64))
+
+            # satisfaction bar_data → 写入 Excel
+            bar_data = data.get('bar_data')
+            if bar_data and actual_id == 'satisfaction':
+                try:
+                    wb_buf = io.BytesIO()
+                    with pd.ExcelWriter(wb_buf, engine='openpyxl') as writer:
+                        pd.DataFrame(bar_data, columns=['人员编号', '满意度得分']).to_excel(
+                            writer, sheet_name='个人评分', index=False)
+                        summary = data.get('summary')
+                        if summary:
+                            scalar_rows = [{'指标': k, '数值': v}
+                                           for k, v in summary.items() if not isinstance(v, list)]
+                            pd.DataFrame(scalar_rows).to_excel(
+                                writer, sheet_name='摘要', index=False)
+                    wb_buf.seek(0)
+                    zf.writestr(f'{cn_name}.xlsx', wb_buf.read())
+                except Exception:
+                    pass
+            else:
+                summary = data.get('summary')
+                if summary:
+                    _write_summary_xlsx(zf, actual_id, cn_name, summary)
+
+        buf.seek(0)
+        from flask import send_file as _send
+        return _send(
+            buf,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=f'{safe_folder}_{cn_name}.zip',
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 def _write_summary_xlsx(zf, metric_id, cn_name, summary):
     """将一个指标的 summary dict 写入 ZIP 内的 data/<cn_name>.xlsx"""
     try:

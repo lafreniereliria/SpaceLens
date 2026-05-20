@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据库管理 — SpaceLens</title>
+<script>
+(function(){
+  var t = localStorage.getItem('theme') || 'light';
+  document.documentElement.setAttribute('data-theme', t);
+  var a = localStorage.getItem('accentColor') || '#0ea5e9';
+  var m = a.match(/^#([0-9a-f]{6})$/i);
+  if(m){
+    var r=parseInt(m[1].slice(0,2),16), g=parseInt(m[1].slice(2,4),16), b=parseInt(m[1].slice(4,6),16);
+    document.documentElement.style.setProperty('--accent', a);
+    document.documentElement.style.setProperty('--accent-rgb', r+','+g+','+b);
+  }
+})();
+</script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --accent: #0ea5e9; --accent-rgb: 14,165,233;
+  font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', sans-serif;
+}
+[data-theme="light"] {
+  --bg: #f4f7fb; --bg-card: #ffffff; --border: #e2e8f0;
+  --text-primary: #0f172a; --text-secondary: #64748b;
+  --shadow: 0 4px 24px rgba(0,0,0,0.08);
+  --bg-hover: #f8fafc; --bg-input: #ffffff;
+  --table-head: #f1f5f9;
+}
+[data-theme="dark"] {
+  --bg: #0f1117; --bg-card: #161b27; --border: #2a2f45;
+  --text-primary: #e8eaf0; --text-secondary: #8b90a8;
+  --shadow: 0 4px 24px rgba(0,0,0,0.45);
+  --bg-hover: #1e2436; --bg-input: #1a2030;
+  --table-head: #1a2030;
+}
+body { min-height:100vh; background:var(--bg); color:var(--text-primary); display:flex; flex-direction:column; }
+
+/* ── topbar ── */
+.topbar {
+  width:100%; padding:0 40px; height:60px;
+  display:flex; align-items:center; justify-content:space-between;
+  background:var(--bg-card); border-bottom:1px solid var(--border);
+  position:sticky; top:0; z-index:10;
+}
+.topbar-left { display:flex; align-items:center; gap:8px; }
+.topbar-logo { display:flex; align-items:center; gap:10px; cursor:pointer; text-decoration:none; color:inherit; }
+.topbar-logo-icon {
+  width:32px; height:32px;
+  background:linear-gradient(135deg, var(--accent), #0284c7);
+  border-radius:8px; display:flex; align-items:center; justify-content:center;
+}
+.topbar-logo-icon svg { width:18px; height:18px; color:#fff; }
+.topbar-title { font-size:15px; font-weight:600; letter-spacing:0.5px; }
+.topbar-right { display:flex; align-items:center; gap:8px; }
+.icon-btn {
+  width:34px; height:34px; border:1px solid var(--border); border-radius:8px;
+  background:transparent; color:var(--text-secondary); cursor:pointer;
+  display:flex; align-items:center; justify-content:center; transition:all 0.15s;
+}
+.icon-btn:hover { background:var(--bg); color:var(--text-primary); }
+
+/* ── topnav dropdown ── */
+.topnav-wrap { position:relative; }
+.topnav-btn {
+  display:inline-flex; align-items:center; gap:7px; padding:7px 12px;
+  background:var(--bg-card); border:1px solid var(--border); border-radius:8px;
+  cursor:pointer; transition:all 0.15s; font-size:13px; font-weight:500; color:var(--text-primary);
+}
+.topnav-btn:hover { border-color:var(--accent); color:var(--accent); }
+.topnav-caret { transition:transform 0.2s; flex-shrink:0; }
+.topnav-wrap.open .topnav-caret { transform:rotate(180deg); }
+.topnav-dropdown {
+  display:none; position:absolute; top:calc(100% + 6px); left:0;
+  min-width:200px; background:var(--bg-card); border:1px solid var(--border);
+  border-radius:10px; box-shadow:0 8px 28px rgba(0,0,0,0.14); padding:6px 0; z-index:999;
+}
+.topnav-wrap.open .topnav-dropdown { display:block; }
+.topnav-section-label {
+  padding:7px 14px 3px; font-size:10px; font-weight:700;
+  letter-spacing:1px; color:var(--text-secondary); text-transform:uppercase; opacity:0.6;
+}
+.topnav-item {
+  display:flex; align-items:center; gap:8px; width:100%; padding:7px 16px;
+  font-size:13px; color:var(--text-secondary); background:transparent; border:none;
+  cursor:pointer; text-decoration:none; transition:all 0.12s;
+}
+.topnav-item:hover { background:var(--bg-hover); color:var(--text-primary); }
+.topnav-item-current { color:var(--accent) !important; font-weight:500; opacity:0.75; }
+.topnav-divider { height:1px; background:var(--border); margin:5px 0; }
+.topnav-item-danger { color:#ef4444 !important; }
+.topnav-item-danger:hover { background:rgba(239,68,68,0.08) !important; color:#ef4444 !important; }
+
+/* ── 密码锁层 ── */
+#lock-screen {
+  position:fixed; inset:0; z-index:100;
+  background:var(--bg);
+  display:flex; align-items:center; justify-content:center;
+}
+.lock-card {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:20px; padding:48px 44px;
+  width:360px; max-width:92vw;
+  box-shadow:0 20px 60px rgba(0,0,0,0.15);
+  display:flex; flex-direction:column; align-items:center; gap:0;
+}
+.lock-icon {
+  width:56px; height:56px;
+  background:linear-gradient(135deg, var(--accent), #0284c7);
+  border-radius:16px; display:flex; align-items:center; justify-content:center;
+  margin-bottom:20px;
+}
+.lock-icon svg { width:26px; height:26px; color:#fff; }
+.lock-card h2 { font-size:20px; font-weight:700; margin-bottom:6px; }
+.lock-card p { font-size:13px; color:var(--text-secondary); margin-bottom:28px; text-align:center; line-height:1.6; }
+.lock-input-wrap { width:100%; position:relative; margin-bottom:12px; }
+.lock-input {
+  width:100%; padding:11px 44px 11px 14px;
+  border:1.5px solid var(--border); border-radius:10px;
+  background:var(--bg-input); color:var(--text-primary);
+  font-size:14px; outline:none; transition:border-color 0.15s;
+  letter-spacing:3px;
+}
+.lock-input:focus { border-color:var(--accent); }
+.lock-input.error { border-color:#ef4444; }
+.lock-eye {
+  position:absolute; right:12px; top:50%; transform:translateY(-50%);
+  background:none; border:none; cursor:pointer; color:var(--text-secondary);
+  padding:4px; display:flex; align-items:center;
+}
+.lock-error { font-size:12px; color:#ef4444; margin-bottom:16px; height:16px; }
+.lock-submit {
+  width:100%; padding:11px;
+  background:var(--accent); color:#fff;
+  border:none; border-radius:10px; font-size:14px; font-weight:600;
+  cursor:pointer; transition:opacity 0.15s;
+}
+.lock-submit:hover { opacity:0.88; }
+.lock-hint { margin-top:16px; font-size:12px; color:var(--text-secondary); text-align:center; }
+
+/* ── 主页面 ── */
+#main-content { flex:1; display:flex; flex-direction:column; }
+.page-wrap { flex:1; max-width:1280px; width:100%; margin:0 auto; padding:40px 32px 80px; }
+
+/* 页头 */
+.page-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:32px; }
+.page-head-left h1 { font-size:24px; font-weight:700; margin-bottom:4px; }
+.page-head-left p { font-size:13px; color:var(--text-secondary); }
+.page-head-actions { display:flex; gap:8px; }
+.btn {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:8px 16px; border-radius:8px; font-size:13px; font-weight:500;
+  cursor:pointer; transition:all 0.15s; border:1px solid var(--border);
+  background:var(--bg-card); color:var(--text-secondary); text-decoration:none;
+}
+.btn:hover { color:var(--text-primary); border-color:var(--accent); }
+.btn-primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+.btn-primary:hover { opacity:0.88; }
+.btn-danger { border-color:#ef4444; color:#ef4444; }
+.btn-danger:hover { background:rgba(239,68,68,0.08); }
+
+/* 统计卡片 */
+.stats-row { display:grid; grid-template-columns:repeat(4, 1fr); gap:16px; margin-bottom:32px; }
+.stat-card {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:14px;
+  padding:20px 22px; display:flex; flex-direction:column; gap:4px;
+}
+.stat-card-label { font-size:12px; color:var(--text-secondary); font-weight:500; }
+.stat-card-val { font-size:28px; font-weight:700; color:var(--accent); }
+.stat-card-sub { font-size:11px; color:var(--text-secondary); }
+
+/* 工具栏 */
+.toolbar { display:flex; align-items:center; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
+.toolbar-search {
+  flex:1; min-width:180px; max-width:320px;
+  display:flex; align-items:center; gap:8px;
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:9px; padding:0 12px; height:36px;
+}
+.toolbar-search svg { color:var(--text-secondary); flex-shrink:0; }
+.toolbar-search input {
+  flex:1; border:none; background:transparent; color:var(--text-primary);
+  font-size:13px; outline:none;
+}
+.toolbar-search input::placeholder { color:var(--text-secondary); }
+.filter-select {
+  height:36px; padding:0 10px; border:1px solid var(--border); border-radius:9px;
+  background:var(--bg-card); color:var(--text-primary); font-size:13px; cursor:pointer; outline:none;
+}
+.filter-select:hover { border-color:var(--accent); }
+.tag-count { font-size:11px; background:rgba(var(--accent-rgb),0.12); color:var(--accent);
+  padding:2px 8px; border-radius:999px; font-weight:600; }
+
+/* 表格 */
+.table-card {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:16px;
+  overflow:hidden; margin-bottom:20px;
+}
+.table-wrap { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; font-size:13px; }
+thead tr { background:var(--table-head); }
+thead th {
+  padding:11px 14px; text-align:left; font-weight:600; font-size:12px;
+  color:var(--text-secondary); white-space:nowrap; border-bottom:1px solid var(--border);
+}
+thead th.sortable { cursor:pointer; user-select:none; }
+thead th.sortable:hover { color:var(--accent); }
+tbody tr { border-bottom:1px solid var(--border); transition:background 0.1s; }
+tbody tr:last-child { border-bottom:none; }
+tbody tr:hover { background:var(--bg-hover); }
+tbody td { padding:10px 14px; color:var(--text-primary); vertical-align:middle; }
+.cell-id { font-weight:600; color:var(--accent); font-size:12px; }
+.cell-name { font-weight:500; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cell-type { font-size:11px; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:2px 8px; white-space:nowrap; display:inline-block; }
+.cell-date { font-size:12px; color:var(--text-secondary); white-space:nowrap; }
+.cell-path { font-size:11px; color:var(--text-secondary); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:monospace; }
+.cell-tags { display:flex; flex-wrap:wrap; gap:4px; }
+.cell-tag {
+  font-size:11px; padding:2px 7px; border-radius:6px;
+  background:rgba(var(--accent-rgb),0.1); color:var(--accent); white-space:nowrap;
+}
+.cell-tag.skipped { background:rgba(239,68,68,0.08); color:#ef4444; }
+.cell-source-icon { cursor:pointer; color:var(--accent); padding:2px; opacity:0.7; }
+.cell-source-icon:hover { opacity:1; }
+.cell-thumb { width:40px; height:30px; border-radius:5px; object-fit:cover; background:var(--bg); border:1px solid var(--border); }
+.no-thumb { width:40px; height:30px; border-radius:5px; background:var(--bg); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; }
+.no-thumb svg { width:14px; height:14px; color:var(--text-secondary); opacity:0.4; }
+.empty-row td { text-align:center; padding:48px; color:var(--text-secondary); font-size:14px; }
+
+/* 行详情展开 */
+.row-detail { display:none; background:var(--bg); }
+.row-detail.open { display:table-row; }
+.row-detail td { padding:0; }
+.detail-inner { padding:16px 20px 20px; display:flex; flex-direction:column; gap:12px; }
+.detail-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px,1fr)); gap:10px; }
+.detail-kv { display:flex; flex-direction:column; gap:2px; }
+.detail-kv-key { font-size:11px; color:var(--text-secondary); font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
+.detail-kv-val { font-size:12px; color:var(--text-primary); font-family:monospace; word-break:break-all; }
+
+/* 分页 */
+.pagination { display:flex; align-items:center; gap:4px; justify-content:center; }
+.page-btn {
+  width:32px; height:32px; border:1px solid var(--border); border-radius:8px;
+  background:var(--bg-card); color:var(--text-secondary); font-size:13px;
+  cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.12s;
+}
+.page-btn:hover { border-color:var(--accent); color:var(--accent); }
+.page-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+.page-btn:disabled { opacity:0.35; cursor:not-allowed; }
+.page-info { font-size:12px; color:var(--text-secondary); margin:0 8px; }
+
+/* 删除确认浮层 */
+.overlay { position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:200; display:flex; align-items:center; justify-content:center; }
+.overlay.hidden { display:none; }
+.confirm-box { background:var(--bg-card); border-radius:16px; padding:32px; width:360px; max-width:90vw; box-shadow:0 20px 60px rgba(0,0,0,0.2); }
+.confirm-box h3 { font-size:16px; font-weight:700; margin-bottom:10px; }
+.confirm-box p { font-size:13px; color:var(--text-secondary); line-height:1.6; margin-bottom:24px; }
+.confirm-btns { display:flex; gap:10px; justify-content:flex-end; }
+
+/* JSON 弹窗 */
+.json-box {
+  background:var(--bg-card); border-radius:16px; padding:32px;
+  width:660px; max-width:94vw; max-height:80vh; display:flex; flex-direction:column;
+  box-shadow:0 20px 60px rgba(0,0,0,0.2);
+}
+.json-box h3 { font-size:15px; font-weight:700; margin-bottom:14px; }
+.json-pre {
+  flex:1; overflow:auto; background:var(--bg); border:1px solid var(--border);
+  border-radius:10px; padding:14px; font-size:12px; font-family:monospace;
+  line-height:1.7; white-space:pre-wrap; word-break:break-all; color:var(--text-primary);
+}
+.json-actions { margin-top:16px; display:flex; justify-content:flex-end; }
+
+/* 导出成功提示 */
+.toast {
+  position:fixed; bottom:32px; left:50%; transform:translateX(-50%) translateY(20px);
+  background:var(--accent); color:#fff; padding:10px 20px; border-radius:999px;
+  font-size:13px; font-weight:600; box-shadow:0 4px 20px rgba(0,0,0,0.2);
+  opacity:0; transition:all 0.3s; z-index:999; pointer-events:none;
+}
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* 进度 */
+.loading-bar { height:3px; background:var(--border); border-radius:3px; overflow:hidden; margin-bottom:20px; }
+.loading-bar-inner { height:100%; background:var(--accent); width:0; transition:width 0.4s; border-radius:3px; }
+</style>
+</head>
+<body>
+
+<!-- 密码锁层 -->
+<div id="lock-screen">
+  <div class="lock-card">
+    <div class="lock-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+        <path d="M7 11V7a5 5 0 0110 0v4"/>
+      </svg>
+    </div>
+    <h2>数据库管理</h2>
+    <p>此页面仅限管理员访问<br>请输入访问密码</p>
+    <div class="lock-input-wrap">
+      <input id="pw-input" class="lock-input" type="password" placeholder="输入密码" autocomplete="off"
+             onkeydown="if(event.key==='Enter')doUnlock()">
+      <button class="lock-eye" id="pw-eye" onclick="togglePwEye()" title="显示/隐藏密码">
+        <svg id="eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+        </svg>
+      </button>
+    </div>
+    <div class="lock-error" id="lock-error"></div>
+    <button class="lock-submit" onclick="doUnlock()">进入管理页</button>
+    <div class="lock-hint">提示：密码在 app.py 的 <code>ADMIN_PASSWORD</code> 中配置</div>
+  </div>
+</div>
+
+<!-- 主内容 -->
+<div id="main-content" style="display:none;">
+  <!-- 顶栏 -->
+  <nav class="topbar">
+    <div class="topbar-left">
+      <div class="topnav-wrap" id="topnav-wrap">
+        <button class="topnav-btn" onclick="toggleTopNav()" title="页面导航">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          导航
+          <svg class="topnav-caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="topnav-dropdown" id="topnav-dropdown">
+          <div class="topnav-section-label">工作流程</div>
+          <a class="topnav-item" href="/"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>封面首页</a>
+          <a class="topnav-item" href="/projects"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>项目管理</a>
+          <a class="topnav-item" href="/new_project"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>新建项目</a>
+          <a class="topnav-item" href="/history"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>历史记录</a>
+          <a class="topnav-item" href="/compare"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>对比分析</a>
+          <div class="topnav-divider"></div>
+          <div class="topnav-section-label">管理</div>
+          <a class="topnav-item topnav-item-current" href="/admin/db" style="cursor:default">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            数据库管理
+          </a>
+        </div>
+      </div>
+      <a class="topbar-logo" href="/">
+        <div class="topbar-logo-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+        </div>
+        <span class="topbar-title">SpaceLens</span>
+      </a>
+      <span style="font-size:13px; color:var(--text-secondary); margin-left:4px;">/ 数据库管理</span>
+    </div>
+    <div class="topbar-right">
+      <button class="btn btn-danger" onclick="confirmClearAll()" id="clear-btn" style="display:none;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+        清空数据库
+      </button>
+      <button class="btn btn-primary" onclick="exportCSV()" id="export-btn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        导出 CSV
+      </button>
+      <button class="icon-btn" onclick="toggleTheme()" title="切换主题">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </button>
+    </div>
+  </nav>
+
+  <!-- 主体 -->
+  <div class="page-wrap">
+    <div class="page-head">
+      <div class="page-head-left">
+        <h1>数据库管理</h1>
+        <p id="db-path-label">加载中…</p>
+      </div>
+    </div>
+
+    <div class="loading-bar" id="loading-bar">
+      <div class="loading-bar-inner" id="loading-bar-inner"></div>
+    </div>
+
+    <!-- 统计 -->
+    <div class="stats-row" id="stats-row">
+      <div class="stat-card">
+        <span class="stat-card-label">总项目数</span>
+        <span class="stat-card-val" id="stat-total">—</span>
+        <span class="stat-card-sub">所有已保存记录</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-card-label">含结果文件夹</span>
+        <span class="stat-card-val" id="stat-has-folder">—</span>
+        <span class="stat-card-sub">result_folder 非空</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-card-label">含缩略图</span>
+        <span class="stat-card-val" id="stat-has-thumb">—</span>
+        <span class="stat-card-sub">floorplan_b64 非空</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-card-label">最早记录</span>
+        <span class="stat-card-val" id="stat-oldest" style="font-size:16px; padding-top:4px;">—</span>
+        <span class="stat-card-sub">创建时间</span>
+      </div>
+    </div>
+
+    <!-- 工具栏 -->
+    <div class="toolbar">
+      <div class="toolbar-search">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="search-input" type="text" placeholder="搜索名称 / 类型 / 路径…" oninput="onSearch()">
+      </div>
+      <select class="filter-select" id="type-filter" onchange="onSearch()">
+        <option value="">全部类型</option>
+      </select>
+      <span class="tag-count" id="result-count">0 条</span>
+      <div style="flex:1;"></div>
+      <button class="btn" onclick="loadData()" title="刷新">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/></svg>
+        刷新
+      </button>
+    </div>
+
+    <!-- 表格 -->
+    <div class="table-card">
+      <div class="table-wrap">
+        <table id="main-table">
+          <thead>
+            <tr>
+              <th>缩略图</th>
+              <th class="sortable" onclick="sortBy('id')">ID ↕</th>
+              <th class="sortable" onclick="sortBy('name')">项目名称 ↕</th>
+              <th class="sortable" onclick="sortBy('building_type')">类型 ↕</th>
+              <th>已计算指标</th>
+              <th>跳过指标</th>
+              <th class="sortable" onclick="sortBy('created_at')">创建时间 ↕</th>
+              <th>源文件</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="table-body">
+            <tr class="empty-row"><td colspan="9">加载中…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 分页 -->
+    <div class="pagination" id="pagination"></div>
+  </div>
+</div>
+
+<!-- 删除确认弹窗 -->
+<div class="overlay hidden" id="delete-overlay">
+  <div class="confirm-box">
+    <h3>确认删除</h3>
+    <p id="delete-msg">确定要删除这条记录吗？此操作不可撤销。</p>
+    <div class="confirm-btns">
+      <button class="btn" onclick="closeDeleteConfirm()">取消</button>
+      <button class="btn btn-danger" onclick="doDelete()">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 清空确认弹窗 -->
+<div class="overlay hidden" id="clear-overlay">
+  <div class="confirm-box">
+    <h3>⚠️ 清空所有记录</h3>
+    <p>此操作将删除数据库中<strong>全部项目记录</strong>，磁盘上的结果文件不受影响。<br><br>确定继续吗？</p>
+    <div class="confirm-btns">
+      <button class="btn" onclick="document.getElementById('clear-overlay').classList.add('hidden')">取消</button>
+      <button class="btn btn-danger" onclick="doClearAll()">清空全部</button>
+    </div>
+  </div>
+</div>
+
+<!-- JSON 详情弹窗 -->
+<div class="overlay hidden" id="json-overlay">
+  <div class="json-box">
+    <h3 id="json-title">详细信息</h3>
+    <pre class="json-pre" id="json-pre"></pre>
+    <div class="json-actions">
+      <button class="btn" onclick="document.getElementById('json-overlay').classList.add('hidden')">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── 密码验证 ──────────────────────────────────────────────────────
+var _unlocked = false;
+var _sessionKey = 'sl_admin_unlocked';
+
+function togglePwEye() {
+  var inp = document.getElementById('pw-input');
+  var icon = document.getElementById('eye-icon');
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>';
+  } else {
+    inp.type = 'password';
+    icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+  }
+}
+
+function doUnlock() {
+  var pw = document.getElementById('pw-input').value;
+  var err = document.getElementById('lock-error');
+  var inp = document.getElementById('pw-input');
+  err.textContent = '';
+  inp.classList.remove('error');
+
+  fetch('/api/admin/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: pw })
+  }).then(function(r){ return r.json(); }).then(function(d) {
+    if (d.ok) {
+      sessionStorage.setItem(_sessionKey, '1');
+      document.getElementById('lock-screen').style.display = 'none';
+      document.getElementById('main-content').style.display = 'flex';
+      document.getElementById('main-content').style.flexDirection = 'column';
+      _unlocked = true;
+      loadData();
+    } else {
+      inp.classList.add('error');
+      err.textContent = d.error || '密码错误';
+      inp.value = '';
+      inp.focus();
+    }
+  }).catch(function() {
+    err.textContent = '无法连接服务器';
+  });
+}
+
+// 已验证过就直接进（同一 session 内）
+if (sessionStorage.getItem(_sessionKey) === '1') {
+  document.getElementById('lock-screen').style.display = 'none';
+  document.getElementById('main-content').style.display = 'flex';
+  document.getElementById('main-content').style.flexDirection = 'column';
+  _unlocked = true;
+}
+
+// ── 数据 ─────────────────────────────────────────────────────────
+var _allRows = [];
+var _filteredRows = [];
+var _sortField = 'created_at';
+var _sortAsc = false;
+var _page = 1;
+var _pageSize = 20;
+var _deleteTargetId = null;
+
+function loadData() {
+  setLoadingBar(30);
+  fetch('/api/admin/db_data', {
+    headers: { 'X-Admin-Token': sessionStorage.getItem(_sessionKey) || '' }
+  }).then(function(r){ return r.json(); }).then(function(d) {
+    setLoadingBar(100);
+    if (d.error) { showToast('加载失败：' + d.error); return; }
+    _allRows = d.rows || [];
+    document.getElementById('db-path-label').textContent = '数据库路径：' + (d.db_path || '未知');
+    document.getElementById('clear-btn').style.display = _allRows.length ? '' : 'none';
+    updateStats();
+    updateTypeFilter();
+    applyFilter();
+    setTimeout(function(){ setLoadingBar(0); }, 600);
+  }).catch(function(e){
+    setLoadingBar(0);
+    showToast('加载出错：' + e.message);
+  });
+}
+
+function setLoadingBar(pct) {
+  var el = document.getElementById('loading-bar-inner');
+  if (el) el.style.width = pct + '%';
+  if (pct >= 100) setTimeout(function(){ if(el) el.style.width = '0'; }, 600);
+}
+
+function updateStats() {
+  var rows = _allRows;
+  document.getElementById('stat-total').textContent = rows.length;
+  document.getElementById('stat-has-folder').textContent = rows.filter(function(r){ return r.result_folder; }).length;
+  document.getElementById('stat-has-thumb').textContent = rows.filter(function(r){ return r.floorplan_b64; }).length;
+  if (rows.length) {
+    var oldest = rows.reduce(function(a,b){ return a.created_at < b.created_at ? a : b; });
+    document.getElementById('stat-oldest').textContent = fmtDate(oldest.created_at);
+  } else {
+    document.getElementById('stat-oldest').textContent = '—';
+  }
+}
+
+function updateTypeFilter() {
+  var types = [...new Set(_allRows.map(function(r){ return r.building_type || ''; }))].filter(Boolean).sort();
+  var sel = document.getElementById('type-filter');
+  var cur = sel.value;
+  sel.innerHTML = '<option value="">全部类型</option>';
+  types.forEach(function(t) {
+    var o = document.createElement('option');
+    o.value = t; o.textContent = t;
+    if (t === cur) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+
+function onSearch() { _page = 1; applyFilter(); }
+
+function applyFilter() {
+  var q = document.getElementById('search-input').value.toLowerCase();
+  var typeF = document.getElementById('type-filter').value;
+  _filteredRows = _allRows.filter(function(r) {
+    var matchQ = !q || (r.name||'').toLowerCase().includes(q)
+      || (r.building_type||'').toLowerCase().includes(q)
+      || (r.input_folder||'').toLowerCase().includes(q)
+      || String(r.id).includes(q);
+    var matchT = !typeF || r.building_type === typeF;
+    return matchQ && matchT;
+  });
+  // 排序
+  _filteredRows.sort(function(a,b){
+    var av = a[_sortField]; var bv = b[_sortField];
+    if (typeof av === 'string') av = av.toLowerCase();
+    if (typeof bv === 'string') bv = bv.toLowerCase();
+    if (av < bv) return _sortAsc ? -1 : 1;
+    if (av > bv) return _sortAsc ? 1 : -1;
+    return 0;
+  });
+  document.getElementById('result-count').textContent = _filteredRows.length + ' 条';
+  renderTable();
+  renderPagination();
+}
+
+function sortBy(field) {
+  if (_sortField === field) { _sortAsc = !_sortAsc; }
+  else { _sortField = field; _sortAsc = field !== 'created_at'; }
+  _page = 1; applyFilter();
+}
+
+function renderTable() {
+  var tbody = document.getElementById('table-body');
+  var start = (_page - 1) * _pageSize;
+  var pageRows = _filteredRows.slice(start, start + _pageSize);
+
+  if (!pageRows.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="9">暂无数据</td></tr>';
+    return;
+  }
+
+  var html = '';
+  pageRows.forEach(function(r) {
+    var trId = 'tr-' + r.id;
+    var detailId = 'detail-' + r.id;
+    // 缩略图
+    var thumbHtml = r.floorplan_b64
+      ? '<img class="cell-thumb" src="data:image/png;base64,' + r.floorplan_b64 + '" alt="缩略图">'
+      : '<div class="no-thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>';
+    // 已计算指标
+    var computed = r.computed || [];
+    var compHtml = computed.length
+      ? computed.slice(0,4).map(function(c){ return '<span class="cell-tag">' + c + '</span>'; }).join('')
+        + (computed.length > 4 ? '<span class="cell-tag">+' + (computed.length-4) + '</span>' : '')
+      : '<span style="color:var(--text-secondary);font-size:11px;">无</span>';
+    // 跳过
+    var skipped = r.skipped || [];
+    var skipHtml = skipped.length
+      ? skipped.slice(0,2).map(function(c){ return '<span class="cell-tag skipped">' + c + '</span>'; }).join('')
+        + (skipped.length > 2 ? '<span class="cell-tag skipped">+' + (skipped.length-2) + '</span>' : '')
+      : '<span style="color:var(--text-secondary);font-size:11px;">—</span>';
+    // 源文件 icon
+    var sf = r.source_files || {};
+    var sfKeys = Object.keys(sf).filter(function(k){ return sf[k]; });
+    var sfHtml = sfKeys.length
+      ? '<span title="' + sfKeys.length + ' 个源文件路径已保存" style="font-size:12px;color:var(--accent);">📁 ' + sfKeys.length + '</span>'
+      : '<span style="color:var(--text-secondary);font-size:11px;">—</span>';
+
+    html += '<tr id="' + trId + '" style="cursor:pointer" onclick="toggleDetail(' + r.id + ')">';
+    html += '<td>' + thumbHtml + '</td>';
+    html += '<td><span class="cell-id">#' + r.id + '</span></td>';
+    html += '<td><div class="cell-name" title="' + esc(r.name||'') + '">' + esc(r.name||'未命名') + '</div></td>';
+    html += '<td><span class="cell-type">' + esc(r.building_type||'—') + '</span></td>';
+    html += '<td><div class="cell-tags">' + compHtml + '</div></td>';
+    html += '<td><div class="cell-tags">' + skipHtml + '</div></td>';
+    html += '<td><span class="cell-date">' + fmtDate(r.created_at) + '</span></td>';
+    html += '<td>' + sfHtml + '</td>';
+    html += '<td onclick="event.stopPropagation()">';
+    html += '  <div style="display:flex;gap:4px;align-items:center;">';
+    html += '    <button class="btn" style="padding:4px 8px;font-size:11px;" onclick="showJson(' + r.id + ')" title="查看详情">JSON</button>';
+    html += '    <button class="btn btn-danger" style="padding:4px 8px;font-size:11px;" onclick="confirmDelete(' + r.id + ',\'' + esc(r.name||'#'+r.id) + '\')" title="删除">删除</button>';
+    html += '  </div>';
+    html += '</td>';
+    html += '</tr>';
+    // 展开行（详情）
+    html += '<tr class="row-detail" id="' + detailId + '"><td colspan="9">';
+    html += '<div class="detail-inner">';
+    html += '<div class="detail-grid">';
+    html += kv('会话 ID', r.session_id||'—');
+    html += kv('输入文件夹', r.input_folder||'—');
+    html += kv('结果文件夹', r.result_folder||'—');
+    html += kv('创建时间', fmtDate(r.created_at, true));
+    if (sfKeys.length) {
+      sfKeys.forEach(function(k){
+        html += kv('源文件 [' + k + ']', sf[k]);
+      });
+    }
+    html += '</div>';
+    html += '</div>';
+    html += '</td></tr>';
+  });
+  tbody.innerHTML = html;
+}
+
+function kv(k, v) {
+  return '<div class="detail-kv"><span class="detail-kv-key">' + esc(k) + '</span><span class="detail-kv-val" title="' + esc(v) + '">' + esc(v) + '</span></div>';
+}
+
+function toggleDetail(id) {
+  var el = document.getElementById('detail-' + id);
+  if (el) el.classList.toggle('open');
+}
+
+function renderPagination() {
+  var total = _filteredRows.length;
+  var pages = Math.max(1, Math.ceil(total / _pageSize));
+  var wrap = document.getElementById('pagination');
+  if (pages <= 1) { wrap.innerHTML = ''; return; }
+  var html = '';
+  html += '<button class="page-btn" onclick="goPage(' + (_page-1) + ')" ' + (_page<=1?'disabled':'') + '>‹</button>';
+  var start = Math.max(1, _page - 2), end = Math.min(pages, _page + 2);
+  if (start > 1) html += '<button class="page-btn" onclick="goPage(1)">1</button>' + (start>2?'<span class="page-info">…</span>':'');
+  for (var i = start; i <= end; i++) {
+    html += '<button class="page-btn' + (i===_page?' active':'') + '" onclick="goPage('+i+')">' + i + '</button>';
+  }
+  if (end < pages) html += (end<pages-1?'<span class="page-info">…</span>':'') + '<button class="page-btn" onclick="goPage('+pages+')">' + pages + '</button>';
+  html += '<button class="page-btn" onclick="goPage(' + (_page+1) + ')" ' + (_page>=pages?'disabled':'') + '>›</button>';
+  html += '<span class="page-info">共 ' + total + ' 条 / ' + pages + ' 页</span>';
+  wrap.innerHTML = html;
+}
+
+function goPage(p) {
+  var pages = Math.ceil(_filteredRows.length / _pageSize);
+  _page = Math.max(1, Math.min(pages, p));
+  renderTable(); renderPagination();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+// ── 删除 ────────────────────────────────────────────────────────
+function confirmDelete(id, name) {
+  _deleteTargetId = id;
+  document.getElementById('delete-msg').textContent = '确定要删除项目「' + name + '」吗？此操作不可撤销。';
+  document.getElementById('delete-overlay').classList.remove('hidden');
+}
+function closeDeleteConfirm() {
+  document.getElementById('delete-overlay').classList.add('hidden');
+  _deleteTargetId = null;
+}
+function doDelete() {
+  if (!_deleteTargetId) return;
+  fetch('/api/projects/' + _deleteTargetId, { method: 'DELETE' })
+    .then(function(r){ return r.json(); })
+    .then(function(d) {
+      closeDeleteConfirm();
+      if (d.deleted || d.ok) { showToast('已删除'); loadData(); }
+      else showToast('删除失败：' + (d.error||'未知'));
+    }).catch(function(){ closeDeleteConfirm(); showToast('删除请求失败'); });
+}
+
+// ── 清空 ────────────────────────────────────────────────────────
+function confirmClearAll() { document.getElementById('clear-overlay').classList.remove('hidden'); }
+function doClearAll() {
+  document.getElementById('clear-overlay').classList.add('hidden');
+  fetch('/api/admin/clear_all', {
+    method: 'POST',
+    headers: { 'X-Admin-Token': sessionStorage.getItem(_sessionKey) || '' }
+  }).then(function(r){ return r.json(); }).then(function(d) {
+    if (d.ok) { showToast('数据库已清空'); loadData(); }
+    else showToast('清空失败：' + (d.error||'未知'));
+  }).catch(function(){ showToast('请求失败'); });
+}
+
+// ── JSON 详情 ────────────────────────────────────────────────────
+function showJson(id) {
+  var row = _allRows.find(function(r){ return r.id === id; });
+  if (!row) return;
+  // 隐藏 floorplan_b64（太长）
+  var display = Object.assign({}, row);
+  if (display.floorplan_b64) display.floorplan_b64 = '[base64 图片，已省略 ' + display.floorplan_b64.length + ' 字符]';
+  document.getElementById('json-title').textContent = '项目详情 #' + id + ' — ' + (row.name||'未命名');
+  document.getElementById('json-pre').textContent = JSON.stringify(display, null, 2);
+  document.getElementById('json-overlay').classList.remove('hidden');
+}
+
+// ── 导出 CSV ──────────────────────────────────────────────────────
+function exportCSV() {
+  if (!_filteredRows.length) { showToast('没有可导出的数据'); return; }
+  var cols = ['id','name','building_type','input_folder','session_id','computed','skipped','result_folder','created_at'];
+  var lines = [cols.join(',')];
+  _filteredRows.forEach(function(r) {
+    lines.push(cols.map(function(c) {
+      var v = c === 'computed' || c === 'skipped' ? JSON.stringify(r[c]||[]) : (r[c]||'');
+      return '"' + String(v).replace(/"/g,'""') + '"';
+    }).join(','));
+  });
+  var blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a'); a.href = url;
+  a.download = 'spacelens_projects_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click(); URL.revokeObjectURL(url);
+  showToast('CSV 已导出');
+}
+
+// ── 工具函数 ──────────────────────────────────────────────────────
+function fmtDate(ts, full) {
+  if (!ts) return '—';
+  var d = new Date(ts * 1000);
+  if (full) return d.toLocaleString('zh-CN');
+  return d.toLocaleDateString('zh-CN', { month:'2-digit', day:'2-digit' }) + ' ' + d.toLocaleTimeString('zh-CN', { hour:'2-digit', minute:'2-digit' });
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showToast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(function(){ t.classList.remove('show'); }, 2600);
+}
+
+// ── 导航 ──────────────────────────────────────────────────────────
+function toggleTopNav() { document.getElementById('topnav-wrap').classList.toggle('open'); }
+document.addEventListener('click', function(e) {
+  var wrap = document.getElementById('topnav-wrap');
+  if (wrap && !wrap.contains(e.target)) wrap.classList.remove('open');
+});
+
+function toggleTheme() {
+  var t = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem('theme', t);
+}
+
+// ── 初始化（若已解锁则自动加载）──────────────────────────────────
+if (_unlocked) { loadData(); }
+</script>
+</body>
+</html>

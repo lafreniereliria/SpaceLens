@@ -722,6 +722,62 @@ def _run_flask_impl(port: int, state: dict):
     def _compare():
         return _flask.render_template('compare.html')
 
+    @flask_app.route('/admin/db')
+    def _admin_db():
+        return _flask.render_template('admin_db.html')
+
+    # ── 管理员 API（与 app.py 保持一致）──────────────────────────
+    ADMIN_PASSWORD = 'spacelens2025'
+
+    @flask_app.route('/api/admin/verify', methods=['POST'])
+    def _admin_verify():
+        data = _flask.request.get_json(silent=True) or {}
+        if data.get('password') == ADMIN_PASSWORD:
+            return _flask.jsonify({'ok': True})
+        return _flask.jsonify({'ok': False, 'error': '密码错误，请重试'})
+
+    @flask_app.route('/api/admin/db_data', methods=['GET'])
+    def _admin_db_data():
+        try:
+            from api.db import DB_PATH, _connect, _lock
+            import json as _json
+            with _lock:
+                conn = _connect()
+                try:
+                    rows = conn.execute('SELECT * FROM projects ORDER BY created_at DESC').fetchall()
+                    result = []
+                    for r in rows:
+                        d = dict(r)
+                        try: d['computed'] = _json.loads(d.get('computed') or '[]')
+                        except Exception: d['computed'] = []
+                        try: d['skipped'] = _json.loads(d.get('skipped') or '[]')
+                        except Exception: d['skipped'] = []
+                        try: d['source_files'] = _json.loads(d.get('source_files') or '{}')
+                        except Exception: d['source_files'] = {}
+                        d.pop('files_md5', None)
+                        result.append(d)
+                finally:
+                    conn.close()
+            return _flask.jsonify({'rows': result, 'db_path': DB_PATH})
+        except Exception as e:
+            return _flask.jsonify({'error': str(e)}), 500
+
+    @flask_app.route('/api/admin/clear_all', methods=['POST'])
+    def _admin_clear_all():
+        try:
+            from api.db import _connect, _lock
+            with _lock:
+                conn = _connect()
+                try:
+                    conn.execute('DELETE FROM projects')
+                    conn.commit()
+                finally:
+                    conn.close()
+            return _flask.jsonify({'ok': True})
+        except Exception as e:
+            return _flask.jsonify({'ok': False, 'error': str(e)}), 500
+    # ──────────────────────────────────────────────────────────────
+
     @flask_app.route('/api/ready')
     def _api_ready():
         return _flask.jsonify({"ready": True, "error": None})

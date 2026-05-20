@@ -1376,12 +1376,9 @@ function _updateSourceBars(sourceFiles) {
     // 更新 title tooltip（显示完整路径）
     btn.title = filePath;
 
-    // 若路径含目录信息（可能能定位到文件），标记为可点击
-    var hasDir = filePath.indexOf('/') >= 0 || filePath.indexOf('\\') >= 0;
-    if (hasDir) {
-      btn.classList.add('clickable');
-      btn.removeAttribute('disabled');
-    }
+    // 有文件名即可点击（桌面端 Qt 已注入绝对路径，后端会处理兜底）
+    btn.classList.add('clickable');
+    btn.removeAttribute('disabled');
   });
 }
 

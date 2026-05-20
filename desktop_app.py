@@ -662,7 +662,7 @@ def _run_flask_impl(port: int, state: dict):
 
     _set("正在注册 API 路由...", 7)
     try:
-        from api.analysis import analysis_bp, register_save_dialog_hook
+        from api.analysis import analysis_bp, register_save_dialog_hook, _register_chosen_paths
     except Exception as e:
         state['error'] = str(e)
         state['stage'] = -1
@@ -740,6 +740,21 @@ def _run_flask_impl(port: int, state: dict):
 # --------------------------------------------------------------------------- #
 #  主窗口（封面用 setHtml 立即显示，就绪后 setUrl 跳转主界面）
 # --------------------------------------------------------------------------- #
+class SpaceLensPage(QWebEnginePage):
+    """
+    自定义 WebEnginePage：覆写 chooseFiles()，在用户选择文件后
+    立即将绝对路径注入 Flask 侧的路径表，供 open_source 端点使用。
+    """
+    def chooseFiles(self, mode, old_files, accepted_mimetypes):
+        paths = super().chooseFiles(mode, old_files, accepted_mimetypes)
+        if paths:
+            try:
+                _register_chosen_paths(paths)
+            except Exception:
+                pass
+        return paths
+
+
 class MainWindow(QMainWindow):
     def __init__(self, port: int, state: dict):
         super().__init__()
@@ -757,7 +772,7 @@ class MainWindow(QMainWindow):
         self.webview = QWebEngineView()
         profile = QWebEngineProfile.defaultProfile()
         profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
-        page = QWebEnginePage(profile, self.webview)
+        page = SpaceLensPage(profile, self.webview)   # ← 使用自定义 Page
         self.webview.setPage(page)
         self.setCentralWidget(self.webview)
 

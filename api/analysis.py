@@ -24,6 +24,30 @@ def register_save_dialog_hook(fn):
     """由 desktop_app.py 调用，注册 Qt 原生保存对话框回调"""
     global _native_save_dialog_hook
     _native_save_dialog_hook = fn
+
+# ── 桌面端文件选择路径钩子 ────────────────────────────────
+# Qt 的 chooseFiles() 覆写后将 {basename -> abs_path} 存入此 dict
+# Flask 线程读取时加锁，避免竞争（写入频率极低，读多写少）
+import threading as _file_paths_lock_mod
+_file_paths_lock = _file_paths_lock_mod.Lock()
+_file_abs_paths: dict = {}   # {filename_basename: absolute_path}
+
+def _register_chosen_paths(paths: list[str]):
+    """由 desktop_app.py 的 chooseFiles() 调用，注册本次文件选择的绝对路径。"""
+    import os as _os
+    with _file_paths_lock:
+        for p in paths:
+            _file_abs_paths[_os.path.basename(p)] = p
+
+def _resolve_abs_path(basename_or_rel: str) -> str | None:
+    """
+    将上传时的文件名（或 webkitRelativePath 末段）解析为绝对路径。
+    优先从 Qt 注入的路径表中查找，找不到返回 None。
+    """
+    import os as _os
+    fname = _os.path.basename(basename_or_rel.replace('\\', '/'))
+    with _file_paths_lock:
+        return _file_abs_paths.get(fname)
 # ──────────────────────────────────────────────────────────
 
 # matplotlib 3.9+ 移除了 cm.get_cmap()，统一用此兼容函数
@@ -1130,6 +1154,18 @@ def run_all():
         ques_path   = request.form.get('ques_data_path',     ques_n   or '')
         region_path = request.form.get('region_data_path',   region_n or '')
 
+        # 桌面端：尝试解析为绝对路径（Qt chooseFiles 已注入）
+        def _best_path(raw, filename):
+            abs_p = _resolve_abs_path(filename or raw)
+            return abs_p if abs_p else (raw or filename or '')
+
+        img_path    = _best_path(img_path,    img_n)
+        loc_path    = _best_path(loc_path,    loc_n)
+        beh_path    = _best_path(beh_path,    beh_n)
+        env_path    = _best_path(env_path,    env_n)
+        ques_path   = _best_path(ques_path,   ques_n)
+        region_path = _best_path(region_path, region_n)
+
         # 计算各文件 MD5，用于去重
         import hashlib as _hashlib
         def _md5(b): return _hashlib.md5(b).hexdigest() if b else None
@@ -1260,11 +1296,10 @@ def open_source(sid, key):
     """
     桌面端专用：在资源管理器/Finder 中打开（或高亮）指定源文件。
     key: img | loc | beh | env | ques | region
-    如果路径包含目录分隔符，尝试在父目录中高亮该文件；
-    否则仅打开所在文件夹。
     """
     import subprocess as _sub
     import sys as _sys
+    import os as _os
     try:
         with _sess_lock:
             sess = _sessions.get(sid)
@@ -1272,39 +1307,38 @@ def open_source(sid, key):
             return jsonify({'error': '会话不存在或已过期'}), 404
 
         source_files = sess.get('source_files', {})
-        rel_path = source_files.get(key)
-        if not rel_path:
+        stored_path = source_files.get(key)
+        if not stored_path:
             return jsonify({'error': '未记录该文件路径'}), 404
 
-        # rel_path 可能是 "folderName/file.csv" 或仅 "file.csv"
-        # 尝试以项目文件夹名拼凑绝对路径（桌面、文档、下载等常用位置）
-        import os as _os
+        # stored_path 可能是绝对路径（桌面端 Qt 注入）或仅文件名/相对路径
         abs_path = None
 
-        # 1. rel_path 本身是绝对路径（未来扩展）
-        if _os.path.isabs(rel_path) and _os.path.exists(rel_path):
-            abs_path = rel_path
+        # 1. 直接是绝对路径
+        if _os.path.isabs(stored_path) and _os.path.exists(stored_path):
+            abs_path = stored_path
 
-        # 2. 以用户 Home 下的常见文件夹尝试拼接
-        if abs_path is None and '/' in rel_path:
+        # 2. 再尝试用文件名从 Qt 路径表中查找（以防 run_all 时未注入）
+        if abs_path is None:
+            abs_path = _resolve_abs_path(stored_path)
+
+        # 3. 相对路径拼凑（仅作兜底）
+        if abs_path is None and ('/' in stored_path or '\\' in stored_path):
             home = _os.path.expanduser('~')
-            candidates = [
-                home, _os.path.join(home, 'Desktop'), _os.path.join(home, 'Documents'),
-                _os.path.join(home, 'Downloads'), _os.path.join(home, '桌面'),
-                _os.path.join(home, '文档'), _os.path.join(home, '下载'),
-            ]
-            for base in candidates:
-                p = _os.path.join(base, rel_path)
+            for base in [home,
+                         _os.path.join(home, 'Desktop'), _os.path.join(home, 'Documents'),
+                         _os.path.join(home, 'Downloads'), _os.path.join(home, '桌面'),
+                         _os.path.join(home, '文档'), _os.path.join(home, '下载')]:
+                p = _os.path.join(base, stored_path)
                 if _os.path.exists(p):
                     abs_path = p
                     break
 
-        # 3. 只有文件名，无法定位
         if abs_path is None:
-            # 返回成功但带提示
-            return jsonify({'warning': f'无法定位文件完整路径，文件名：{_os.path.basename(rel_path)}'}), 200
+            fname = _os.path.basename(stored_path.replace('\\', '/'))
+            return jsonify({'warning': f'文件已上传处理，但无法定位原始路径。文件名：{fname}'}), 200
 
-        # 在系统文件管理器中高亮/打开
+        # 在系统文件管理器中高亮该文件
         platform = _sys.platform
         if platform == 'darwin':
             _sub.Popen(['open', '-R', abs_path])

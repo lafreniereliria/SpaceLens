@@ -38,7 +38,13 @@ def _register_chosen_paths(paths):
     import os as _os
     with _file_paths_lock:
         for p in paths:
+            if not p:
+                continue
+            # 文件名 basename → 绝对路径
             _file_abs_paths[_os.path.basename(p)] = p
+            # 如果 p 本身是目录，也用目录名注册（供文件夹选择模式使用）
+            if _os.path.isdir(p):
+                _file_abs_paths[_os.path.basename(_os.path.normpath(p))] = p
 
 def _resolve_abs_path(basename_or_rel):
     # type: (str) -> str
@@ -1176,16 +1182,23 @@ def run_all():
         region_path = _best_path(region_path, region_n)
 
         # 从已解析的绝对路径推导文件夹绝对路径
-        # 取第一个有绝对路径的源文件的上级目录，作为 input_folder 的绝对路径
+        # 先直接查路径表里是否有文件夹名的记录（文件夹选择时注入的）
         import os as _os_r
+        _abs_folder = None
+        if folder_name:
+            with _file_paths_lock:
+                _abs_folder = _file_abs_paths.get(folder_name)
+
         def _abs_folder_from_sources(*paths):
             for p in paths:
                 if p and _os_r.path.isabs(p) and _os_r.path.exists(p):
                     return _os_r.path.dirname(p)
             return None
-        _abs_folder = _abs_folder_from_sources(
-            img_path, loc_path, beh_path, env_path, ques_path, region_path
-        )
+
+        if not _abs_folder:
+            _abs_folder = _abs_folder_from_sources(
+                img_path, loc_path, beh_path, env_path, ques_path, region_path
+            )
 
         # 计算各文件 MD5，用于去重
         import hashlib as _hashlib

@@ -806,8 +806,44 @@ class SpaceLensPage(QWebEnginePage):
         if paths:
             try:
                 _register_chosen_paths(paths)
+                # 顺便注册文件所在的文件夹绝对路径
+                import os as _os
+                dirs_seen = set()
+                for p in paths:
+                    d = _os.path.dirname(p)
+                    if d and d not in dirs_seen:
+                        dirs_seen.add(d)
+                        # 将文件夹名称 → 绝对路径也注册一份，方便 _abs_folder 推断
+                        _register_chosen_paths([d])
             except Exception:
                 pass
+
+        # 文件夹选择模式：Qt 返回的 paths 可能只含文件名或为空，
+        # 用 QFileDialog 主动获取真实文件夹路径并递归注册
+        try:
+            from PyQt6.QtWebEngineCore import QWebEnginePage as _QPage
+            is_folder_mode = (mode == _QPage.FileSelectionMode.UploadFolder)
+        except Exception:
+            is_folder_mode = False
+
+        if is_folder_mode and not paths:
+            # paths 为空说明 Qt 没有提供绝对路径，主动弹一次原生目录对话框
+            try:
+                from PyQt6.QtWidgets import QFileDialog
+                folder = QFileDialog.getExistingDirectory(
+                    None, '选择数据文件夹', '',
+                    QFileDialog.Option.ShowDirsOnly
+                )
+                if folder:
+                    import os as _os
+                    all_files = [folder]  # 注册文件夹本身
+                    for root, dirs, files in _os.walk(folder):
+                        for f in files:
+                            all_files.append(_os.path.join(root, f))
+                    _register_chosen_paths(all_files)
+            except Exception:
+                pass
+
         return paths
 
 

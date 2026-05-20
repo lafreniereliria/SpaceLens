@@ -1185,9 +1185,10 @@ def run_all():
         # 先直接查路径表里是否有文件夹名的记录（文件夹选择时注入的）
         import os as _os_r
         _abs_folder = None
-        if folder_name:
+        _folder_name_hint = request.form.get('folder_name', '')
+        if _folder_name_hint:
             with _file_paths_lock:
-                _abs_folder = _file_abs_paths.get(folder_name)
+                _abs_folder = _file_abs_paths.get(_folder_name_hint)
 
         def _abs_folder_from_sources(*paths):
             for p in paths:

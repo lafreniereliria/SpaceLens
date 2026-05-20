@@ -316,6 +316,7 @@
 .metric-action-btn:hover { border-color: var(--accent); color: var(--accent); }
 .metric-action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .metric-action-btn.teal:hover { border-color: var(--teal); color: var(--teal); }
+.metric-action-btn.amber:hover { border-color: #f59e0b; color: #f59e0b; }
 .metric-action-btn svg { flex-shrink: 0; }
 
 /* ── 保存项目 Modal ── */
@@ -845,9 +846,13 @@ function buildPanels() {
       + '      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'
       + '      保存图片'
       + '    </button>'
-      + '    <button class="metric-action-btn" id="btn-export-xls-' + m.id + '" onclick="exportMetricExcel(\'' + m.id + '\')" disabled title="导出Excel">'
+      + '    <button class="metric-action-btn" id="btn-save-xls-' + m.id + '" onclick="saveMetricXlsx(\'' + m.id + '\')" disabled title="保存 Excel">'
       + '      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>'
-      + '      导出 Excel'
+      + '      保存 Excel'
+      + '    </button>'
+      + '    <button class="metric-action-btn amber" id="btn-save-zip-' + m.id + '" onclick="saveMetricZip(\'' + m.id + '\')" disabled title="打包保存 ZIP">'
+      + '      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>'
+      + '      保存 ZIP'
       + '    </button>'
       + '  </div>'
       + '</div>'
@@ -1096,22 +1101,23 @@ function _drawSatBarChart(barData) {
 // ── 激活/禁用指标导出按钮 ──
 function _enableMetricBtns(metricId, hasImg, hasExcel) {
   var imgBtn = document.getElementById('btn-save-img-' + metricId);
-  var xlsBtn = document.getElementById('btn-export-xls-' + metricId);
+  var xlsBtn = document.getElementById('btn-save-xls-' + metricId);
+  var zipBtn = document.getElementById('btn-save-zip-' + metricId);
   if (imgBtn) imgBtn.disabled = !hasImg;
   if (xlsBtn) xlsBtn.disabled = !hasExcel;
+  if (zipBtn) zipBtn.disabled = !(hasImg || hasExcel);
 }
 
-// ── 保存当前指标图片 ──
-function saveMetricImg(metricId) {
+// ── 通用：调用原生保存对话框接口 ──
+function _callSaveMetric(metricId, fileType, btnId, loadingText) {
   var sid = getSessionId();
   if (!sid) return;
-  var btn = document.getElementById('btn-save-img-' + metricId);
+  var btn = document.getElementById(btnId);
   var origHTML = btn ? btn.innerHTML : '';
-  if (btn) { btn.disabled = true; btn.innerHTML = '保存中…'; }
+  if (btn) { btn.disabled = true; btn.innerHTML = loadingText; }
 
-  // environment 需要传当前激活子参数
-  var url = '/api/save_metric/' + sid + '/' + metricId + '/img';
-  if (metricId === 'environment') {
+  var url = '/api/save_metric/' + sid + '/' + metricId + '/' + fileType;
+  if (metricId === 'environment' && fileType === 'img') {
     var activeEnvBtn = document.querySelector('#env-tabs .env-tab.active');
     var pn = activeEnvBtn ? activeEnvBtn.dataset.pn : '1';
     url += '?pn=' + pn;
@@ -1130,25 +1136,19 @@ function saveMetricImg(metricId) {
     });
 }
 
-// ── 导出当前指标 Excel ──
-function exportMetricExcel(metricId) {
-  var sid = getSessionId();
-  if (!sid) return;
-  var btn = document.getElementById('btn-export-xls-' + metricId);
-  var origHTML = btn ? btn.innerHTML : '';
-  if (btn) { btn.disabled = true; btn.innerHTML = '导出中…'; }
+// ── 保存图片 ──
+function saveMetricImg(metricId) {
+  _callSaveMetric(metricId, 'img', 'btn-save-img-' + metricId, '保存中…');
+}
 
-  fetch('/api/save_metric/' + sid + '/' + metricId + '/excel', { method: 'POST' })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.cancelled) return;
-      if (data.error) throw new Error(data.error);
-      _showSaveSuccess(data.path);
-    })
-    .catch(function(e) { alert('导出失败：' + e.message); })
-    .finally(function() {
-      if (btn) { btn.disabled = false; btn.innerHTML = origHTML; }
-    });
+// ── 保存 Excel（仅数值表）──
+function saveMetricXlsx(metricId) {
+  _callSaveMetric(metricId, 'xlsx', 'btn-save-xls-' + metricId, '保存中…');
+}
+
+// ── 保存 ZIP（图片 + Excel 打包）──
+function saveMetricZip(metricId) {
+  _callSaveMetric(metricId, 'zip', 'btn-save-zip-' + metricId, '打包中…');
 }
 
 // ── 填充环境参数（多个子结果） ──

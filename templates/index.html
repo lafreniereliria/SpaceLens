@@ -258,6 +258,36 @@
   box-shadow: 0 0 5px var(--accent);
 }
 
+/* 满意度交互柱状图 */
+.sat-chart-wrap {
+  display: flex; flex-direction: row; width: 100%; align-items: flex-start; gap: 0;
+}
+.sat-canvas-wrap {
+  position: relative; padding: 20px 16px 16px 20px; flex: 1 1 0; min-width: 0;
+}
+.sat-canvas-title {
+  font-size: 12px; font-weight: 600; color: var(--text-secondary);
+  margin-bottom: 8px; letter-spacing: 0.03em;
+}
+.sat-canvas-wrap canvas {
+  display: block; width: 100% !important; height: 300px;
+  cursor: crosshair;
+}
+.sat-dist-wrap {
+  flex: 0 0 42%; max-width: 42%; padding: 20px 20px 16px 4px;
+}
+.sat-dist-wrap img { display: block; width: 100%; height: auto; }
+#sat-tooltip {
+  position: fixed; z-index: 9999; pointer-events: none;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px;
+  font-size: 12px; color: var(--text-primary);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+  white-space: nowrap; display: none;
+}
+#sat-tooltip .tt-id { font-weight: 600; color: var(--accent); margin-bottom: 3px; }
+#sat-tooltip .tt-score { color: var(--text-secondary); }
+
 /* ── 保存项目按钮 ── */
 .save-project-btn {
   display: inline-flex; align-items: center; gap: 6px;
@@ -795,16 +825,31 @@ function buildPanels() {
       + '  </div>'
       + '</div>'
       + extraCtrl
-      + '<div class="result-chart-wrap" id="chart-wrap-' + m.id + '">'
-      + '  <div class="result-chart-placeholder" id="chart-ph-' + m.id + '">'
-      + '    <div class="computing-placeholder" id="computing-ph-' + m.id + '">'
-      + '      <div class="computing-spinner"></div>'
-      + '      <div class="computing-label">计算中…</div>'
-      + '      <div class="computing-sublabel">正在生成图表</div>'
-      + '    </div>'
-      + '  </div>'
-      + '  <img id="chart-img-' + m.id + '" src="" style="display:none" alt="' + cfg.title + '">'
-      + '</div>'
+      + (m.id === 'satisfaction'
+        ? '<div class="result-chart-wrap" id="chart-wrap-' + m.id + '">'
+          + '  <div class="result-chart-placeholder" id="chart-ph-' + m.id + '">'
+          + '    <div class="computing-placeholder" id="computing-ph-' + m.id + '">'
+          + '      <div class="computing-spinner"></div>'
+          + '      <div class="computing-label">计算中…</div>'
+          + '      <div class="computing-sublabel">正在生成图表</div>'
+          + '    </div>'
+          + '  </div>'
+          + '  <div class="sat-chart-wrap" id="sat-chart-wrap" style="display:none">'
+          + '    <div class="sat-canvas-wrap"><div class="sat-canvas-title">空间整体满意度</div><canvas id="sat-bar-canvas"></canvas></div>'
+          + '    <div class="sat-dist-wrap"><img id="chart-img-satisfaction" src="" alt="满意度分布"></div>'
+          + '  </div>'
+          + '</div>'
+        : '<div class="result-chart-wrap" id="chart-wrap-' + m.id + '">'
+          + '  <div class="result-chart-placeholder" id="chart-ph-' + m.id + '">'
+          + '    <div class="computing-placeholder" id="computing-ph-' + m.id + '">'
+          + '      <div class="computing-spinner"></div>'
+          + '      <div class="computing-label">计算中…</div>'
+          + '      <div class="computing-sublabel">正在生成图表</div>'
+          + '    </div>'
+          + '  </div>'
+          + '  <img id="chart-img-' + m.id + '" src="" style="display:none" alt="' + cfg.title + '">'
+          + '</div>'
+      )
       + '<div class="result-stats" id="stats-' + m.id + '"></div>';
 
     container.appendChild(panel);
@@ -814,6 +859,42 @@ function buildPanels() {
 // ── 填充单个指标的结果 ──
 function fillPanel(metricId, data) {
   if (!data) return;
+
+  // ── 整体满意度：交互式 canvas 柱状图 ──
+  if (metricId === 'satisfaction' && data.bar_data && data.bar_data.length) {
+    var ph  = document.getElementById('chart-ph-satisfaction');
+    var sw  = document.getElementById('sat-chart-wrap');
+    if (ph) ph.style.display = 'none';
+    if (sw) sw.style.display = 'flex';
+
+    // 右侧分布图（matplotlib 生成的右半张图）
+    // 后端返回的 image 包含两个子图，我们只取右边那张；但由于 matplotlib 生成完整图
+    // 我们把它放到右侧容器显示（会自动裁剪溢出），实际只有宽度40%可见近似右图
+    var distImg = document.getElementById('chart-img-satisfaction');
+    if (distImg && data.image_dist) {
+      distImg.src = 'data:image/png;base64,' + data.image_dist;
+      distImg.style.display = 'block';
+    }
+
+    // 绘制交互式柱状图
+    _drawSatBarChart(data.bar_data);
+
+    // 统计卡片
+    var statsEl = document.getElementById('stats-satisfaction');
+    var cfg = VIEWS['satisfaction'];
+    if (statsEl && cfg && data.summary) {
+      statsEl.innerHTML = '';
+      (cfg.stats || []).forEach(function(s) {
+        var val = (data.summary[s.key] !== undefined && data.summary[s.key] !== null) ? data.summary[s.key] : '—';
+        statsEl.insertAdjacentHTML('beforeend',
+          '<div class="result-stat ' + (s.cls||'') + '">'
+          + '<div class="result-stat-label">' + s.label + '</div>'
+          + '<div class="result-stat-value">' + val + '<span class="unit">' + s.unit + '</span></div>'
+          + '</div>');
+      });
+    }
+    return;
+  }
 
   var img = document.getElementById('chart-img-' + metricId);
   var ph  = document.getElementById('chart-ph-' + metricId);
@@ -838,6 +919,144 @@ function fillPanel(metricId, data) {
         + '<div class="result-stat-label">' + s.label + '</div>'
         + '<div class="result-stat-value">' + val + '<span class="unit">' + s.unit + '</span></div>'
         + '</div>');
+    });
+  }
+}
+
+// ── 绘制整体满意度交互式柱状图 ──
+function _drawSatBarChart(barData) {
+  var canvas = document.getElementById('sat-bar-canvas');
+  if (!canvas) return;
+
+  // 确保 tooltip 元素存在
+  var tooltip = document.getElementById('sat-tooltip');
+  if (!tooltip) {
+    tooltip = document.createElement('div');
+    tooltip.id = 'sat-tooltip';
+    tooltip.innerHTML = '<div class="tt-id"></div><div class="tt-score"></div>';
+    document.body.appendChild(tooltip);
+  }
+
+  // 读取主题（通过 CSS 变量）
+  var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  var C = {
+    bg:       isDark ? '#0f1117' : '#ffffff',
+    grid:     isDark ? '#2d2d3d' : '#e4e7f2',
+    avgLine:  '#ff5e5e',
+    barHi:    '#7c5cfc',
+    barLo:    '#00c9a7',
+    text:     isDark ? '#8b8fa8' : '#5a5f7a',
+    label:    isDark ? '#c0c0d0' : '#444444',
+  };
+
+  var dpr = window.devicePixelRatio || 1;
+  var W   = canvas.clientWidth  || canvas.offsetWidth  || 600;
+  var H   = 320; // CSS height
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.height = H + 'px';
+
+  var ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  var PAD = { top: 24, right: 20, bottom: 36, left: 48 };
+  var chartW = W - PAD.left - PAD.right;
+  var chartH = H - PAD.top  - PAD.bottom;
+
+  // 清空
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  var n = barData.length;
+  if (n === 0) return;
+
+  var scores  = barData.map(function(d){ return d[1]; });
+  var maxScore = Math.max.apply(null, scores);
+  var yMax  = Math.ceil(maxScore / 20) * 20 || 100;
+  var avg   = scores.reduce(function(a,b){ return a+b; }, 0) / scores.length;
+
+  // y 轴刻度
+  ctx.strokeStyle = C.grid;
+  ctx.lineWidth   = 0.5;
+  ctx.font = '10px sans-serif';
+  ctx.fillStyle = C.text;
+  ctx.textAlign = 'right';
+  var ySteps = 5;
+  for (var i = 0; i <= ySteps; i++) {
+    var yVal = (yMax / ySteps) * i;
+    var yPx  = PAD.top + chartH - (yVal / yMax) * chartH;
+    ctx.beginPath(); ctx.moveTo(PAD.left, yPx); ctx.lineTo(PAD.left + chartW, yPx); ctx.stroke();
+    ctx.fillText(yVal.toFixed(0), PAD.left - 5, yPx + 3.5);
+  }
+
+  // 均值虚线
+  var avgY = PAD.top + chartH - (avg / yMax) * chartH;
+  ctx.save();
+  ctx.setLineDash([5, 4]);
+  ctx.strokeStyle = C.avgLine;
+  ctx.lineWidth   = 1.5;
+  ctx.beginPath(); ctx.moveTo(PAD.left, avgY); ctx.lineTo(PAD.left + chartW, avgY); ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = C.avgLine;
+  ctx.textAlign = 'left';
+  ctx.font = '10px sans-serif';
+  ctx.fillText('均值 ' + avg.toFixed(1), PAD.left + chartW + 3, avgY + 4);
+
+  // 柱子
+  var barW = Math.max(2, Math.min(24, (chartW / n) * 0.7));
+  var gap  = chartW / n;
+
+  // 存储每个柱子的矩形，用于命中检测
+  var _bars = [];
+  for (var j = 0; j < n; j++) {
+    var s     = barData[j][1];
+    var bH    = (s / yMax) * chartH;
+    var bX    = PAD.left + j * gap + (gap - barW) / 2;
+    var bY    = PAD.top  + chartH - bH;
+    ctx.fillStyle = s >= avg ? C.barHi : C.barLo;
+    ctx.fillRect(bX, bY, barW, bH);
+    _bars.push({ x: bX, y: bY, w: barW, h: bH, id: barData[j][0], score: s });
+  }
+
+  // 保存 bars 到 canvas 元素，方便鼠标事件访问
+  canvas._satBars = _bars;
+  canvas._satPad  = PAD;
+  canvas._satDpr  = dpr;
+
+  // 绑定鼠标事件（避免重复绑定）
+  if (!canvas._satEvtBound) {
+    canvas._satEvtBound = true;
+
+    canvas.addEventListener('mousemove', function(e) {
+      var rect = canvas.getBoundingClientRect();
+      var mx   = e.clientX - rect.left;
+      var my   = e.clientY - rect.top;
+      var hit  = null;
+      var bs   = canvas._satBars || [];
+      for (var k = 0; k < bs.length; k++) {
+        var b = bs[k];
+        // 扩大命中区域：宽度方向宽松一点
+        if (mx >= b.x - 2 && mx <= b.x + b.w + 2 &&
+            my >= b.y      && my <= b.y + b.h) {
+          hit = b; break;
+        }
+      }
+      var tt = document.getElementById('sat-tooltip');
+      if (!tt) return;
+      if (hit) {
+        tt.querySelector('.tt-id').textContent    = '人员编号：' + hit.id;
+        tt.querySelector('.tt-score').textContent = '满意度得分：' + hit.score.toFixed(1);
+        tt.style.display = 'block';
+        tt.style.left    = (e.clientX + 14) + 'px';
+        tt.style.top     = (e.clientY - 10) + 'px';
+      } else {
+        tt.style.display = 'none';
+      }
+    });
+
+    canvas.addEventListener('mouseleave', function() {
+      var tt = document.getElementById('sat-tooltip');
+      if (tt) tt.style.display = 'none';
     });
   }
 }

@@ -943,19 +943,9 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         df=load_df(mk(ques_b,ques_n))
         if not {'UserNum','Satisfaction'}.issubset(df.columns): return None
         user_ids=df['UserNum'].values; scores=df['Satisfaction'].astype(float).values; avg_score=float(scores.mean())
-        fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
-        ax0=axes[0]; _styled_axes(ax0,th)
-        colors=['#7c5cfc' if s>=avg_score else '#00c9a7' for s in scores]
-        bars_s=ax0.bar([str(u) for u in user_ids],scores,color=colors,alpha=0.85,width=0.6)
-        for bar in bars_s:
-            h=bar.get_height()
-            ax0.text(bar.get_x()+bar.get_width()/2,h+1,f'{h:.0f}',ha='center',va='bottom',color=th['bar_label'],fontsize=8)
-        ax0.axhline(avg_score,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'均值 {avg_score:.1f}')
-        ax0.set_xlabel('人员编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('满意度得分',color=th['subtext'],fontsize=10)
-        ax0.set_title('空间整体满意度',color=th['text'],fontsize=13,pad=10)
-        ax0.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
-        ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
-        ax1=axes[1]; _styled_axes(ax1,th)
+        # 仅生成右侧分布直方图（左侧个人评分改为前端Canvas交互图）
+        fig,ax1=plt.subplots(1,1,figsize=(7,6)); fig.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax1,th)
         bins=[0,60,70,80,90,100]; counts,_=np.histogram(scores,bins=bins)
         bars_h=ax1.bar(['<60','60-70','70-80','80-90','90-100'],counts,color='#a78bfa',alpha=0.85,width=0.6)
         for bar in bars_h:
@@ -964,8 +954,9 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1.set_xlabel('分数段',color=th['subtext'],fontsize=10); ax1.set_ylabel('人数',color=th['subtext'],fontsize=10)
         ax1.set_title('满意度分布',color=th['text'],fontsize=13)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-        return {'image':img_b64,'summary':{'total_users':int(len(df)),'avg_score':round(avg_score,1),'max_score':int(scores.max()),'min_score':int(scores.min())}}
+        plt.tight_layout(pad=2); img_dist_b64=fig_to_base64(fig); plt.close(fig)
+        bar_data=[[str(uid),float(s)] for uid,s in zip(user_ids,scores)]
+        return {'image_dist':img_dist_b64,'bar_data':bar_data,'avg_score':round(avg_score,1),'summary':{'total_users':int(len(df)),'avg_score':round(avg_score,1),'max_score':int(scores.max()),'min_score':int(scores.min())}}
     _run_metric('satisfaction', _satisfaction_fn)
 
     # ── D4 空间区域满意度 ──
@@ -3338,29 +3329,19 @@ def satisfaction():
         scores = df['Satisfaction'].astype(float).values
         avg_score = float(scores.mean())
 
-        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+        # 仅生成右侧分布直方图（左侧个人评分改为前端Canvas交互图）
+        fig, ax1 = plt.subplots(1, 1, figsize=(7, 6))
         fig.patch.set_facecolor(th['fig_bg'])
-
-        ax0 = axes[0]
-        _styled_axes(ax0, th)
-        colors = ['#7c5cfc' if s >= avg_score else '#00c9a7' for s in scores]
-        ax0.bar([str(u) for u in user_ids], scores, color=colors, alpha=0.85, width=0.6)
-        ax0.axhline(avg_score, color='#ff5e5e', linestyle='--', linewidth=1.5,
-                    label=f'均值 {avg_score:.1f}')
-        ax0.set_xlabel('人员编号', color=th['subtext'], fontsize=10)
-        ax0.set_ylabel('满意度得分', color=th['subtext'], fontsize=10)
-        ax0.set_title('空间整体满意度', color=th['text'], fontsize=13, pad=10)
-        ax0.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
-        ax0.yaxis.grid(True, color=th['grid'], linewidth=0.5)
-        ax0.set_axisbelow(True)
-        fig.patch.set_facecolor(th['fig_bg'])
-
-        ax1 = axes[1]
         _styled_axes(ax1, th)
         bins = [0, 60, 70, 80, 90, 100]
         labels_hist = ['<60', '60-70', '70-80', '80-90', '90-100']
         counts, _ = np.histogram(scores, bins=bins)
-        ax1.bar(labels_hist, counts, color='#a78bfa', alpha=0.85, width=0.6)
+        bars_h = ax1.bar(labels_hist, counts, color='#a78bfa', alpha=0.85, width=0.6)
+        for bar in bars_h:
+            h = bar.get_height()
+            if h > 0:
+                ax1.text(bar.get_x() + bar.get_width() / 2, h + 0.2, str(int(h)),
+                         ha='center', va='bottom', color=th['bar_label'], fontsize=9)
         ax1.set_xlabel('分数段', color=th['subtext'], fontsize=10)
         ax1.set_ylabel('人数', color=th['subtext'], fontsize=10)
         ax1.set_title('满意度分布', color=th['text'], fontsize=13)
@@ -3368,16 +3349,18 @@ def satisfaction():
         ax1.set_axisbelow(True)
 
         plt.tight_layout(pad=2)
-        img_b64 = fig_to_base64(fig)
+        img_dist_b64 = fig_to_base64(fig)
         plt.close(fig)
 
+        bar_data = [[str(uid), float(s)] for uid, s in zip(user_ids, scores)]
         summary = {
             'total_users': int(len(df)),
             'avg_score': round(avg_score, 1),
             'max_score': int(scores.max()),
             'min_score': int(scores.min()),
         }
-        return jsonify({'image': img_b64, 'summary': summary})
+        return jsonify({'image_dist': img_dist_b64, 'bar_data': bar_data,
+                        'avg_score': round(avg_score, 1), 'summary': summary})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

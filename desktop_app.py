@@ -674,9 +674,9 @@ def _run_flask_impl(port: int, state: dict):
     _dialog_req  = _queue.Queue()   # Flask 线程发请求
     _dialog_resp = _queue.Queue()   # Qt 主线程回应结果
 
-    def _qt_save_dialog(title, default_filename):
+    def _qt_save_dialog(title, default_filename, file_filter=None):
         """Flask 线程调用：把请求放入队列，阻塞等待 Qt 主线程处理"""
-        _dialog_req.put((title, default_filename))
+        _dialog_req.put((title, default_filename, file_filter))
         return _dialog_resp.get()   # 阻塞直到 Qt 线程返回路径（或 None）
 
     register_save_dialog_hook(_qt_save_dialog)
@@ -856,16 +856,32 @@ class MainWindow(QMainWindow):
         if req_q is None or resp_q is None:
             return
         try:
-            title, default_filename = req_q.get_nowait()
+            item = req_q.get_nowait()
         except _queue.Empty:
             return
+
+        # 兼容旧的二元组和新的三元组
+        if len(item) == 3:
+            title, default_filename, file_filter = item
+        else:
+            title, default_filename = item
+            file_filter = None
+
+        # 根据文件类型选择合适的过滤器
+        if file_filter is None:
+            if default_filename.endswith('.png'):
+                file_filter = 'PNG 图片 (*.png);;所有文件 (*)'
+            elif default_filename.endswith('.xlsx'):
+                file_filter = 'Excel 文件 (*.xlsx);;所有文件 (*)'
+            else:
+                file_filter = 'ZIP 压缩包 (*.zip);;所有文件 (*)'
 
         # 在 Qt 主线程弹出原生保存对话框
         save_path, _ = QFileDialog.getSaveFileName(
             self,
             title,
             default_filename,
-            'ZIP 压缩包 (*.zip);;所有文件 (*)',
+            file_filter,
         )
         # 把结果（字符串或空串）传回 Flask 线程
         resp_q.put(save_path if save_path else None)

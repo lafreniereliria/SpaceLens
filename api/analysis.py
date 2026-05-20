@@ -1526,8 +1526,12 @@ def save_metric(sid, metric_id, file_type):
         cn_name_map = _METRIC_NAMES  # shorthand
 
         def _open_dialog(title, default_name, ext, filetypes):
+            # 构造 Qt 格式的文件过滤字符串（如 'PNG 图片 (*.png);;所有文件 (*)'）
+            qt_filter = ';;'.join(
+                f'{label} ({pattern})' for label, pattern in filetypes
+            )
             if _native_save_dialog_hook is not None:
-                return _native_save_dialog_hook(title, default_name)
+                return _native_save_dialog_hook(title, default_name, qt_filter)
             try:
                 import tkinter as _tk
                 import tkinter.filedialog as _fd

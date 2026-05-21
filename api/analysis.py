@@ -378,6 +378,46 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
                 _walkable = None
         return _walkable
 
+    # ── 坐标归一化：将 X/Y 线性缩放到图像像素范围 ──
+    # 处理数据坐标系原点与平面图不对齐、或尺度不一致的情况
+    # 仅当 X/Y 超出图像边界时才触发，坐标已在范围内的数据不做任何变换
+    _img_wh = None   # (W, H) 缓存，避免重复解码
+    def _get_img_size():
+        nonlocal _img_wh
+        if _img_wh is None and img_b:
+            try:
+                arr = load_img(mk(img_b, img_n))
+                _img_wh = (arr.shape[1], arr.shape[0])  # (W, H)
+            except Exception:
+                _img_wh = (0, 0)
+        return _img_wh
+
+    def _normalize_xy(df):
+        """
+        当数据坐标超出图像范围时，自动做平移+缩放将 X/Y 映射到 [0, W] × [0, H]。
+        坐标已在图像范围内的数据原样返回（不影响已对齐的建筑数据）。
+        """
+        if 'X' not in df.columns or 'Y' not in df.columns:
+            return df
+        wh = _get_img_size()
+        if not wh or wh[0] == 0 or wh[1] == 0:
+            return df
+        img_w, img_h = wh
+        x = df['X'].astype(float)
+        y = df['Y'].astype(float)
+        x_min, x_max = x.min(), x.max()
+        y_min, y_max = y.min(), y.max()
+        # 只有当坐标超出图像边界时才做归一化
+        needs_norm = (x_min < 0 or x_max > img_w or y_min < 0 or y_max > img_h)
+        if not needs_norm:
+            return df
+        df = df.copy()
+        x_span = x_max - x_min
+        y_span = y_max - y_min
+        df['X'] = (x - x_min) / x_span * img_w if x_span > 0 else x - x_min
+        df['Y'] = (y - y_min) / y_span * img_h if y_span > 0 else y - y_min
+        return df
+
     def _update(name, result):
         """将单个指标结果写入会话缓存"""
         with _sess_lock:
@@ -408,6 +448,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         df = load_df(mk(loc_b, loc_n))
         if not {'X', 'Y'}.issubset(df.columns):
             return None
+        df = _normalize_xy(df)
         x = df['X'].astype(float).values
         y = df['Y'].astype(float).values
         img = load_img(mk(img_b, img_n))
@@ -445,6 +486,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not {'X','Y','Region','t'}.issubset(df.columns): return None
         df = df.dropna(subset=['X','Y','Region','t'])
         if len(df) == 0: return None
+        df = _normalize_xy(df)
         x=df['X'].astype(float).values; y=df['Y'].astype(float).values
         t=df['t'].astype(float).values; regions=df['Region'].astype(int).values
         img=load_img(mk(img_b, img_n))
@@ -473,6 +515,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not {'X','Y','Region','t','UserID'}.issubset(df.columns): return None
         df = df.dropna(subset=['X','Y','Region','t','UserID'])
         if len(df) == 0: return None
+        df = _normalize_xy(df)
         img=load_img(mk(img_b,img_n))
         x_all=df['X'].astype(float).values; y_all=df['Y'].astype(float).values
         t_all=df['t'].astype(float).values; regions_all=df['Region'].astype(int).values
@@ -512,6 +555,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not {'X','Y','Region','t'}.issubset(df.columns): return None
         df = df.dropna(subset=['X','Y','Region','t'])
         if len(df) == 0: return None
+        df = _normalize_xy(df)
         x=df['X'].astype(float).values; y=df['Y'].astype(float).values
         t=df['t'].astype(float).values; regions=df['Region'].astype(int).values
         img=load_img(mk(img_b,img_n))
@@ -537,6 +581,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not loc_b or not img_b: return None
         df=load_df(mk(loc_b,loc_n))
         if not {'X','Y'}.issubset(df.columns): return None
+        df = _normalize_xy(df)
         img=load_img(mk(img_b,img_n))
         # 过滤不可走区域的点，再做聚类
         walkable=_get_walkable()
@@ -572,6 +617,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not loc_b or not img_b: return None
         df=load_df(mk(loc_b,loc_n))
         if not {'X','Y','Region','UserID'}.issubset(df.columns): return None
+        df = _normalize_xy(df)
         x=df['X'].astype(float).values; y=df['Y'].astype(float).values
         regions=df['Region'].astype(int).values; img=load_img(mk(img_b,img_n))
         reg_ids=np.sort(np.unique(regions))
@@ -592,6 +638,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not loc_b or not img_b: return None
         df=load_df(mk(loc_b,loc_n))
         if not {'X','Y','Region','UserID'}.issubset(df.columns): return None
+        df = _normalize_xy(df)
         x=df['X'].astype(float).values; y=df['Y'].astype(float).values
         regions=df['Region'].astype(int).values; img=load_img(mk(img_b,img_n))
         reg_ids=np.sort(np.unique(regions))
@@ -627,6 +674,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not loc_b: return None
         df=load_df(mk(loc_b,loc_n))
         if not {'X','Y','Region','UserID'}.issubset(df.columns): return None
+        df = _normalize_xy(df)
         regions=df['Region'].astype(int).values; user_ids=df['UserID'].values
         reg_ids=np.sort(np.unique(regions[regions>0])); n=len(reg_ids)
         if n<2: return None
@@ -673,6 +721,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not loc_b or not img_b: return None
         df=load_df(mk(loc_b,loc_n))
         if not {'X','Y','UserID','Region'}.issubset(df.columns): return None
+        df = _normalize_xy(df)
         img=load_img(mk(img_b,img_n))
         user_ids=df['UserID'].values; per_ids=np.unique(user_ids)
         reg_ids=np.sort(np.unique(df['Region'].astype(int).values))
@@ -723,6 +772,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not loc_b or not img_b: return None
         df=load_df(mk(loc_b,loc_n))
         if not {'X','Y','UserID'}.issubset(df.columns): return None
+        df = _normalize_xy(df)
         img=load_img(mk(img_b,img_n))
         walkable=_get_walkable()
         user_ids=df['UserID'].unique(); palette=_get_cmap('tab20',len(user_ids)); total_lengths={}
@@ -818,6 +868,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not {'X','Y','BehaviorNum','Region'}.issubset(df.columns): return None
         df = df.dropna(subset=['X','Y','BehaviorNum','Region'])
         if len(df) == 0: return None
+        df = _normalize_xy(df)
         img=load_img(mk(img_b,img_n))
         x=df['X'].astype(float).values; y=df['Y'].astype(float).values
         beh_nums=df['BehaviorNum'].astype(int).values; regions=df['Region'].astype(int).values
@@ -858,6 +909,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not {'X','Y','BehaviorNum','Region','t'}.issubset(df.columns): return None
         df = df.dropna(subset=['X','Y','BehaviorNum','Region','t'])
         if len(df) == 0: return None
+        df = _normalize_xy(df)
         img=load_img(mk(img_b,img_n))
         x=df['X'].astype(float).values; y=df['Y'].astype(float).values
         beh_nums=df['BehaviorNum'].astype(int).values; regions=df['Region'].astype(int).values; t=df['t'].astype(float).values

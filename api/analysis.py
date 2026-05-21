@@ -685,18 +685,30 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             for i in range(len(ur)-1):
                 fr,to=ur[i],ur[i+1]
                 if fr!=to and fr in rid2idx and to in rid2idx: trans[rid2idx[fr],rid2idx[to]]+=1
-        fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
+        # ── 子图1：转移矩阵（左下角=低编号，右上角=高编号） ──
+        # trans[i,j] = 从 reg_ids[i] 到 reg_ids[j] 的转移次数
+        # imshow 默认 origin='upper'（行0在顶部），要让左下角是 (1,1) 需要垂直翻转显示
+        trans_display = trans[::-1, :]   # 翻转行顺序用于显示，数据本身不变
+        ytick_labels  = reg_ids[::-1]    # Y 轴刻度对应翻转后的行
+        fig,axes=plt.subplots(1,3,figsize=(21,6)); fig.patch.set_facecolor(th['fig_bg'])
         ax0=axes[0]; _styled_axes(ax0,th)
-        im=ax0.imshow(trans,cmap='YlOrRd',aspect='auto')
+        im=ax0.imshow(trans_display,cmap='YlOrRd',aspect='auto',origin='upper')
         ax0.set_xticks(range(n)); ax0.set_xticklabels(reg_ids,fontsize=8)
-        ax0.set_yticks(range(n)); ax0.set_yticklabels(reg_ids,fontsize=8)
+        ax0.set_yticks(range(n)); ax0.set_yticklabels(ytick_labels,fontsize=8)
         ax0.set_xlabel('目标区域',color=th['subtext'],fontsize=10); ax0.set_ylabel('出发区域',color=th['subtext'],fontsize=10)
         ax0.set_title('区域人员转移矩阵',color=th['text'],fontsize=13,pad=10)
-        for i in range(n):
+        vmax_val = trans.max() if trans.max()>0 else 1
+        for di in range(n):           # di: 显示行（0=顶部=最大编号）
+            ri = n-1-di               # ri: 数据行索引（trans 中的真实行）
             for j in range(n):
-                v=trans[i,j]
-                if v>0: ax0.text(j,i,str(int(v)),ha='center',va='center',fontsize=7,color='black' if v<trans.max()*0.6 else 'white',fontweight='bold')
+                v = trans[ri, j]
+                if v>0:
+                    ax0.text(j, di, str(int(v)), ha='center', va='center',
+                             fontsize=7, fontweight='bold',
+                             color='white' if v >= vmax_val*0.6 else 'black')
         cbar=fig.colorbar(im,ax=ax0,fraction=0.04,pad=0.02); cbar.ax.tick_params(colors=th['cbar_tick'],labelsize=8)
+
+        # ── 子图2：入流/出流柱状图 ──
         ax1=axes[1]; _styled_axes(ax1,th)
         in_deg=trans.sum(axis=0); out_deg=trans.sum(axis=1); bw=0.35; xs=np.arange(n)
         bars_in=ax1.bar(xs-bw/2,in_deg,width=bw,color=th['accent'],alpha=0.85,label='入流')
@@ -712,6 +724,54 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1.set_title('各区域人员流入/流出量',color=th['text'],fontsize=13)
         ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
+
+        # ── 子图3：拓扑网络图 ──
+        # 节点位置：各区域内数据点 XY 均值（归一化后坐标）
+        ax2=axes[2]; ax2.set_facecolor(th['fig_bg']); ax2.set_aspect('equal')
+        ax2.set_title('区域拓扑网络图',color=th['text'],fontsize=13,pad=10)
+        ax2.axis('off')
+        # 计算各区域质心
+        df_tmp = df[df['Region'].astype(int).isin(reg_ids)].copy()
+        cx = np.array([df_tmp[df_tmp['Region'].astype(int)==r]['X'].astype(float).mean() for r in reg_ids])
+        cy = np.array([df_tmp[df_tmp['Region'].astype(int)==r]['Y'].astype(float).mean() for r in reg_ids])
+        # 归一化坐标到 [0.05, 0.95] 用于绘图
+        def _norm01(arr):
+            lo,hi=arr.min(),arr.max()
+            return (arr-lo)/(hi-lo+1e-9)*0.85+0.05
+        nx_pos=_norm01(cx); ny_pos=1.0-_norm01(cy)  # Y 反转（图像坐标→数学坐标）
+        # 绘制有向边
+        total_t = trans.sum() if trans.sum()>0 else 1
+        max_t   = trans.max() if trans.max()>0 else 1
+        for i in range(n):
+            for j in range(n):
+                if i==j: continue
+                w=trans[i,j]
+                if w==0: continue
+                lw=0.5+3.5*(w/max_t)
+                alpha=0.25+0.65*(w/max_t)
+                x0,y0=nx_pos[i],ny_pos[i]; x1,y1=nx_pos[j],ny_pos[j]
+                dx,dy=x1-x0,y1-y0
+                # 箭头稍微弯曲（同向对边错开）
+                rad=0.15 if trans[j,i]>0 else 0.0
+                ax2.annotate('',xy=(x1,y1),xytext=(x0,y0),
+                    xycoords='axes fraction',textcoords='axes fraction',
+                    arrowprops=dict(arrowstyle='-|>',color='#4facfe',lw=lw,
+                                   alpha=alpha,connectionstyle=f'arc3,rad={rad}'),
+                    annotation_clip=False)
+        # 节点大小 ∝ 总流量（入+出）
+        total_flow=in_deg+out_deg; max_flow=total_flow.max() if total_flow.max()>0 else 1
+        node_r=np.clip(0.025+0.040*(total_flow/max_flow),0.02,0.07)
+        cmap_n=_get_cmap('plasma')
+        node_colors=[cmap_n(0.2+0.7*(total_flow[i]/max_flow)) for i in range(n)]
+        for i in range(n):
+            circ=plt.Circle((nx_pos[i],ny_pos[i]),node_r[i],
+                            transform=ax2.transAxes,color=node_colors[i],
+                            ec='white',lw=1.2,zorder=5,clip_on=False)
+            ax2.add_patch(circ)
+            ax2.text(nx_pos[i],ny_pos[i]-node_r[i]-0.025,str(reg_ids[i]),
+                     ha='center',va='top',fontsize=8,fontweight='bold',
+                     color=th['text'],transform=ax2.transAxes)
+        ax2.set_xlim(0,1); ax2.set_ylim(0,1)
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
         return {'image':img_b64,'summary':{'region_count':n,'total_transitions':int(trans.sum())}}
     _run_metric('topology', _topology_fn)

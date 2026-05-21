@@ -947,6 +947,30 @@ function fillPanel(metricId, data) {
 
   var img = document.getElementById('chart-img-' + metricId);
   var ph  = document.getElementById('chart-ph-' + metricId);
+  if (data.no_data) {
+    // 该子参数在当前数据集中无数据（如博物馆无风速传感器）
+    if (img) img.style.display = 'none';
+    if (ph) {
+      var noDataLabel = data.label ? data.label : '该参数';
+      ph.innerHTML = ''
+        + '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;'
+        + 'padding:60px 40px;gap:14px;text-align:center;">'
+        + '  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.2">'
+        + '    <circle cx="12" cy="12" r="10"/>'
+        + '    <line x1="8" y1="12" x2="16" y2="12"/>'
+        + '  </svg>'
+        + '  <div style="font-size:15px;font-weight:600;color:var(--text-primary)">暂无 ' + noDataLabel + ' 数据</div>'
+        + '  <div style="font-size:12px;color:var(--text-secondary);max-width:260px;line-height:1.6">'
+        + '    当前项目的环境数据文件中未包含该参数的测量记录。<br>'
+        + '    如需分析，请在 environment.xlsx 中补充对应的 ParameterNum 数据。'
+        + '  </div>'
+        + '</div>';
+      ph.style.display = 'flex';
+      ph.style.alignItems = 'center';
+      ph.style.justifyContent = 'center';
+    }
+    return;
+  }
   if (data.image) {
     if (img) { img.src = 'data:image/png;base64,' + data.image; img.style.display = 'block'; }
     if (ph)  { ph.style.display = 'none'; }

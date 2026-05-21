@@ -826,7 +826,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             param_labels={1:'温度(°C)',2:'湿度(%)',3:'光照(lux)',4:'风速(m/s)',5:'噪声(dB)'}
             label=param_labels.get(param_num,f'参数{param_num}')
             sub=df[df['ParameterNum']==param_num].copy()
-            if sub.empty: return None
+            if sub.empty: return {'no_data': True, 'label': label}
             ex=sub['X'].astype(float).values; ey=sub['Y'].astype(float).values; vals=sub['Value'].astype(float).values
             img=load_img(mk(img_b,img_n)); h_img,w_img=img.shape[:2]
             from scipy.interpolate import griddata

@@ -300,7 +300,7 @@ def heatmap():
             region_cnt = df.groupby('Region').size().reset_index(name='count')
             _bar_common(ax1, region_cnt['Region'], region_cnt['count'],
                         color=th['accent'], ylabel='到访人次', th=th)
-            ax1.set_title('各区域到访频次', color=th['text'], fontsize=13)
+            ax1.set_title('各空间单元到访频次', color=th['text'], fontsize=13)
         else:
             ax1.text(0.5, 0.5, '无区域数据\n(需要 Region 列)',
                      ha='center', va='center', color=th['subtext'], fontsize=11,
@@ -469,7 +469,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             _styled_axes(ax1, th)
             rc = df.groupby('Region').size().reset_index(name='count')
             _bar_common(ax1, rc['Region'], rc['count'], color=th['accent'], ylabel='到访人次', th=th)
-            ax1.set_title('各区域到访频次', color=th['text'], fontsize=13)
+            ax1.set_title('各空间单元到访频次', color=th['text'], fontsize=13)
             plt.tight_layout(pad=2); img2_b64 = fig_to_base64(fig1); plt.close(fig1)
         n_nz = int((density > density.max() * 0.05).sum())
         return {'image': img_b64, 'image2': img2_b64, 'summary': {
@@ -506,9 +506,9 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
         _bar_common(ax1,reg_ids,reg_dur,color='#00c9a7',ylabel='时长 (s)',th=th)
-        ax1.set_title('各区域使用时长',color=th['text'],fontsize=13)
+        ax1.set_title('各空间单元使用时长',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'total_duration_s':int(t.sum()),'region_count':int(len(reg_ids)),'peak_region':int(reg_ids[np.argmax(reg_dur)])}}
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'total_duration_s':round(float(t.sum()),2),'avg_duration_s':round(float(reg_dur.mean()),2),'max_duration_s':round(float(reg_dur.max()),2),'min_duration_s':round(float(reg_dur.min()),2),'region_count':int(len(reg_ids)),'peak_region':int(reg_ids[np.argmax(reg_dur)])}}
     _run_metric('usetime', _usetime)
 
     # ── A3 移动速率 ──
@@ -536,21 +536,25 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         with np.errstate(divide='ignore',invalid='ignore'):
             mean_speed=np.where(reg_dwell>0,reg_length/reg_dwell,0)
         weights=np.array([mean_speed[np.where(reg_ids==r)[0][0]] if r in reg_ids else 0 for r in regions_all])
-        overlay,_=_make_heatmap_overlay(img,x_all,y_all,weights=weights,alpha=0.65,cmap='jet',
+        overlay,speed_grid=_make_heatmap_overlay(img,x_all,y_all,weights=weights,alpha=0.65,cmap='jet',
                                          walkable_mask=_get_walkable())
         global_speed=reg_length.sum()/reg_dwell.sum() if reg_dwell.sum()>0 else 0
         fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
         ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('空间移动速率热力图 (m/s)',color=th['text'],fontsize=13,pad=10)
+        sm=plt.cm.ScalarMappable(cmap='jet',norm=mcolors.Normalize(0,float(speed_grid.max()) if float(speed_grid.max()) > 0 else 1.0))
+        sm.set_array([]); cbar=fig0.colorbar(sm,ax=ax0,fraction=0.03,pad=0.02)
+        cbar.ax.tick_params(colors=th['cbar_tick'],labelsize=8)
+        cbar.set_label('移动速率强度',color=th['subtext'],fontsize=9)
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
-        _bar_common(ax1,reg_ids,mean_speed,color='#f5a623',ylabel='速率 (m/s)',th=th)
-        ax1.axhline(global_speed,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'全局均值 {global_speed:.3f}')
+        _bar_common(ax1,reg_ids,mean_speed,color='#f5a623',ylabel='速率 (m/s)',th=th,show_mean=False)
+        ax1.axhline(global_speed,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'全局均值 {global_speed:.2f}')
         ax1.legend(facecolor=th['legend_bg'],edgecolor=th['legend_edge'],labelcolor=th['tick'],fontsize=8)
-        ax1.set_title('各区域平均移动速率',color=th['text'],fontsize=13)
+        ax1.set_title('各空间单元平均移动速率',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'global_speed_ms':round(float(global_speed),4),'peak_speed_region':int(reg_ids[np.argmax(mean_speed)]),'region_count':int(len(reg_ids))}}
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'global_speed_ms':round(float(global_speed),2),'avg_speed_ms':round(float(mean_speed.mean()),2),'max_speed_ms':round(float(mean_speed.max()),2),'min_speed_ms':round(float(mean_speed.min()),2),'peak_speed_region':int(reg_ids[np.argmax(mean_speed)]),'region_count':int(len(reg_ids))}}
     _run_metric('speed', _speed)
 
     # ── A4 停留时长 ──
@@ -578,9 +582,9 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
         _bar_common(ax1,reg_ids,reg_dwell,color=th['accent'],ylabel='时长 (s)',th=th)
-        ax1.set_title('各区域停留时长',color=th['text'],fontsize=13)
+        ax1.set_title('各空间单元停留时长',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'total_dwell_s':int(t.sum()),'avg_dwell_s':round(float(t.mean()),1),'peak_region':int(reg_ids[np.argmax(reg_dwell)])}}
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'total_dwell_s':round(float(t.sum()),2),'avg_dwell_s':round(float(reg_dwell.mean()),2),'max_dwell_s':round(float(reg_dwell.max()),2),'min_dwell_s':round(float(reg_dwell.min()),2),'peak_region':int(reg_ids[np.argmax(reg_dwell)])}}
     _run_metric('duration', _duration)
 
     # ── A5 空间聚类 (trajectory cluster) ──
@@ -631,17 +635,21 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         regions=df['Region'].astype(int).values; img=load_img(mk(img_b,img_n))
         reg_ids=np.sort(np.unique(regions))
         reg_uu=np.array([df[df['Region']==r]['UserID'].nunique() for r in reg_ids])
-        overlay,_=_make_heatmap_overlay(img,x,y,alpha=0.65,cmap='jet',walkable_mask=_get_walkable())
+        overlay,density_grid=_make_heatmap_overlay(img,x,y,alpha=0.65,cmap='jet',walkable_mask=_get_walkable())
         fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
         ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('人员分布热力图',color=th['text'],fontsize=13,pad=10)
+        sm=plt.cm.ScalarMappable(cmap='jet',norm=mcolors.Normalize(0,float(density_grid.max()) if float(density_grid.max()) > 0 else 1.0))
+        sm.set_array([]); cbar=fig0.colorbar(sm,ax=ax0,fraction=0.03,pad=0.02)
+        cbar.ax.tick_params(colors=th['cbar_tick'],labelsize=8)
+        cbar.set_label('人员分布密度',color=th['subtext'],fontsize=9)
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
         _bar_common(ax1,reg_ids,reg_uu,color='#00c9a7',ylabel='独立人员数',th=th)
-        ax1.set_title('各区域独立人员数',color=th['text'],fontsize=13)
+        ax1.set_title('各空间单元独立人员数',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'unique_users':int(df['UserID'].nunique()),'region_count':int(len(reg_ids)),'peak_region':int(reg_ids[np.argmax(reg_uu)])}}
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'unique_users':int(df['UserID'].nunique()),'avg_density':round(float(reg_uu.mean()),2),'max_density':round(float(reg_uu.max()),2),'min_density':round(float(reg_uu.min()),2),'region_count':int(len(reg_ids)),'peak_region':int(reg_ids[np.argmax(reg_uu)])}}
     _run_metric('density', _density_fn)
 
     # ── A7 空间开放程度 ──
@@ -667,19 +675,23 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         with np.errstate(divide='ignore',invalid='ignore'):
             openness_val=np.where(reg_areas>0,reg_uu/reg_areas,0)
         global_open=df['UserID'].nunique()/reg_areas.sum() if reg_areas.sum()>0 else 0
-        overlay,_=_make_heatmap_overlay(img,x,y,alpha=0.65,cmap='jet',walkable_mask=_get_walkable())
+        overlay,open_grid=_make_heatmap_overlay(img,x,y,alpha=0.65,cmap='jet',walkable_mask=_get_walkable())
         fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
         ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('空间开放程度热力图',color=th['text'],fontsize=13,pad=10)
+        sm=plt.cm.ScalarMappable(cmap='jet',norm=mcolors.Normalize(0,float(open_grid.max()) if float(open_grid.max()) > 0 else 1.0))
+        sm.set_array([]); cbar=fig0.colorbar(sm,ax=ax0,fraction=0.03,pad=0.02)
+        cbar.ax.tick_params(colors=th['cbar_tick'],labelsize=8)
+        cbar.set_label('空间开放程度强度',color=th['subtext'],fontsize=9)
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
         _bar_common(ax1,reg_ids,openness_val,color='#f5a623',ylabel='人/㎡',th=th)
-        ax1.axhline(global_open,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'整体 {global_open:.3f}')
+        ax1.axhline(global_open,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'整体 {global_open:.2f}')
         ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
-        ax1.set_title('各区域开放程度 (人/㎡)',color=th['text'],fontsize=13)
+        ax1.set_title('各空间单元开放程度 (人/㎡)',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'unique_users':int(df['UserID'].nunique()),'global_openness':round(float(global_open),4),'peak_region':int(reg_ids[np.argmax(openness_val)]),'region_count':int(len(reg_ids))}}
+        return {'image':img_b64,'image2':img2_b64,'summary':{'unique_users':int(df['UserID'].nunique()),'global_openness':round(float(global_open),2),'avg_openness':round(float(openness_val.mean()),2),'max_openness':round(float(openness_val.max()),2),'min_openness':round(float(openness_val.min()),2),'peak_region':int(reg_ids[np.argmax(openness_val)]),'region_count':int(len(reg_ids))}}
     _run_metric('openness', _openness_fn)
 
     # ── A8 拓扑连接关系 ──
@@ -703,27 +715,39 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         # imshow 默认 origin='upper'（行0在顶部），要让左下角是 (1,1) 需要垂直翻转显示
         trans_display = trans[::-1, :]   # 翻转行顺序用于显示，数据本身不变
         ytick_labels  = reg_ids[::-1]    # Y 轴刻度对应翻转后的行
-        fig,axes=plt.subplots(1,3,figsize=(21,6)); fig.patch.set_facecolor(th['fig_bg'])
-        ax0=axes[0]; _styled_axes(ax0,th)
+
+        # ── 图1：转移矩阵热图 ──
+        fig0,ax0=plt.subplots(figsize=(9,8)); fig0.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax0,th)
         im=ax0.imshow(trans_display,cmap='YlOrRd',aspect='auto',origin='upper')
         ax0.set_xticks(range(n)); ax0.set_xticklabels(reg_ids,fontsize=8)
         ax0.set_yticks(range(n)); ax0.set_yticklabels(ytick_labels,fontsize=8)
         ax0.set_xlabel('目标区域',color=th['subtext'],fontsize=10); ax0.set_ylabel('出发区域',color=th['subtext'],fontsize=10)
         ax0.set_title('区域人员转移矩阵',color=th['text'],fontsize=13,pad=10)
         vmax_val = trans.max() if trans.max()>0 else 1
+        # 对角线（left-bottom→right-top）：display 中的"自环"格，di+j==n-1 即真实对角 ri==j
         for di in range(n):           # di: 显示行（0=顶部=最大编号）
             ri = n-1-di               # ri: 数据行索引（trans 中的真实行）
             for j in range(n):
+                if ri == j:   # 对角格（从出发区域到自身）→ 填灰色
+                    ax0.add_patch(plt.Rectangle((j-0.5, di-0.5), 1, 1,
+                                                facecolor='#808080', edgecolor='none', zorder=2))
+                    ax0.text(j, di, '—', ha='center', va='center',
+                             fontsize=9, color='white', zorder=3)
+                    continue
                 v = trans[ri, j]
                 if v>0:
                     ax0.text(j, di, str(int(v)), ha='center', va='center',
                              fontsize=7, fontweight='bold',
                              color='white' if v >= vmax_val*0.6 else 'black')
-        cbar=fig.colorbar(im,ax=ax0,fraction=0.04,pad=0.02); cbar.ax.tick_params(colors=th['cbar_tick'],labelsize=8)
+        cbar=fig0.colorbar(im,ax=ax0,fraction=0.04,pad=0.02); cbar.ax.tick_params(colors=th['cbar_tick'],labelsize=8)
+        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
 
-        # ── 子图2：入流/出流柱状图 ──
-        ax1=axes[1]; _styled_axes(ax1,th)
-        in_deg=trans.sum(axis=0); out_deg=trans.sum(axis=1); bw=0.35; xs=np.arange(n)
+        # ── 图2：入流/出流柱状图 ──
+        in_deg=trans.sum(axis=0); out_deg=trans.sum(axis=1)
+        fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax1,th)
+        bw=0.35; xs=np.arange(n)
         bars_in=ax1.bar(xs-bw/2,in_deg,width=bw,color=th['accent'],alpha=0.85,label='入流')
         bars_out=ax1.bar(xs+bw/2,out_deg,width=bw,color='#00c9a7',alpha=0.85,label='出流')
         for bar in bars_in:
@@ -734,13 +758,14 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             if h>0: ax1.text(bar.get_x()+bar.get_width()/2,h+h*0.02,str(int(h)),ha='center',va='bottom',color=th['bar_label'],fontsize=7)
         ax1.set_xticks(xs); ax1.set_xticklabels(reg_ids,fontsize=8)
         ax1.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax1.set_ylabel('流量',color=th['subtext'],fontsize=10)
-        ax1.set_title('各区域人员流入/流出量',color=th['text'],fontsize=13)
+        ax1.set_title('各空间单元人员流入/流出量',color=th['text'],fontsize=13)
         ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
+        plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
 
-        # ── 子图3：拓扑网络图 ──
-        # 节点位置：各区域内数据点 XY 均值（归一化后坐标）
-        ax2=axes[2]; ax2.set_facecolor(th['fig_bg']); ax2.set_aspect('equal')
+        # ── 图3：拓扑网络图 ──
+        fig2,ax2=plt.subplots(figsize=(9,8)); fig2.patch.set_facecolor(th['fig_bg'])
+        ax2.set_facecolor(th['fig_bg']); ax2.set_aspect('equal')
         ax2.set_title('区域拓扑网络图',color=th['text'],fontsize=13,pad=10)
         ax2.axis('off')
         # 计算各区域质心
@@ -753,7 +778,6 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             return (arr-lo)/(hi-lo+1e-9)*0.85+0.05
         nx_pos=_norm01(cx); ny_pos=1.0-_norm01(cy)  # Y 反转（图像坐标→数学坐标）
         # 绘制有向边
-        total_t = trans.sum() if trans.sum()>0 else 1
         max_t   = trans.max() if trans.max()>0 else 1
         for i in range(n):
             for j in range(n):
@@ -763,7 +787,6 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
                 lw=0.5+3.5*(w/max_t)
                 alpha=0.25+0.65*(w/max_t)
                 x0,y0=nx_pos[i],ny_pos[i]; x1,y1=nx_pos[j],ny_pos[j]
-                dx,dy=x1-x0,y1-y0
                 # 箭头稍微弯曲（同向对边错开）
                 rad=0.15 if trans[j,i]>0 else 0.0
                 ax2.annotate('',xy=(x1,y1),xytext=(x0,y0),
@@ -785,8 +808,12 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
                      ha='center',va='top',fontsize=8,fontweight='bold',
                      color=th['text'],transform=ax2.transAxes)
         ax2.set_xlim(0,1); ax2.set_ylim(0,1)
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-        return {'image':img_b64,'summary':{'region_count':n,'total_transitions':int(trans.sum())}}
+        plt.tight_layout(pad=2); img3_b64=fig_to_base64(fig2); plt.close(fig2)
+
+        return {'image':img_b64,'image2':img2_b64,'image3':img3_b64,
+                'summary':{'region_count':n,'total_transitions':int(trans.sum()),
+                           'avg_in_flow':round(float(in_deg.mean()),2),'max_in_flow':int(in_deg.max()),'min_in_flow':int(in_deg.min()),
+                           'avg_out_flow':round(float(out_deg.mean()),2),'max_out_flow':int(out_deg.max()),'min_out_flow':int(out_deg.min())}}
     _run_metric('topology', _topology_fn)
 
     # ── A9 轨迹差异系数 ──
@@ -817,7 +844,9 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         diff_coeff_reg=reg_means/global_mean
         fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax0,th)
-        bars0=ax0.bar([str(u) for u in per_ids],diff_coeff_per,color=th['accent'],alpha=0.85,width=0.6)
+        bars0=ax0.bar([str(u) for u in per_ids],diff_coeff_per,
+                     color=[th['accent'] if v >= 1.0 else '#00c9a7' for v in diff_coeff_per],
+                     alpha=0.85,width=0.6)
         for bar in bars0:
             h=bar.get_height()
             ax0.text(bar.get_x()+bar.get_width()/2,h+h*0.01,f'{h:.2f}',ha='center',va='bottom',color=th['bar_label'],fontsize=8)
@@ -829,7 +858,9 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
-        bars1=ax1.bar([str(r) for r in reg_ids],diff_coeff_reg,color='#f5a623',alpha=0.85,width=0.6)
+        bars1=ax1.bar([str(r) for r in reg_ids],diff_coeff_reg,
+                     color=['#f5a623' if v >= 1.0 else '#00c9a7' for v in diff_coeff_reg],
+                     alpha=0.85,width=0.6)
         for bar in bars1:
             h=bar.get_height()
             ax1.text(bar.get_x()+bar.get_width()/2,h+h*0.01,f'{h:.2f}',ha='center',va='bottom',color=th['bar_label'],fontsize=8)
@@ -974,7 +1005,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
                 if h>0: ax1.text(bar.get_x()+bar.get_width()/2,h+h*0.02,str(int(h)),ha='center',va='bottom',color=th['bar_label'],fontsize=7)
         ax1.set_xticks(xs); ax1.set_xticklabels(uniq_reg,fontsize=8)
         ax1.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax1.set_ylabel('人次',color=th['subtext'],fontsize=10)
-        ax1.set_title('各区域行为发生人次',color=th['text'],fontsize=13)
+        ax1.set_title('各空间单元行为发生人次',color=th['text'],fontsize=13)
         ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
@@ -997,9 +1028,13 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         for i,r in enumerate(uniq_reg):
             for j,b in enumerate(uniq_beh): dur_matrix[i,j]=t[(regions==r)&(beh_nums==b)].sum()
         palette=_get_cmap('tab10',len(uniq_beh))
-        overlay,_=_make_heatmap_overlay(img,x,y,weights=t,alpha=0.65,cmap='jet')
+        overlay,beh_grid=_make_heatmap_overlay(img,x,y,weights=t,alpha=0.65,cmap='jet')
         fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
         ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off'); ax0.set_title('行为时长热力图 (s)',color=th['text'],fontsize=13,pad=10)
+        sm=plt.cm.ScalarMappable(cmap='jet',norm=mcolors.Normalize(0,float(beh_grid.max()) if float(beh_grid.max()) > 0 else 1.0))
+        sm.set_array([]); cbar=fig0.colorbar(sm,ax=ax0,fraction=0.03,pad=0.02)
+        cbar.ax.tick_params(colors=th['cbar_tick'],labelsize=8)
+        cbar.set_label('行为时长强度',color=th['subtext'],fontsize=9)
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
@@ -1011,7 +1046,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
                 if h>0: ax1.text(bar.get_x()+bar.get_width()/2,h+h*0.02,f'{h:.0f}',ha='center',va='bottom',color=th['bar_label'],fontsize=7)
         ax1.set_xticks(xs); ax1.set_xticklabels(uniq_reg,fontsize=8)
         ax1.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax1.set_ylabel('时长 (s)',color=th['subtext'],fontsize=10)
-        ax1.set_title('各区域行为时长',color=th['text'],fontsize=13)
+        ax1.set_title('各空间单元行为时长',color=th['text'],fontsize=13)
         ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
@@ -1041,7 +1076,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
                 if h>0.02: ax0.text(bar.get_x()+bar.get_width()/2,bottom[bi]+h/2,f'{h:.1%}',ha='center',va='center',color='white',fontsize=7,fontweight='bold')
             bottom+=rate_matrix[:,j]
         ax0.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('发生率',color=th['subtext'],fontsize=10)
-        ax0.set_title('各区域行为发生率 (堆叠)',color=th['text'],fontsize=13,pad=10)
+        ax0.set_title('各空间单元行为发生率 (堆叠)',color=th['text'],fontsize=13,pad=10)
         ax0.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
@@ -1055,7 +1090,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
                 if h>0.01: ax1.text(bar.get_x()+bar.get_width()/2,h+h*0.04,f'{h:.1%}',ha='center',va='bottom',color=th['bar_label'],fontsize=7)
         ax1.set_xticks(xs); ax1.set_xticklabels(uniq_reg,fontsize=8)
         ax1.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax1.set_ylabel('发生率',color=th['subtext'],fontsize=10)
-        ax1.set_title('各区域行为发生率 (分组)',color=th['text'],fontsize=13)
+        ax1.set_title('各空间单元行为发生率 (分组)',color=th['text'],fontsize=13)
         ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
@@ -1083,12 +1118,12 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
         ax0=axes[0]; _styled_axes(ax0,th)
         _bar_common(ax0,uniq_reg,reg_entropy,color=th['accent'],ylabel='行为熵值 (bits)',th=th)
-        ax0.set_title('各区域行为复合度',color=th['text'],fontsize=13,pad=10)
+        ax0.set_title('各空间单元行为复合度',color=th['text'],fontsize=13,pad=10)
         ax1=axes[1]; _styled_axes(ax1,th)
         _bar_common(ax1,uniq_users,user_entropy,color='#00c9a7',ylabel='行为熵值 (bits)',th=th)
         ax1.set_title('各使用者行为复合度',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-        return {'image':img_b64,'summary':{'region_count':int(len(uniq_reg)),'user_count':int(len(uniq_users)),'avg_reg_entropy':round(float(np.mean(reg_entropy)),3),'behavior_types':int(len(uniq_beh))}}
+        return {'image':img_b64,'summary':{'region_count':int(len(uniq_reg)),'user_count':int(len(uniq_users)),'avg_reg_entropy':round(float(np.mean(reg_entropy)),2),'max_reg_entropy':round(float(np.max(reg_entropy)),2),'min_reg_entropy':round(float(np.min(reg_entropy)),2),'behavior_types':int(len(uniq_beh))}}
     _run_metric('behavior_entropy', _beh_entropy)
 
     # ── C5 功能利用率 ──
@@ -1121,18 +1156,18 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         for j,b in enumerate(uniq_beh):
             ax0.bar(uniq_reg.astype(str),util_matrix[:,j],bottom=bottom,color=palette(j),alpha=0.85,label=beh_labels[j]); bottom+=util_matrix[:,j]
         ax0.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('s/㎡',color=th['subtext'],fontsize=10)
-        ax0.set_title('各区域功能利用率 (堆叠)',color=th['text'],fontsize=13,pad=10)
+        ax0.set_title('各空间单元功能利用率 (堆叠)',color=th['text'],fontsize=13,pad=10)
         ax0.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
         ax1=axes[1]; _styled_axes(ax1,th)
         total_util=util_matrix.sum(axis=1)
         _bar_common(ax1,uniq_reg,total_util,color='#f5a623',ylabel='s/㎡',th=th)
         global_util=dur_matrix.sum()/reg_areas.sum() if reg_areas.sum()>0 else 0
-        ax1.axhline(global_util,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'全局均值 {global_util:.1f}')
+        ax1.axhline(global_util,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'全局均值 {global_util:.2f}')
         ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
-        ax1.set_title('各区域总功能利用率',color=th['text'],fontsize=13)
+        ax1.set_title('各空间单元总功能利用率',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-        return {'image':img_b64,'summary':{'region_count':int(len(uniq_reg)),'behavior_types':int(len(uniq_beh)),'global_util':round(float(global_util),2),'behaviors':beh_labels}}
+        return {'image':img_b64,'summary':{'region_count':int(len(uniq_reg)),'behavior_types':int(len(uniq_beh)),'global_util':round(float(global_util),2),'avg_util':round(float(total_util.mean()),2),'max_util':round(float(total_util.max()),2),'min_util':round(float(total_util.min()),2),'behaviors':beh_labels}}
     _run_metric('utilization', _util)
 
     # ── D3 整体满意度 ──
@@ -1176,10 +1211,10 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         bars_r=ax0.bar([str(r) for r in reg_ids],avg_vals,color=colors,alpha=0.85,width=0.6)
         for bar in bars_r:
             h=bar.get_height()
-            ax0.text(bar.get_x()+bar.get_width()/2,h+1,f'{h:.1f}',ha='center',va='bottom',color=th['bar_label'],fontsize=8)
-        ax0.axhline(avg_score,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'均值 {avg_score:.1f}')
+            ax0.text(bar.get_x()+bar.get_width()/2,h+1,f'{h:.2f}',ha='center',va='bottom',color=th['bar_label'],fontsize=8)
+        ax0.axhline(avg_score,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'均值 {avg_score:.2f}')
         ax0.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('满意度均值',color=th['subtext'],fontsize=10)
-        ax0.set_title('各区域满意度',color=th['text'],fontsize=13,pad=10)
+        ax0.set_title('各空间单元满意度',color=th['text'],fontsize=13,pad=10)
         ax0.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
         ax1=fig.add_subplot(122,polar=True); ax1.set_facecolor(th['ax_bg2'])
@@ -1187,12 +1222,12 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         vals_r=np.append(avg_vals,avg_vals[0]); theta_r=np.append(theta,theta[0])
         ax1.plot(theta_r,vals_r,color=th['accent'],linewidth=2); ax1.fill(theta_r,vals_r,color=th['accent'],alpha=0.2)
         for i,(th_i,val) in enumerate(zip(theta,avg_vals)):
-            ax1.annotate(f'{val:.1f}',(th_i,val),xytext=(0,6),textcoords='offset points',ha='center',va='bottom',color=th['bar_label'],fontsize=7)
+            ax1.annotate(f'{val:.2f}',(th_i,val),xytext=(0,6),textcoords='offset points',ha='center',va='bottom',color=th['bar_label'],fontsize=7)
         ax1.set_xticks(theta); ax1.set_xticklabels([str(r) for r in reg_ids],color=th['subtext'],fontsize=8)
         ax1.tick_params(colors=th['cbar_tick']); ax1.set_title('区域满意度雷达',color=th['text'],fontsize=13,pad=15)
         ax1.spines['polar'].set_color('#2d2d3d'); ax1.grid(color=th['grid'],linewidth=0.5)
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-        return {'image':img_b64,'summary':{'region_count':int(len(reg_ids)),'avg_score':round(avg_score,1),'best_region':str(reg_ids[int(np.argmax(avg_vals))]),'worst_region':str(reg_ids[int(np.argmin(avg_vals))])}}
+        return {'image':img_b64,'summary':{'region_count':int(len(reg_ids)),'avg_score':round(avg_score,2),'max_score':round(float(np.max(avg_vals)),2),'min_score':round(float(np.min(avg_vals)),2),'best_region':str(reg_ids[int(np.argmax(avg_vals))]),'worst_region':str(reg_ids[int(np.argmin(avg_vals))])}}
     _run_metric('satisfaction_region', _sat_region)
 
     # ── 全部完成，标记 status + 存入数据库 ──
@@ -1588,6 +1623,32 @@ _METRIC_NAMES = {
     'satisfaction_region': '空间满意度',
 }
 
+# 每个指标各子图的标题（用于保存文件名）
+_METRIC_CHART_TITLES = {
+    'heatmap':             ['到访频次热力图', '各空间单元到访频次'],
+    'usetime':             ['空间使用时长热力图', '各空间单元使用时长'],
+    'speed':               ['空间移动速率热力图', '各空间单元平均移动速率'],
+    'duration':            ['空间停留时长热力图', '各空间单元停留时长'],
+    'cluster':             ['空间聚类分析', '各聚类点位分布'],
+    'density':             ['人员分布热力图', '各空间单元独立人员数'],
+    'openness':            ['空间开放程度热力图', '各空间单元开放程度'],
+    'topology':            ['区域人员转移矩阵', '各空间单元人员流入流出量', '区域拓扑网络图'],
+    'difference':          ['人员轨迹长度差异系数', '区域流线长度差异系数'],
+    'trajectory':          ['人员移动轨迹', '人员轨迹长度'],
+    'environment_p1':      ['温度空间分布', '各测点温度值'],
+    'environment_p2':      ['湿度空间分布', '各测点湿度值'],
+    'environment_p3':      ['光照空间分布', '各测点光照值'],
+    'environment_p4':      ['风速空间分布', '各测点风速值'],
+    'environment_p5':      ['噪声空间分布', '各测点噪声值'],
+    'behavior_count':      ['各行为发生分布', '各空间单元行为发生人次'],
+    'behavior_duration':   ['行为时长热力图', '各空间单元行为时长'],
+    'behavior_rate':       ['各空间单元行为发生率_堆叠', '各空间单元行为发生率_分组'],
+    'behavior_entropy':    ['各空间单元行为复合度', '各使用者行为复合度'],
+    'utilization':         ['各空间单元功能利用率_堆叠', '各空间单元总功能利用率'],
+    'satisfaction':        ['整体满意度'],
+    'satisfaction_region': ['各空间单元满意度'],
+}
+
 
 def _build_project_zip(sid, sel_metrics, folder_name):
     """
@@ -1891,16 +1952,18 @@ def save_metric(sid, metric_id, file_type):
 
         # ── 辅助：获取图片 b64 列表 ──
         def _get_img_b64_list(mid, actual):
-            """返回 [(suffix, b64), ...] 用于多图保存"""
+            """返回 [(chart_title, b64), ...] 用于多图保存，chart_title 用于文件名"""
             if mid == 'satisfaction':
                 b64 = results.get('satisfaction', {}).get('image_dist')
-                return [('', b64)] if b64 else []
+                return [('整体满意度', b64)] if b64 else []
             data = results.get(actual, {})
+            chart_titles = _METRIC_CHART_TITLES.get(actual, [])
             imgs = []
-            for key, suffix in [('image', ''), ('image2', '_2'), ('image3', '_3')]:
+            for idx, key in enumerate(['image', 'image2', 'image3']):
                 b64 = data.get(key)
                 if b64:
-                    imgs.append((suffix, b64))
+                    title = chart_titles[idx] if idx < len(chart_titles) else f'{_METRIC_NAMES.get(actual, actual)}_{idx+1}'
+                    imgs.append((title, b64))
             return imgs
 
         # ════════════════════════════════════
@@ -1917,8 +1980,9 @@ def save_metric(sid, metric_id, file_type):
                 return jsonify({'error': '暂无图片数据'}), 400
 
             if len(img_list) == 1:
-                # 单图：弹一次对话框
-                default_name = f'{safe_folder}_{cn_name}.png'
+                # 单图：弹一次对话框，文件名即图表标题
+                chart_title = img_list[0][0]
+                default_name = f'{safe_folder}_{chart_title}.png'
                 save_path = _open_dialog('保存图片', default_name, '.png',
                                          [('PNG 图片', '*.png'), ('所有文件', '*.*')])
                 if save_path is None:
@@ -1929,19 +1993,22 @@ def save_metric(sid, metric_id, file_type):
                     f.write(base64.b64decode(img_list[0][1]))
                 return jsonify({'success': True, 'path': save_path})
             else:
-                # 多图：弹一次对话框选目录前缀，自动追加 _2 / _3
-                default_name = f'{safe_folder}_{cn_name}.png'
-                save_path = _open_dialog(f'保存图片（共{len(img_list)}张，将自动编号）',
+                # 多图：选保存目录，各图用自己的标题命名
+                import os as _os_dialog
+                first_title = img_list[0][0]
+                default_name = f'{safe_folder}_{first_title}.png'
+                save_path = _open_dialog(f'选择保存位置（共{len(img_list)}张，将按图表名称保存）',
                                          default_name, '.png',
                                          [('PNG 图片', '*.png'), ('所有文件', '*.*')])
                 if save_path is None:
                     return jsonify({'error': '无法打开文件对话框'}), 500
                 if not save_path:
                     return jsonify({'cancelled': True})
-                base_no_ext = save_path[:-4] if save_path.lower().endswith('.png') else save_path
+                save_dir = _os_dialog.path.dirname(save_path)
                 saved_paths = []
-                for suffix, b64 in img_list:
-                    p = f'{base_no_ext}{suffix}.png'
+                for chart_title, b64 in img_list:
+                    safe_title = ''.join(c if c not in r'\/:*?"<>|' else '_' for c in chart_title)
+                    p = _os_dialog.path.join(save_dir, f'{safe_folder}_{safe_title}.png')
                     with open(p, 'wb') as f:
                         f.write(base64.b64decode(b64))
                     saved_paths.append(p)
@@ -2838,20 +2905,57 @@ def _styled_axes(ax, th=None):
     ax.tick_params(colors=th['tick'], labelsize=9)
 
 
-def _bar_common(ax, x_vals, y_vals, color=None, xlabel='区域编号', ylabel='', th=None):
+def _bar_common(ax, x_vals, y_vals, color=None, xlabel='区域编号', ylabel='', th=None,
+                show_mean=True, color_above=None, color_below=None):
+    """绘制通用柱状图，自动显示均值线并用不同颜色区分均值上下的柱子。
+    show_mean: 是否显示均值线（默认 True）
+    color_above/color_below: 均值线上方/下方的颜色（None 则自动取 accent / 互补色）
+    """
     if th is None:
         th = _theme('dark')
     if color is None:
         color = th.get('accent', '#7c5cfc')
-    bars = ax.bar([str(v) for v in x_vals], y_vals, color=color, alpha=0.85, width=0.6,
+    y_arr = np.asarray(y_vals, dtype=float)
+    mean_val = float(y_arr.mean()) if len(y_arr) > 0 else 0.0
+
+    if show_mean:
+        if color_above is None:
+            color_above = color
+        if color_below is None:
+            same_as_above = str(color_above).lower() == str(color).lower()
+            color_below = th.get('accent', '#7c5cfc') if same_as_above and str(color_above).lower() == '#00c9a7' else '#00c9a7'
+
+    bar_colors = []
+    for v in y_arr:
+        if show_mean:
+            bar_colors.append(color_above if v >= mean_val else color_below)
+        else:
+            bar_colors.append(color)
+
+    bars = ax.bar([str(v) for v in x_vals], y_arr, color=bar_colors, alpha=0.85, width=0.6,
                   edgecolor=th['bar_edge'], linewidth=0.5)
     for bar in bars:
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + bar.get_height() * 0.01,
-                f'{bar.get_height():.1f}', ha='center', va='bottom', color=th['bar_label'], fontsize=8)
+        h = bar.get_height()
+        label_text = f'{h:.2f}' if h != int(h) else str(int(h))
+        ax.text(bar.get_x() + bar.get_width() / 2, h + abs(h) * 0.01 + 1e-9,
+                label_text, ha='center', va='bottom', color=th['bar_label'], fontsize=8)
     ax.set_xlabel(xlabel, color=th['subtext'], fontsize=10)
     ax.set_ylabel(ylabel, color=th['subtext'], fontsize=10)
     ax.yaxis.grid(True, color=th['grid'], linewidth=0.5)
     ax.set_axisbelow(True)
+
+    if show_mean and len(y_arr) > 0:
+        mean_color = '#ff5e5e'
+        ax.axhline(mean_val, color=mean_color, linestyle='--', linewidth=1.5,
+                   label=f'均值 {mean_val:.2f}')
+        from matplotlib.patches import Patch
+        handles = [
+            Patch(facecolor=color_above, alpha=0.85, label='高于均值'),
+            Patch(facecolor=color_below, alpha=0.85, label='低于均值'),
+            plt.Line2D([0], [0], color=mean_color, linestyle='--', linewidth=1.5, label=f'均值 {mean_val:.2f}'),
+        ]
+        ax.legend(handles=handles, facecolor=th['legend_bg'], edgecolor=th.get('spine', th['legend_bg']),
+                  labelcolor=th.get('bar_label', th['text']), fontsize=8)
 
 
 # ─────────────────────────────────────────────
@@ -2910,7 +3014,7 @@ def usetime():
         ax1 = axes[1]
         _styled_axes(ax1, th)
         _bar_common(ax1, reg_ids, reg_durations, color='#00c9a7', ylabel='时长 (s)', th=th)
-        ax1.set_title('各区域使用时长', color=th['text'], fontsize=13)
+        ax1.set_title('各空间单元使用时长', color=th['text'], fontsize=13)
 
         plt.tight_layout(pad=2)
         img_b64 = fig_to_base64(fig)
@@ -2958,7 +3062,7 @@ def speed():
         if accent_param:
             th['accent'] = accent_param
 
-        # 各区域停留时长之和
+        # 各空间单元停留时长之和
         reg_dwell = np.array([t_all[regions_all == r].sum() for r in reg_ids])
 
         # 各区域流线长度之和（按人员逐段累加）
@@ -2985,7 +3089,7 @@ def speed():
         # 热力叠加（以速率为权重）
         weights = np.array([mean_speed[np.where(reg_ids == r)[0][0]] if r in reg_ids else 0
                             for r in regions_all])
-        overlay, _ = _make_heatmap_overlay(img, x_all, y_all, weights=weights, alpha=0.65, cmap='jet')
+        overlay, speed_grid = _make_heatmap_overlay(img, x_all, y_all, weights=weights, alpha=0.65, cmap='jet')
 
         global_speed = reg_length.sum() / reg_dwell.sum() if reg_dwell.sum() > 0 else 0
 
@@ -2996,13 +3100,18 @@ def speed():
         ax0.imshow(overlay)
         ax0.axis('off')
         ax0.set_title('空间移动速率热力图 (m/s)', color=th['text'], fontsize=13, pad=10)
+        sm = plt.cm.ScalarMappable(cmap='jet', norm=mcolors.Normalize(0, float(speed_grid.max()) if float(speed_grid.max()) > 0 else 1.0))
+        sm.set_array([])
+        cbar = fig.colorbar(sm, ax=ax0, fraction=0.03, pad=0.02)
+        cbar.ax.tick_params(colors=th['cbar_tick'], labelsize=8)
+        cbar.set_label('移动速率强度', color=th['subtext'], fontsize=9)
 
         ax1 = axes[1]
         _styled_axes(ax1, th)
-        _bar_common(ax1, reg_ids, mean_speed, color='#f5a623', ylabel='速率 (m/s)', th=th)
-        ax1.axhline(global_speed, color='#ff5e5e', linestyle='--', linewidth=1.5, label=f'全局均值 {global_speed:.3f}')
+        _bar_common(ax1, reg_ids, mean_speed, color='#f5a623', ylabel='速率 (m/s)', th=th, show_mean=False)
+        ax1.axhline(global_speed, color='#ff5e5e', linestyle='--', linewidth=1.5, label=f'全局均值 {global_speed:.2f}')
         ax1.legend(facecolor=th['legend_bg'], edgecolor=th['legend_edge'], labelcolor=th['tick'], fontsize=8)
-        ax1.set_title('各区域平均移动速率', color=th['text'], fontsize=13)
+        ax1.set_title('各空间单元平均移动速率', color=th['text'], fontsize=13)
 
         plt.tight_layout(pad=2)
         img_b64 = fig_to_base64(fig)
@@ -3069,7 +3178,7 @@ def duration():
         ax1 = axes[1]
         _styled_axes(ax1, th)
         _bar_common(ax1, reg_ids, reg_dwell, color=th['accent'], ylabel='时长 (s)')
-        ax1.set_title('各区域停留时长', color=th['text'], fontsize=13)
+        ax1.set_title('各空间单元停留时长', color=th['text'], fontsize=13)
 
         plt.tight_layout(pad=2)
         img_b64 = fig_to_base64(fig)
@@ -3118,7 +3227,7 @@ def density():
         # 每区域独立人员数
         reg_unique_users = np.array([df[df['Region'] == r]['UserID'].nunique() for r in reg_ids])
 
-        overlay, _ = _make_heatmap_overlay(img, x, y, alpha=0.65, cmap='jet')
+        overlay, density_grid = _make_heatmap_overlay(img, x, y, alpha=0.65, cmap='jet')
 
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
@@ -3127,11 +3236,16 @@ def density():
         ax0.imshow(overlay)
         ax0.axis('off')
         ax0.set_title('人员分布热力图', color=th['text'], fontsize=13, pad=10)
+        sm = plt.cm.ScalarMappable(cmap='jet', norm=mcolors.Normalize(0, float(density_grid.max()) if float(density_grid.max()) > 0 else 1.0))
+        sm.set_array([])
+        cbar = fig.colorbar(sm, ax=ax0, fraction=0.03, pad=0.02)
+        cbar.ax.tick_params(colors=th['cbar_tick'], labelsize=8)
+        cbar.set_label('人员分布密度', color=th['subtext'], fontsize=9)
 
         ax1 = axes[1]
         _styled_axes(ax1, th)
         _bar_common(ax1, reg_ids, reg_unique_users, color='#00c9a7', ylabel='独立人员数')
-        ax1.set_title('各区域独立人员数', color=th['text'], fontsize=13)
+        ax1.set_title('各空间单元独立人员数', color=th['text'], fontsize=13)
 
         plt.tight_layout(pad=2)
         img_b64 = fig_to_base64(fig)
@@ -3200,7 +3314,7 @@ def openness():
 
         global_open = df['UserID'].nunique() / reg_areas.sum() if reg_areas.sum() > 0 else 0
 
-        overlay, _ = _make_heatmap_overlay(img, x, y, alpha=0.65, cmap='jet')
+        overlay, open_grid = _make_heatmap_overlay(img, x, y, alpha=0.65, cmap='jet')
 
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
@@ -3209,6 +3323,11 @@ def openness():
         ax0.imshow(overlay)
         ax0.axis('off')
         ax0.set_title('空间开放程度热力图', color=th['text'], fontsize=13, pad=10)
+        sm = plt.cm.ScalarMappable(cmap='jet', norm=mcolors.Normalize(0, float(open_grid.max()) if float(open_grid.max()) > 0 else 1.0))
+        sm.set_array([])
+        cbar = fig.colorbar(sm, ax=ax0, fraction=0.03, pad=0.02)
+        cbar.ax.tick_params(colors=th['cbar_tick'], labelsize=8)
+        cbar.set_label('空间开放程度强度', color=th['subtext'], fontsize=9)
 
         ax1 = axes[1]
         _styled_axes(ax1, th)
@@ -3216,7 +3335,7 @@ def openness():
         ax1.axhline(global_open, color='#ff5e5e', linestyle='--', linewidth=1.5,
                     label=f'整体 {global_open:.3f}')
         ax1.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
-        ax1.set_title('各区域开放程度 (人/㎡)', color=th['text'], fontsize=13)
+        ax1.set_title('各空间单元开放程度 (人/㎡)', color=th['text'], fontsize=13)
 
         plt.tight_layout(pad=2)
         img_b64 = fig_to_base64(fig)
@@ -3298,7 +3417,7 @@ def topology():
         ax1.set_xticks(xs); ax1.set_xticklabels(reg_ids, fontsize=8)
         ax1.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
         ax1.set_ylabel('流量', color=th['subtext'], fontsize=10)
-        ax1.set_title('各区域人员流入/流出量', color=th['text'], fontsize=13)
+        ax1.set_title('各空间单元人员流入/流出量', color=th['text'], fontsize=13)
         ax1.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
         ax1.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax1.set_axisbelow(True)
@@ -3383,7 +3502,9 @@ def difference():
 
         ax0 = axes[0]
         _styled_axes(ax0, th)
-        ax0.bar([str(u) for u in per_ids], diff_coeff_per, color=th['accent'], alpha=0.85, width=0.6)
+        ax0.bar([str(u) for u in per_ids], diff_coeff_per,
+                color=[th['accent'] if v >= 1.0 else '#00c9a7' for v in diff_coeff_per],
+                alpha=0.85, width=0.6)
         ax0.axhline(1.0, color='#ff5e5e', linestyle='--', linewidth=1.5, label='基准线(=1)')
         ax0.set_xlabel('人员编号', color=th['subtext'], fontsize=10)
         ax0.set_ylabel('差异系数', color=th['subtext'], fontsize=10)
@@ -3395,7 +3516,9 @@ def difference():
 
         ax1 = axes[1]
         _styled_axes(ax1, th)
-        ax1.bar([str(r) for r in reg_ids], diff_coeff_reg, color='#f5a623', alpha=0.85, width=0.6)
+        ax1.bar([str(r) for r in reg_ids], diff_coeff_reg,
+                color=['#f5a623' if v >= 1.0 else '#00c9a7' for v in diff_coeff_reg],
+                alpha=0.85, width=0.6)
         ax1.axhline(1.0, color='#ff5e5e', linestyle='--', linewidth=1.5, label='基准线(=1)')
         ax1.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
         ax1.set_ylabel('差异系数', color=th['subtext'], fontsize=10)
@@ -3588,7 +3711,7 @@ def behavior_count():
         ax1.set_xticks(xs); ax1.set_xticklabels(uniq_reg, fontsize=8)
         ax1.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
         ax1.set_ylabel('人次', color=th['subtext'], fontsize=10)
-        ax1.set_title('各区域行为发生人次', color=th['text'], fontsize=13)
+        ax1.set_title('各空间单元行为发生人次', color=th['text'], fontsize=13)
         ax1.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
         ax1.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax1.set_axisbelow(True)
@@ -3673,7 +3796,7 @@ def behavior_duration():
         ax1.set_xticks(xs); ax1.set_xticklabels(uniq_reg, fontsize=8)
         ax1.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
         ax1.set_ylabel('时长 (s)', color=th['subtext'], fontsize=10)
-        ax1.set_title('各区域行为时长', color=th['text'], fontsize=13)
+        ax1.set_title('各空间单元行为时长', color=th['text'], fontsize=13)
         ax1.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
         ax1.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax1.set_axisbelow(True)
@@ -3748,7 +3871,7 @@ def behavior_rate():
             bottom += rate_matrix[:, j]
         ax0.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
         ax0.set_ylabel('发生率', color=th['subtext'], fontsize=10)
-        ax0.set_title('各区域行为发生率 (堆叠)', color=th['text'], fontsize=13, pad=10)
+        ax0.set_title('各空间单元行为发生率 (堆叠)', color=th['text'], fontsize=13, pad=10)
         ax0.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
         ax0.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax0.set_axisbelow(True)
@@ -3764,7 +3887,7 @@ def behavior_rate():
         ax1.set_xticks(xs); ax1.set_xticklabels(uniq_reg, fontsize=8)
         ax1.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
         ax1.set_ylabel('发生率', color=th['subtext'], fontsize=10)
-        ax1.set_title('各区域行为发生率 (分组)', color=th['text'], fontsize=13)
+        ax1.set_title('各空间单元行为发生率 (分组)', color=th['text'], fontsize=13)
         ax1.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
         ax1.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax1.set_axisbelow(True)
@@ -3839,7 +3962,7 @@ def behavior_entropy():
         ax0 = axes[0]
         _styled_axes(ax0, th)
         _bar_common(ax0, uniq_reg, reg_entropy, color=th['accent'], ylabel='行为熵值 (bits)')
-        ax0.set_title('各区域行为复合度', color=th['text'], fontsize=13, pad=10)
+        ax0.set_title('各空间单元行为复合度', color=th['text'], fontsize=13, pad=10)
 
         ax1 = axes[1]
         _styled_axes(ax1, th)
@@ -3931,7 +4054,7 @@ def utilization():
             bottom += util_matrix[:, j]
         ax0.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
         ax0.set_ylabel('s/㎡', color=th['subtext'], fontsize=10)
-        ax0.set_title('各区域功能利用率 (堆叠)', color=th['text'], fontsize=13, pad=10)
+        ax0.set_title('各空间单元功能利用率 (堆叠)', color=th['text'], fontsize=13, pad=10)
         ax0.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
         ax0.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax0.set_axisbelow(True)
@@ -3945,7 +4068,7 @@ def utilization():
         ax1.axhline(global_util, color='#ff5e5e', linestyle='--', linewidth=1.5,
                     label=f'全局均值 {global_util:.1f}')
         ax1.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
-        ax1.set_title('各区域总功能利用率', color=th['text'], fontsize=13)
+        ax1.set_title('各空间单元总功能利用率', color=th['text'], fontsize=13)
 
         plt.tight_layout(pad=2)
         img_b64 = fig_to_base64(fig)
@@ -4069,7 +4192,7 @@ def satisfaction_region():
                     label=f'均值 {avg_score:.1f}')
         ax0.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
         ax0.set_ylabel('满意度均值', color=th['subtext'], fontsize=10)
-        ax0.set_title('各区域满意度', color=th['text'], fontsize=13, pad=10)
+        ax0.set_title('各空间单元满意度', color=th['text'], fontsize=13, pad=10)
         ax0.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
         ax0.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax0.set_axisbelow(True)

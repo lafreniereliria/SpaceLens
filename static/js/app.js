@@ -23,8 +23,9 @@ const VIEWS = {
     stats: [
       { key: 'total_records', label: '总记录数', unit: '条', cls: '' },
       { key: 'total_duration_s', label: '总使用时长', unit: 's', cls: 'teal' },
-      { key: 'region_count', label: '区域数', unit: '个', cls: 'accent' },
-      { key: 'peak_region', label: '峰值区域', unit: '', cls: 'amber' },
+      { key: 'avg_duration_s', label: '平均时长', unit: 's', cls: 'accent' },
+      { key: 'max_duration_s', label: '最大时长', unit: 's', cls: '' },
+      { key: 'min_duration_s', label: '最小时长', unit: 's', cls: 'amber' },
     ]
   },
   speed: {
@@ -34,8 +35,9 @@ const VIEWS = {
     stats: [
       { key: 'total_records', label: '总记录数', unit: '条', cls: '' },
       { key: 'global_speed_ms', label: '全局均速', unit: 'm/s', cls: 'teal' },
-      { key: 'peak_speed_region', label: '最快区域', unit: '', cls: 'accent' },
-      { key: 'region_count', label: '区域数', unit: '个', cls: 'amber' },
+      { key: 'avg_speed_ms', label: '区域均速', unit: 'm/s', cls: 'accent' },
+      { key: 'max_speed_ms', label: '最高速率', unit: 'm/s', cls: '' },
+      { key: 'min_speed_ms', label: '最低速率', unit: 'm/s', cls: 'amber' },
     ]
   },
   duration: {
@@ -46,7 +48,8 @@ const VIEWS = {
       { key: 'total_records', label: '总记录数', unit: '条', cls: '' },
       { key: 'total_dwell_s', label: '总停留时长', unit: 's', cls: 'teal' },
       { key: 'avg_dwell_s', label: '平均停留', unit: 's', cls: 'accent' },
-      { key: 'peak_region', label: '最长停留区域', unit: '', cls: 'amber' },
+      { key: 'max_dwell_s', label: '最长停留', unit: 's', cls: '' },
+      { key: 'min_dwell_s', label: '最短停留', unit: 's', cls: 'amber' },
     ]
   },
   cluster: {
@@ -66,8 +69,9 @@ const VIEWS = {
     stats: [
       { key: 'total_records', label: '总记录数', unit: '条', cls: '' },
       { key: 'unique_users', label: '独立人员数', unit: '人', cls: 'teal' },
-      { key: 'region_count', label: '区域数', unit: '个', cls: 'accent' },
-      { key: 'peak_region', label: '最密集区域', unit: '', cls: 'amber' },
+      { key: 'avg_density', label: '平均人员数', unit: '人', cls: 'accent' },
+      { key: 'max_density', label: '最大人员数', unit: '人', cls: '' },
+      { key: 'min_density', label: '最小人员数', unit: '人', cls: 'amber' },
     ]
   },
   openness: {
@@ -77,8 +81,9 @@ const VIEWS = {
     stats: [
       { key: 'unique_users', label: '独立人员数', unit: '人', cls: '' },
       { key: 'global_openness', label: '全局开放度', unit: '人/㎡', cls: 'teal' },
-      { key: 'peak_region', label: '最开放区域', unit: '', cls: 'accent' },
-      { key: 'region_count', label: '区域数', unit: '个', cls: 'amber' },
+      { key: 'avg_openness', label: '平均开放度', unit: '人/㎡', cls: 'accent' },
+      { key: 'max_openness', label: '最大开放度', unit: '人/㎡', cls: '' },
+      { key: 'min_openness', label: '最小开放度', unit: '人/㎡', cls: 'amber' },
     ]
   },
   topology: {
@@ -88,6 +93,9 @@ const VIEWS = {
     stats: [
       { key: 'region_count', label: '区域数', unit: '个', cls: '' },
       { key: 'total_transitions', label: '总转移次数', unit: '次', cls: 'teal' },
+      { key: 'avg_in_flow', label: '平均流入量', unit: '次', cls: 'accent' },
+      { key: 'max_in_flow', label: '最大流入量', unit: '次', cls: '' },
+      { key: 'avg_out_flow', label: '平均流出量', unit: '次', cls: 'amber' },
     ]
   },
   difference: {
@@ -162,7 +170,8 @@ const VIEWS = {
       { key: 'region_count', label: '区域数', unit: '个', cls: '' },
       { key: 'user_count', label: '人员数', unit: '人', cls: 'teal' },
       { key: 'avg_reg_entropy', label: '区域平均熵', unit: 'bits', cls: 'accent' },
-      { key: 'behavior_types', label: '行为类型数', unit: '种', cls: 'amber' },
+      { key: 'max_reg_entropy', label: '最大熵', unit: 'bits', cls: '' },
+      { key: 'min_reg_entropy', label: '最小熵', unit: 'bits', cls: 'amber' },
     ]
   },
   utilization: {
@@ -172,7 +181,9 @@ const VIEWS = {
     stats: [
       { key: 'region_count', label: '区域数', unit: '个', cls: '' },
       { key: 'behavior_types', label: '行为类型数', unit: '种', cls: 'teal' },
-      { key: 'global_util', label: '全局利用率', unit: 's/㎡', cls: 'accent' },
+      { key: 'avg_util', label: '平均利用率', unit: 's/㎡', cls: 'accent' },
+      { key: 'max_util', label: '最高利用率', unit: 's/㎡', cls: '' },
+      { key: 'min_util', label: '最低利用率', unit: 's/㎡', cls: 'amber' },
     ]
   },
   // ── D: 满意度 ──

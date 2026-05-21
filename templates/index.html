@@ -87,15 +87,29 @@
   border-radius: var(--radius-lg);
   overflow: hidden;
   box-shadow: var(--shadow);
-  display: flex;
-  flex-direction: column;
-  gap: 0;
 }
-.result-chart-wrap img {
-  width: 100%; height: auto; display: block;
-  border-top: 1px solid var(--border);
+/* 多图网格：2列并排，第3张单独占满行 */
+.result-chart-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+  align-items: stretch;
 }
-.result-chart-wrap img:first-of-type { border-top: none; }
+.result-chart-grid img {
+  width: 100%;
+  height: 420px;
+  display: block;
+  background: var(--bg-card);
+  object-fit: contain;
+  object-position: center;
+}
+.result-chart-grid img.img3-full {
+  grid-column: 1 / -1;
+}
+.result-chart-wrap > .result-chart-placeholder {
+  /* placeholder 在 grid 之外，正常块显示 */
+}
 .result-chart-placeholder {
   padding: 80px 40px;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
@@ -274,23 +288,27 @@
 
 /* 满意度交互柱状图 */
 .sat-chart-wrap {
-  display: flex; flex-direction: row; width: 100%; align-items: flex-start; gap: 0;
+  display: flex; flex-direction: row; width: 100%; align-items: stretch; gap: 0;
 }
 .sat-canvas-wrap {
   position: relative; padding: 20px 16px 16px 20px; flex: 1 1 0; min-width: 0;
+  min-height: 420px;
 }
 .sat-canvas-title {
   font-size: 12px; font-weight: 600; color: var(--text-secondary);
   margin-bottom: 8px; letter-spacing: 0.03em;
 }
 .sat-canvas-wrap canvas {
-  display: block; width: 100% !important; height: 300px;
+  display: block; width: 100% !important; height: 380px;
   cursor: crosshair;
 }
 .sat-dist-wrap {
   flex: 0 0 42%; max-width: 42%; padding: 20px 20px 16px 4px;
+  min-height: 420px;
+  display: flex;
+  align-items: center;
 }
-.sat-dist-wrap img { display: block; width: 100%; height: auto; }
+.sat-dist-wrap img { display: block; width: 100%; height: 380px; object-fit: contain; }
 #sat-tooltip {
   position: fixed; z-index: 9999; pointer-events: none;
   background: var(--bg-card); border: 1px solid var(--border);
@@ -891,18 +909,19 @@ function buildPanels() {
           + '    <div class="sat-dist-wrap"><img id="chart-img-satisfaction" src="" alt="满意度分布"></div>'
           + '  </div>'
           + '</div>'
-        : '<div class="result-chart-wrap" id="chart-wrap-' + m.id + '"\n'
-          + '  style="flex-direction:column;gap:16px;">\n'
-          + '  <div class="result-chart-placeholder" id="chart-ph-' + m.id + '">\n'
-          + '    <div class="computing-placeholder" id="computing-ph-' + m.id + '">\n'
-          + '      <div class="computing-spinner"></div>\n'
-          + '      <div class="computing-label">计算中…</div>\n'
-          + '      <div class="computing-sublabel">正在生成图表</div>\n'
-          + '    </div>\n'
-          + '  </div>\n'
-          + '  <img id="chart-img-' + m.id + '" src="" style="display:none" alt="' + cfg.title + '">\n'
-          + '  <img id="chart-img2-' + m.id + '" src="" style="display:none" alt="' + cfg.title + ' 图2">\n'
-          + '  <img id="chart-img3-' + m.id + '" src="" style="display:none" alt="' + cfg.title + ' 图3">\n'
+        : '<div class="result-chart-wrap" id="chart-wrap-' + m.id + '">'
+          + '  <div class="result-chart-placeholder" id="chart-ph-' + m.id + '">'
+          + '    <div class="computing-placeholder" id="computing-ph-' + m.id + '">'
+          + '      <div class="computing-spinner"></div>'
+          + '      <div class="computing-label">计算中…</div>'
+          + '      <div class="computing-sublabel">正在生成图表</div>'
+          + '    </div>'
+          + '  </div>'
+          + '  <div class="result-chart-grid" id="chart-grid-' + m.id + '" style="display:none">'
+          + '    <img id="chart-img-' + m.id + '" src="" style="display:none" alt="' + cfg.title + '">'
+          + '    <img id="chart-img2-' + m.id + '" src="" style="display:none" alt="' + cfg.title + ' 图2">'
+          + '    <img id="chart-img3-' + m.id + '" src="" style="display:none" class="img3-full" alt="' + cfg.title + ' 图3">'
+          + '  </div>'
           + '</div>'
       )
       + '<div class="result-stats" id="stats-' + m.id + '"></div>';
@@ -980,18 +999,29 @@ function fillPanel(metricId, data) {
     return;
   }
   if (data.image) {
+    var grid = document.getElementById('chart-grid-' + metricId);
+    // 显示图1
     if (img) { img.src = 'data:image/png;base64,' + data.image; img.style.display = 'block'; }
-    // 第二张图（image2）
+    // 图2：有则显示（2列并排），无则隐藏
     var img2 = document.getElementById('chart-img2-' + metricId);
     if (img2) {
       if (data.image2) { img2.src = 'data:image/png;base64,' + data.image2; img2.style.display = 'block'; }
       else { img2.style.display = 'none'; }
     }
-    // 第三张图（image3，拓扑等）
+    // 图3：独占一行（img3-full）
     var img3 = document.getElementById('chart-img3-' + metricId);
     if (img3) {
       if (data.image3) { img3.src = 'data:image/png;base64,' + data.image3; img3.style.display = 'block'; }
       else { img3.style.display = 'none'; }
+    }
+    // 若只有1张图，改为单列（img1 占满整行）
+    if (grid) {
+      grid.style.display = 'grid';
+      if (!data.image2 && !data.image3) {
+        grid.style.gridTemplateColumns = '1fr';
+      } else {
+        grid.style.gridTemplateColumns = '1fr 1fr';
+      }
     }
     if (ph)  { ph.style.display = 'none'; }
     _enableMetricBtns(metricId, true, !!data.summary);
@@ -1094,9 +1124,9 @@ function _drawSatBarChart(barData) {
   ctx.beginPath(); ctx.moveTo(PAD.left, avgY); ctx.lineTo(PAD.left + chartW, avgY); ctx.stroke();
   ctx.restore();
   ctx.fillStyle = C.avgLine;
-  ctx.textAlign = 'left';
+  ctx.textAlign = 'right';
   ctx.font = '10px sans-serif';
-  ctx.fillText('均值 ' + avg.toFixed(1), PAD.left + chartW + 3, avgY + 4);
+  ctx.fillText('均值 ' + avg.toFixed(1), PAD.left + chartW - 6, Math.max(PAD.top + 12, avgY - 6));
 
   // 柱子
   var barW = Math.max(2, Math.min(24, (chartW / n) * 0.7));

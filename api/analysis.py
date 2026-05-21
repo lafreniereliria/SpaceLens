@@ -455,23 +455,24 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         walkable = _get_walkable()
         overlay, density = _make_heatmap_overlay(img, x, y, alpha=0.70, cmap='plasma',
                                                   walkable_mask=walkable)
-        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-        fig.patch.set_facecolor(th['fig_bg'])
-        ax0 = axes[0]; ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
+        fig0, ax0 = plt.subplots(figsize=(9, 6)); fig0.patch.set_facecolor(th['fig_bg'])
+        ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('到访频次热力图', color=th['text'], fontsize=13, pad=10)
         sm = plt.cm.ScalarMappable(cmap='plasma', norm=mcolors.Normalize(0, 1))
-        sm.set_array([]); cbar = fig.colorbar(sm, ax=ax0, fraction=0.03, pad=0.02)
+        sm.set_array([]); cbar = fig0.colorbar(sm, ax=ax0, fraction=0.03, pad=0.02)
         cbar.ax.tick_params(colors=th['cbar_tick'], labelsize=8)
         cbar.set_label('到访密度', color=th['subtext'], fontsize=9)
-        ax1 = axes[1]; _styled_axes(ax1, th)
+        plt.tight_layout(pad=2); img_b64 = fig_to_base64(fig0); plt.close(fig0)
+        img2_b64 = None
         if 'Region' in df.columns:
+            fig1, ax1 = plt.subplots(figsize=(9, 6)); fig1.patch.set_facecolor(th['fig_bg'])
+            _styled_axes(ax1, th)
             rc = df.groupby('Region').size().reset_index(name='count')
             _bar_common(ax1, rc['Region'], rc['count'], color=th['accent'], ylabel='到访人次', th=th)
             ax1.set_title('各区域到访频次', color=th['text'], fontsize=13)
-        plt.tight_layout(pad=2)
-        img_b64 = fig_to_base64(fig); plt.close(fig)
+            plt.tight_layout(pad=2); img2_b64 = fig_to_base64(fig1); plt.close(fig1)
         n_nz = int((density > density.max() * 0.05).sum())
-        return {'image': img_b64, 'summary': {
+        return {'image': img_b64, 'image2': img2_b64, 'summary': {
             'total_records': int(len(df)),
             'unique_users': int(df['UserID'].nunique()) if 'UserID' in df.columns else '-',
             'peak_frequency': round(float(density.max()), 2),
@@ -494,18 +495,20 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         reg_dur=np.array([t[regions==r].sum() for r in reg_ids])
         overlay,fg=_make_heatmap_overlay(img,x,y,weights=t,alpha=0.65,cmap='jet',
                                           walkable_mask=_get_walkable())
-        fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
-        ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
+        fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
+        ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('空间使用时长热力图',color=th['text'],fontsize=13,pad=10)
         sm=plt.cm.ScalarMappable(cmap='jet',norm=mcolors.Normalize(0,float(fg.max())))
-        sm.set_array([]); cbar=fig.colorbar(sm,ax=ax0,fraction=0.03,pad=0.02)
+        sm.set_array([]); cbar=fig0.colorbar(sm,ax=ax0,fraction=0.03,pad=0.02)
         cbar.ax.tick_params(colors=th['cbar_tick'],labelsize=8)
         cbar.set_label('停留时长 (s)',color=th['subtext'],fontsize=9)
-        ax1=axes[1]; _styled_axes(ax1,th)
+        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
+        fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax1,th)
         _bar_common(ax1,reg_ids,reg_dur,color='#00c9a7',ylabel='时长 (s)',th=th)
         ax1.set_title('各区域使用时长',color=th['text'],fontsize=13)
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-        return {'image':img_b64,'summary':{'total_records':int(len(df)),'total_duration_s':int(t.sum()),'region_count':int(len(reg_ids)),'peak_region':int(reg_ids[np.argmax(reg_dur)])}}
+        plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'total_duration_s':int(t.sum()),'region_count':int(len(reg_ids)),'peak_region':int(reg_ids[np.argmax(reg_dur)])}}
     _run_metric('usetime', _usetime)
 
     # ── A3 移动速率 ──
@@ -536,16 +539,18 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         overlay,_=_make_heatmap_overlay(img,x_all,y_all,weights=weights,alpha=0.65,cmap='jet',
                                          walkable_mask=_get_walkable())
         global_speed=reg_length.sum()/reg_dwell.sum() if reg_dwell.sum()>0 else 0
-        fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
-        ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
+        fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
+        ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('空间移动速率热力图 (m/s)',color=th['text'],fontsize=13,pad=10)
-        ax1=axes[1]; _styled_axes(ax1,th)
+        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
+        fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax1,th)
         _bar_common(ax1,reg_ids,mean_speed,color='#f5a623',ylabel='速率 (m/s)',th=th)
         ax1.axhline(global_speed,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'全局均值 {global_speed:.3f}')
         ax1.legend(facecolor=th['legend_bg'],edgecolor=th['legend_edge'],labelcolor=th['tick'],fontsize=8)
         ax1.set_title('各区域平均移动速率',color=th['text'],fontsize=13)
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-        return {'image':img_b64,'summary':{'total_records':int(len(df)),'global_speed_ms':round(float(global_speed),4),'peak_speed_region':int(reg_ids[np.argmax(mean_speed)]),'region_count':int(len(reg_ids))}}
+        plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'global_speed_ms':round(float(global_speed),4),'peak_speed_region':int(reg_ids[np.argmax(mean_speed)]),'region_count':int(len(reg_ids))}}
     _run_metric('speed', _speed)
 
     # ── A4 停留时长 ──
@@ -563,17 +568,19 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         reg_dwell=np.array([t[regions==r].sum() for r in reg_ids])
         overlay,fg=_make_heatmap_overlay(img,x,y,weights=t,alpha=0.65,cmap='jet',
                                           walkable_mask=_get_walkable())
-        fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
-        ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
+        fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
+        ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('空间停留时长热力图 (s)',color=th['text'],fontsize=13,pad=10)
         sm=plt.cm.ScalarMappable(cmap='jet',norm=mcolors.Normalize(0,float(t.max())))
-        sm.set_array([]); cbar=fig.colorbar(sm,ax=ax0,fraction=0.03,pad=0.02)
+        sm.set_array([]); cbar=fig0.colorbar(sm,ax=ax0,fraction=0.03,pad=0.02)
         cbar.ax.tick_params(colors=th['cbar_tick'],labelsize=8); cbar.set_label('停留时长 (s)',color=th['subtext'],fontsize=9)
-        ax1=axes[1]; _styled_axes(ax1,th)
+        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
+        fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax1,th)
         _bar_common(ax1,reg_ids,reg_dwell,color=th['accent'],ylabel='时长 (s)',th=th)
         ax1.set_title('各区域停留时长',color=th['text'],fontsize=13)
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-        return {'image':img_b64,'summary':{'total_records':int(len(df)),'total_dwell_s':int(t.sum()),'avg_dwell_s':round(float(t.mean()),1),'peak_region':int(reg_ids[np.argmax(reg_dwell)])}}
+        plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'total_dwell_s':int(t.sum()),'avg_dwell_s':round(float(t.mean()),1),'peak_region':int(reg_ids[np.argmax(reg_dwell)])}}
     _run_metric('duration', _duration)
 
     # ── A5 空间聚类 (trajectory cluster) ──
@@ -592,24 +599,26 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         centers,labels=_kmeans2(data_xy.astype(float),k,iter=10,minit='points',missing='warn',seed=42)
         inertia=float(sum(((data_xy[labels==i]-c)**2).sum() for i,c in enumerate(centers)))
         palette=_get_cmap('tab10',k)
-        fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
         _ih, _iw = img.shape[:2]
-        ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(img,alpha=0.35); ax0.axis('off')
+        fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
+        ax0.set_facecolor('white'); ax0.imshow(img,alpha=0.35); ax0.axis('off')
         ax0.set_xlim(0, _iw); ax0.set_ylim(_ih, 0)
         for ci in range(k):
             mask=labels==ci; ax0.scatter(x[mask],y[mask],s=12,color=palette(ci),alpha=0.7,label=f'簇 {ci+1}')
         ax0.scatter(centers[:,0],centers[:,1],s=160,c='white',marker='*',zorder=10,edgecolors='#ffcc00',linewidths=1)
         ax0.set_title(f'空间聚类分析 (k={k})',color=th['text'],fontsize=13,pad=10)
         ax0.legend(loc='upper right',fontsize=8,ncol=2,facecolor=th['legend_bg'],edgecolor=th['legend_edge'],labelcolor=th['tick'])
-        ax1=axes[1]; _styled_axes(ax1,th)
+        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
+        fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax1,th)
         cluster_sizes=[int(np.sum(labels==ci)) for ci in range(k)]
         bars=ax1.bar([f'簇{ci+1}' for ci in range(k)],cluster_sizes,color=[palette(ci) for ci in range(k)],alpha=0.85,width=0.55,edgecolor=th['bar_edge'],linewidth=0.5)
         for bar in bars:
             ax1.text(bar.get_x()+bar.get_width()/2,bar.get_height()+0.5,str(int(bar.get_height())),ha='center',va='bottom',color=th['bar_label'],fontsize=9)
         ax1.set_ylabel('点位数量',color=th['subtext'],fontsize=10); ax1.set_title('各聚类点位分布',color=th['text'],fontsize=13)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-        return {'image':img_b64,'summary':{'k':k,'total_points':len(x),'inertia':round(inertia,1)}}
+        plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
+        return {'image':img_b64,'image2':img2_b64,'summary':{'k':k,'total_points':len(x),'inertia':round(inertia,1)}}
     _run_metric('cluster', _cluster)
 
     # ── A6 人员密度 ──
@@ -623,14 +632,16 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         reg_ids=np.sort(np.unique(regions))
         reg_uu=np.array([df[df['Region']==r]['UserID'].nunique() for r in reg_ids])
         overlay,_=_make_heatmap_overlay(img,x,y,alpha=0.65,cmap='jet',walkable_mask=_get_walkable())
-        fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
-        ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
+        fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
+        ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('人员分布热力图',color=th['text'],fontsize=13,pad=10)
-        ax1=axes[1]; _styled_axes(ax1,th)
+        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
+        fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax1,th)
         _bar_common(ax1,reg_ids,reg_uu,color='#00c9a7',ylabel='独立人员数',th=th)
         ax1.set_title('各区域独立人员数',color=th['text'],fontsize=13)
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-        return {'image':img_b64,'summary':{'total_records':int(len(df)),'unique_users':int(df['UserID'].nunique()),'region_count':int(len(reg_ids)),'peak_region':int(reg_ids[np.argmax(reg_uu)])}}
+        plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'unique_users':int(df['UserID'].nunique()),'region_count':int(len(reg_ids)),'peak_region':int(reg_ids[np.argmax(reg_uu)])}}
     _run_metric('density', _density_fn)
 
     # ── A7 空间开放程度 ──
@@ -657,16 +668,18 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             openness_val=np.where(reg_areas>0,reg_uu/reg_areas,0)
         global_open=df['UserID'].nunique()/reg_areas.sum() if reg_areas.sum()>0 else 0
         overlay,_=_make_heatmap_overlay(img,x,y,alpha=0.65,cmap='jet',walkable_mask=_get_walkable())
-        fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
-        ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
+        fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
+        ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('空间开放程度热力图',color=th['text'],fontsize=13,pad=10)
-        ax1=axes[1]; _styled_axes(ax1,th)
+        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
+        fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax1,th)
         _bar_common(ax1,reg_ids,openness_val,color='#f5a623',ylabel='人/㎡',th=th)
         ax1.axhline(global_open,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'整体 {global_open:.3f}')
         ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax1.set_title('各区域开放程度 (人/㎡)',color=th['text'],fontsize=13)
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-        return {'image':img_b64,'summary':{'unique_users':int(df['UserID'].nunique()),'global_openness':round(float(global_open),4),'peak_region':int(reg_ids[np.argmax(openness_val)]),'region_count':int(len(reg_ids))}}
+        plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
+        return {'image':img_b64,'image2':img2_b64,'summary':{'unique_users':int(df['UserID'].nunique()),'global_openness':round(float(global_open),4),'peak_region':int(reg_ids[np.argmax(openness_val)]),'region_count':int(len(reg_ids))}}
     _run_metric('openness', _openness_fn)
 
     # ── A8 拓扑连接关系 ──
@@ -802,8 +815,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         reg_means=np.array([reg_len_sums.get(r,0)/max(reg_len_counts.get(r,1),1) for r in reg_ids])
         global_mean=reg_means[reg_means>0].mean() if (reg_means>0).any() else 1
         diff_coeff_reg=reg_means/global_mean
-        fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
-        ax0=axes[0]; _styled_axes(ax0,th)
+        fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax0,th)
         bars0=ax0.bar([str(u) for u in per_ids],diff_coeff_per,color=th['accent'],alpha=0.85,width=0.6)
         for bar in bars0:
             h=bar.get_height()
@@ -813,7 +826,9 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax0.set_title('人员轨迹长度差异系数',color=th['text'],fontsize=13,pad=10)
         ax0.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
-        ax1=axes[1]; _styled_axes(ax1,th)
+        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
+        fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax1,th)
         bars1=ax1.bar([str(r) for r in reg_ids],diff_coeff_reg,color='#f5a623',alpha=0.85,width=0.6)
         for bar in bars1:
             h=bar.get_height()
@@ -823,8 +838,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1.set_title('区域流线长度差异系数',color=th['text'],fontsize=13)
         ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-        return {'image':img_b64,'summary':{'total_users':int(len(per_ids)),'avg_length_m':round(float(avg_len),1),'max_diff_user':str(per_ids[np.argmax(diff_coeff_per)]),'region_count':int(len(reg_ids))}}
+        plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_users':int(len(per_ids)),'avg_length_m':round(float(avg_len),1),'max_diff_user':str(per_ids[np.argmax(diff_coeff_per)]),'region_count':int(len(reg_ids))}}
     _run_metric('difference', _difference_fn)
 
     # ── 人员轨迹 (trajectory) ──
@@ -836,14 +851,13 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         img=load_img(mk(img_b,img_n))
         walkable=_get_walkable()
         user_ids=df['UserID'].unique(); palette=_get_cmap('tab20',len(user_ids)); total_lengths={}
-        fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
         _ih, _iw = img.shape[:2]
-        ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(img,alpha=0.4); ax0.axis('off')
+        fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
+        ax0.set_facecolor('white'); ax0.imshow(img,alpha=0.4); ax0.axis('off')
         ax0.set_xlim(0, _iw); ax0.set_ylim(_ih, 0)
         for idx,uid in enumerate(user_ids):
             ud=df[df['UserID']==uid].reset_index(drop=True)
             x_arr=ud['X'].values; y_arr=ud['Y'].values; color=palette(idx)
-            # 过滤落在黑色区域（不可达）的数据点
             if walkable is not None:
                 x_arr,y_arr=filter_points_in_mask(x_arr,y_arr,walkable)
             if len(x_arr)<2: continue
@@ -863,18 +877,20 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         leg_n=min(12,len(user_ids))
         handles=[plt.Line2D([0],[0],color=palette(i),lw=2) for i in range(leg_n)]
         ax0.legend(handles,[f'用户{uid}' for uid in user_ids[:leg_n]],loc='upper right',fontsize=7,ncol=2,facecolor=th['legend_bg'],edgecolor=th['legend_edge'],labelcolor=th['tick'])
-        ax1=axes[1]; _styled_axes(ax1,th)
+        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         if not total_lengths:
             return None
         sorted_len=sorted(total_lengths.items(),key=lambda x:x[1],reverse=True)
         uids_s=[str(u) for u,_ in sorted_len]; lens_s=[l for _,l in sorted_len]
+        fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax1,th)
         bars=ax1.barh(uids_s,lens_s,color='#00c9a7',alpha=0.85,height=0.6)
         for bar in bars:
             ax1.text(bar.get_width()+0.1,bar.get_y()+bar.get_height()/2,f'{bar.get_width():.1f}m',va='center',color=th['bar_label'],fontsize=8)
         ax1.set_xlabel('轨迹长度 (m)',color=th['subtext'],fontsize=10); ax1.set_title('人员轨迹长度',color=th['text'],fontsize=13)
         ax1.xaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True); ax1.invert_yaxis()
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-        return {'image':img_b64,'summary':{'total_users':len(user_ids),'avg_length_m':round(float(np.mean(list(total_lengths.values()))),1),'max_length_m':round(max(total_lengths.values()),1),'min_length_m':round(min(total_lengths.values()),1)}}
+        plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_users':len(user_ids),'avg_length_m':round(float(np.mean(list(total_lengths.values()))),1),'max_length_m':round(max(total_lengths.values()),1),'min_length_m':round(min(total_lengths.values()),1)}}
     _run_metric('trajectory', _trajectory_fn)
 
     # ── B5 环境参数 (每类参数分别计算) ──
@@ -939,15 +955,17 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         for i,r in enumerate(uniq_reg):
             for j,b in enumerate(uniq_beh): count_matrix[i,j]=int(((regions==r)&(beh_nums==b)).sum())
         palette=_get_cmap('tab10',len(uniq_beh))
-        fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
         _ih, _iw = img.shape[:2]
-        ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(img,alpha=0.5)
+        fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
+        ax0.set_facecolor('white'); ax0.imshow(img,alpha=0.5)
         ax0.set_xlim(0, _iw); ax0.set_ylim(_ih, 0)
         for j,b in enumerate(uniq_beh):
             mask=beh_nums==b; ax0.scatter(x[mask],y[mask],s=18,color=palette(j),alpha=0.75,label=beh_labels[j],zorder=3)
         ax0.axis('off'); ax0.set_title('各行为发生分布',color=th['text'],fontsize=13,pad=10)
         ax0.legend(loc='upper right',fontsize=7,ncol=2,facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'])
-        ax1=axes[1]; _styled_axes(ax1,th)
+        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
+        fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax1,th)
         bw=0.7/len(uniq_beh); xs=np.arange(len(uniq_reg))
         for j,b in enumerate(uniq_beh):
             bars_c=ax1.bar(xs+j*bw-0.35+bw/2,count_matrix[:,j],width=bw,color=palette(j),alpha=0.85,label=beh_labels[j])
@@ -959,8 +977,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1.set_title('各区域行为发生人次',color=th['text'],fontsize=13)
         ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-        return {'image':img_b64,'summary':{'total_records':int(len(df)),'behavior_types':len(uniq_beh),'region_count':int(len(uniq_reg)),'behaviors':beh_labels}}
+        plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'behavior_types':len(uniq_beh),'region_count':int(len(uniq_reg)),'behaviors':beh_labels}}
     _run_metric('behavior_count', _beh_count)
 
     def _beh_dur():
@@ -980,9 +998,11 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             for j,b in enumerate(uniq_beh): dur_matrix[i,j]=t[(regions==r)&(beh_nums==b)].sum()
         palette=_get_cmap('tab10',len(uniq_beh))
         overlay,_=_make_heatmap_overlay(img,x,y,weights=t,alpha=0.65,cmap='jet')
-        fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
-        ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off'); ax0.set_title('行为时长热力图 (s)',color=th['text'],fontsize=13,pad=10)
-        ax1=axes[1]; _styled_axes(ax1,th)
+        fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
+        ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off'); ax0.set_title('行为时长热力图 (s)',color=th['text'],fontsize=13,pad=10)
+        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
+        fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax1,th)
         bw=0.7/len(uniq_beh); xs=np.arange(len(uniq_reg))
         for j,b in enumerate(uniq_beh):
             bars_d=ax1.bar(xs+j*bw-0.35+bw/2,dur_matrix[:,j],width=bw,color=palette(j),alpha=0.85,label=beh_labels[j])
@@ -994,8 +1014,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1.set_title('各区域行为时长',color=th['text'],fontsize=13)
         ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-        return {'image':img_b64,'summary':{'total_records':int(len(df)),'total_duration_s':int(t.sum()),'behavior_types':len(uniq_beh),'behaviors':beh_labels}}
+        plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'total_duration_s':int(t.sum()),'behavior_types':len(uniq_beh),'behaviors':beh_labels}}
     _run_metric('behavior_duration', _beh_dur)
 
     def _beh_rate():
@@ -1012,8 +1032,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             r_mask=regions==r; total_t=t[r_mask].sum()
             for j,b in enumerate(uniq_beh): rate_matrix[i,j]=t[r_mask&(beh_nums==b)].sum()/total_t if total_t>0 else 0
         palette=_get_cmap('tab10',len(uniq_beh))
-        fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
-        ax0=axes[0]; _styled_axes(ax0,th); bottom=np.zeros(len(uniq_reg))
+        fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax0,th); bottom=np.zeros(len(uniq_reg))
         for j,b in enumerate(uniq_beh):
             seg_bars=ax0.bar(uniq_reg.astype(str),rate_matrix[:,j],bottom=bottom,color=palette(j),alpha=0.85,label=beh_labels[j])
             for bi,bar in enumerate(seg_bars):
@@ -1024,7 +1044,9 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax0.set_title('各区域行为发生率 (堆叠)',color=th['text'],fontsize=13,pad=10)
         ax0.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
-        ax1=axes[1]; _styled_axes(ax1,th)
+        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
+        fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax1,th)
         bw=0.7/len(uniq_beh); xs=np.arange(len(uniq_reg))
         for j,b in enumerate(uniq_beh):
             bars_r=ax1.bar(xs+j*bw-0.35+bw/2,rate_matrix[:,j],width=bw,color=palette(j),alpha=0.85,label=beh_labels[j])
@@ -1036,8 +1058,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1.set_title('各区域行为发生率 (分组)',color=th['text'],fontsize=13)
         ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-        return {'image':img_b64,'summary':{'total_records':int(len(df)),'behavior_types':len(uniq_beh),'behaviors':beh_labels,'region_count':int(len(uniq_reg))}}
+        plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'behavior_types':len(uniq_beh),'behaviors':beh_labels,'region_count':int(len(uniq_reg))}}
     _run_metric('behavior_rate', _beh_rate)
 
     def _beh_entropy():
@@ -1867,14 +1889,22 @@ def save_metric(sid, metric_id, file_type):
             wb_buf.seek(0)
             return wb_buf.read()
 
-        # ── 辅助：获取图片 b64 ──
-        def _get_img_b64(mid, actual):
+        # ── 辅助：获取图片 b64 列表 ──
+        def _get_img_b64_list(mid, actual):
+            """返回 [(suffix, b64), ...] 用于多图保存"""
             if mid == 'satisfaction':
-                return results.get('satisfaction', {}).get('image_dist')
-            return results.get(actual, {}).get('image')
+                b64 = results.get('satisfaction', {}).get('image_dist')
+                return [('', b64)] if b64 else []
+            data = results.get(actual, {})
+            imgs = []
+            for key, suffix in [('image', ''), ('image2', '_2'), ('image3', '_3')]:
+                b64 = data.get(key)
+                if b64:
+                    imgs.append((suffix, b64))
+            return imgs
 
         # ════════════════════════════════════
-        # file_type == 'img'  →  保存单张 PNG
+        # file_type == 'img'  →  保存图片（多图时直接保存所有）
         # ════════════════════════════════════
         if file_type == 'img':
             actual_id = metric_id
@@ -1882,20 +1912,40 @@ def save_metric(sid, metric_id, file_type):
                 pn = request.args.get('pn', '1')
                 actual_id = f'environment_p{pn}'
             cn_name = cn_name_map.get(actual_id, actual_id)
-            img_b64 = _get_img_b64(metric_id, actual_id)
-            if not img_b64:
+            img_list = _get_img_b64_list(metric_id, actual_id)
+            if not img_list:
                 return jsonify({'error': '暂无图片数据'}), 400
 
-            default_name = f'{safe_folder}_{cn_name}.png'
-            save_path = _open_dialog('保存图片', default_name, '.png',
-                                     [('PNG 图片', '*.png'), ('所有文件', '*.*')])
-            if save_path is None:
-                return jsonify({'error': '无法打开文件对话框'}), 500
-            if not save_path:
-                return jsonify({'cancelled': True})
-            with open(save_path, 'wb') as f:
-                f.write(base64.b64decode(img_b64))
-            return jsonify({'success': True, 'path': save_path})
+            if len(img_list) == 1:
+                # 单图：弹一次对话框
+                default_name = f'{safe_folder}_{cn_name}.png'
+                save_path = _open_dialog('保存图片', default_name, '.png',
+                                         [('PNG 图片', '*.png'), ('所有文件', '*.*')])
+                if save_path is None:
+                    return jsonify({'error': '无法打开文件对话框'}), 500
+                if not save_path:
+                    return jsonify({'cancelled': True})
+                with open(save_path, 'wb') as f:
+                    f.write(base64.b64decode(img_list[0][1]))
+                return jsonify({'success': True, 'path': save_path})
+            else:
+                # 多图：弹一次对话框选目录前缀，自动追加 _2 / _3
+                default_name = f'{safe_folder}_{cn_name}.png'
+                save_path = _open_dialog(f'保存图片（共{len(img_list)}张，将自动编号）',
+                                         default_name, '.png',
+                                         [('PNG 图片', '*.png'), ('所有文件', '*.*')])
+                if save_path is None:
+                    return jsonify({'error': '无法打开文件对话框'}), 500
+                if not save_path:
+                    return jsonify({'cancelled': True})
+                base_no_ext = save_path[:-4] if save_path.lower().endswith('.png') else save_path
+                saved_paths = []
+                for suffix, b64 in img_list:
+                    p = f'{base_no_ext}{suffix}.png'
+                    with open(p, 'wb') as f:
+                        f.write(base64.b64decode(b64))
+                    saved_paths.append(p)
+                return jsonify({'success': True, 'path': saved_paths[0], 'all_paths': saved_paths})
 
         # ════════════════════════════════════
         # file_type == 'xlsx'  →  保存单个 Excel

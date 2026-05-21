@@ -87,10 +87,15 @@
   border-radius: var(--radius-lg);
   overflow: hidden;
   box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 .result-chart-wrap img {
   width: 100%; height: auto; display: block;
+  border-top: 1px solid var(--border);
 }
+.result-chart-wrap img:first-of-type { border-top: none; }
 .result-chart-placeholder {
   padding: 80px 40px;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
@@ -886,15 +891,18 @@ function buildPanels() {
           + '    <div class="sat-dist-wrap"><img id="chart-img-satisfaction" src="" alt="满意度分布"></div>'
           + '  </div>'
           + '</div>'
-        : '<div class="result-chart-wrap" id="chart-wrap-' + m.id + '">'
-          + '  <div class="result-chart-placeholder" id="chart-ph-' + m.id + '">'
-          + '    <div class="computing-placeholder" id="computing-ph-' + m.id + '">'
-          + '      <div class="computing-spinner"></div>'
-          + '      <div class="computing-label">计算中…</div>'
-          + '      <div class="computing-sublabel">正在生成图表</div>'
-          + '    </div>'
-          + '  </div>'
-          + '  <img id="chart-img-' + m.id + '" src="" style="display:none" alt="' + cfg.title + '">'
+        : '<div class="result-chart-wrap" id="chart-wrap-' + m.id + '"\n'
+          + '  style="flex-direction:column;gap:16px;">\n'
+          + '  <div class="result-chart-placeholder" id="chart-ph-' + m.id + '">\n'
+          + '    <div class="computing-placeholder" id="computing-ph-' + m.id + '">\n'
+          + '      <div class="computing-spinner"></div>\n'
+          + '      <div class="computing-label">计算中…</div>\n'
+          + '      <div class="computing-sublabel">正在生成图表</div>\n'
+          + '    </div>\n'
+          + '  </div>\n'
+          + '  <img id="chart-img-' + m.id + '" src="" style="display:none" alt="' + cfg.title + '">\n'
+          + '  <img id="chart-img2-' + m.id + '" src="" style="display:none" alt="' + cfg.title + ' 图2">\n'
+          + '  <img id="chart-img3-' + m.id + '" src="" style="display:none" alt="' + cfg.title + ' 图3">\n'
           + '</div>'
       )
       + '<div class="result-stats" id="stats-' + m.id + '"></div>';
@@ -973,6 +981,18 @@ function fillPanel(metricId, data) {
   }
   if (data.image) {
     if (img) { img.src = 'data:image/png;base64,' + data.image; img.style.display = 'block'; }
+    // 第二张图（image2）
+    var img2 = document.getElementById('chart-img2-' + metricId);
+    if (img2) {
+      if (data.image2) { img2.src = 'data:image/png;base64,' + data.image2; img2.style.display = 'block'; }
+      else { img2.style.display = 'none'; }
+    }
+    // 第三张图（image3，拓扑等）
+    var img3 = document.getElementById('chart-img3-' + metricId);
+    if (img3) {
+      if (data.image3) { img3.src = 'data:image/png;base64,' + data.image3; img3.style.display = 'block'; }
+      else { img3.style.display = 'none'; }
+    }
     if (ph)  { ph.style.display = 'none'; }
     _enableMetricBtns(metricId, true, !!data.summary);
   } else if (data.error) {

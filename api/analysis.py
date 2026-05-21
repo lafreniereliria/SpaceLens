@@ -148,8 +148,17 @@ def dark_fig(w=9, h=7):
 def load_df(file_storage):
     fname = file_storage.filename.lower()
     if fname.endswith('.csv'):
-        return pd.read_csv(file_storage)
-    return pd.read_excel(file_storage)
+        df = pd.read_csv(file_storage)
+    else:
+        df = pd.read_excel(file_storage)
+
+    # 对已知数值列做容错转换：'/'、空字符串等占位符 → NaN，再强制转为数值类型
+    _numeric_cols = {'X', 'Y', 't', 'BehaviorNum', 'Satisfaction', 'UserNum'}
+    for col in _numeric_cols:
+        if col in df.columns and df[col].dtype == object:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    return df
 
 
 def load_img(file_storage):
@@ -434,6 +443,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not loc_b or not img_b: return None
         df = load_df(mk(loc_b, loc_n))
         if not {'X','Y','Region','t'}.issubset(df.columns): return None
+        df = df.dropna(subset=['X','Y','Region','t'])
+        if len(df) == 0: return None
         x=df['X'].astype(float).values; y=df['Y'].astype(float).values
         t=df['t'].astype(float).values; regions=df['Region'].astype(int).values
         img=load_img(mk(img_b, img_n))
@@ -460,6 +471,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not loc_b or not img_b: return None
         df=load_df(mk(loc_b,loc_n))
         if not {'X','Y','Region','t','UserID'}.issubset(df.columns): return None
+        df = df.dropna(subset=['X','Y','Region','t','UserID'])
+        if len(df) == 0: return None
         img=load_img(mk(img_b,img_n))
         x_all=df['X'].astype(float).values; y_all=df['Y'].astype(float).values
         t_all=df['t'].astype(float).values; regions_all=df['Region'].astype(int).values
@@ -497,6 +510,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not loc_b or not img_b: return None
         df=load_df(mk(loc_b,loc_n))
         if not {'X','Y','Region','t'}.issubset(df.columns): return None
+        df = df.dropna(subset=['X','Y','Region','t'])
+        if len(df) == 0: return None
         x=df['X'].astype(float).values; y=df['Y'].astype(float).values
         t=df['t'].astype(float).values; regions=df['Region'].astype(int).values
         img=load_img(mk(img_b,img_n))
@@ -797,6 +812,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not beh_b or not img_b: return None
         df=load_df(mk(beh_b,beh_n))
         if not {'X','Y','BehaviorNum','Region'}.issubset(df.columns): return None
+        df = df.dropna(subset=['X','Y','BehaviorNum','Region'])
+        if len(df) == 0: return None
         img=load_img(mk(img_b,img_n))
         x=df['X'].astype(float).values; y=df['Y'].astype(float).values
         beh_nums=df['BehaviorNum'].astype(int).values; regions=df['Region'].astype(int).values
@@ -833,6 +850,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not beh_b or not img_b: return None
         df=load_df(mk(beh_b,beh_n))
         if not {'X','Y','BehaviorNum','Region','t'}.issubset(df.columns): return None
+        df = df.dropna(subset=['X','Y','BehaviorNum','Region','t'])
+        if len(df) == 0: return None
         img=load_img(mk(img_b,img_n))
         x=df['X'].astype(float).values; y=df['Y'].astype(float).values
         beh_nums=df['BehaviorNum'].astype(int).values; regions=df['Region'].astype(int).values; t=df['t'].astype(float).values
@@ -865,6 +884,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not beh_b: return None
         df=load_df(mk(beh_b,beh_n))
         if not {'BehaviorNum','Region','t'}.issubset(df.columns): return None
+        df = df.dropna(subset=['BehaviorNum','Region','t'])
+        if len(df) == 0: return None
         beh_nums=df['BehaviorNum'].astype(int).values; regions=df['Region'].astype(int).values; t=df['t'].astype(float).values
         beh_labels_map=df.groupby('BehaviorNum')['behaviortype'].first().to_dict() if 'behaviortype' in df.columns else {b:f'行为{b}' for b in np.unique(beh_nums)}
         uniq_beh=np.sort(np.unique(beh_nums)); uniq_reg=np.sort(np.unique(regions)); beh_labels=[str(beh_labels_map.get(b,b)) for b in uniq_beh]
@@ -905,6 +926,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not beh_b: return None
         df=load_df(mk(beh_b,beh_n))
         if not {'BehaviorNum','Region','t'}.issubset(df.columns): return None
+        df = df.dropna(subset=['BehaviorNum','Region','t'])
+        if len(df) == 0: return None
         beh_nums=df['BehaviorNum'].astype(int).values; regions=df['Region'].astype(int).values; t=df['t'].astype(float).values
         uniq_beh=np.sort(np.unique(beh_nums)); uniq_reg=np.sort(np.unique(regions))
         def entropy(probs): probs=probs[probs>0]; return float(-np.sum(probs*np.log2(probs))) if len(probs) else 0.0
@@ -933,6 +956,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not beh_b: return None
         df=load_df(mk(beh_b,beh_n))
         if not {'BehaviorNum','Region','t'}.issubset(df.columns): return None
+        df = df.dropna(subset=['BehaviorNum','Region','t'])
+        if len(df) == 0: return None
         beh_nums=df['BehaviorNum'].astype(int).values; regions=df['Region'].astype(int).values; t=df['t'].astype(float).values
         beh_labels_map=df.groupby('BehaviorNum')['behaviortype'].first().to_dict() if 'behaviortype' in df.columns else {b:f'行为{b}' for b in np.unique(beh_nums)}
         uniq_beh=np.sort(np.unique(beh_nums)); uniq_reg=np.sort(np.unique(regions)); beh_labels=[str(beh_labels_map.get(b,b)) for b in uniq_beh]

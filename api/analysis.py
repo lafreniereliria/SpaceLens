@@ -548,7 +548,9 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         inertia=float(sum(((data_xy[labels==i]-c)**2).sum() for i,c in enumerate(centers)))
         palette=_get_cmap('tab10',k)
         fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
+        _ih, _iw = img.shape[:2]
         ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(img,alpha=0.35); ax0.axis('off')
+        ax0.set_xlim(0, _iw); ax0.set_ylim(_ih, 0)
         for ci in range(k):
             mask=labels==ci; ax0.scatter(x[mask],y[mask],s=12,color=palette(ci),alpha=0.7,label=f'簇 {ci+1}')
         ax0.scatter(centers[:,0],centers[:,1],s=160,c='white',marker='*',zorder=10,edgecolors='#ffcc00',linewidths=1)
@@ -725,7 +727,9 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         walkable=_get_walkable()
         user_ids=df['UserID'].unique(); palette=_get_cmap('tab20',len(user_ids)); total_lengths={}
         fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
+        _ih, _iw = img.shape[:2]
         ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(img,alpha=0.4); ax0.axis('off')
+        ax0.set_xlim(0, _iw); ax0.set_ylim(_ih, 0)
         for idx,uid in enumerate(user_ids):
             ud=df[df['UserID']==uid].reset_index(drop=True)
             x_arr=ud['X'].values; y_arr=ud['Y'].values; color=palette(idx)
@@ -825,7 +829,9 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             for j,b in enumerate(uniq_beh): count_matrix[i,j]=int(((regions==r)&(beh_nums==b)).sum())
         palette=_get_cmap('tab10',len(uniq_beh))
         fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
+        _ih, _iw = img.shape[:2]
         ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(img,alpha=0.5)
+        ax0.set_xlim(0, _iw); ax0.set_ylim(_ih, 0)
         for j,b in enumerate(uniq_beh):
             mask=beh_nums==b; ax0.scatter(x[mask],y[mask],s=18,color=palette(j),alpha=0.75,label=beh_labels[j],zorder=3)
         ax0.axis('off'); ax0.set_title('各行为发生分布',color=th['text'],fontsize=13,pad=10)

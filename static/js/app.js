@@ -209,6 +209,17 @@ const VIEWS = {
       { key: 'worst_region', label: '最低分区域', unit: '', cls: 'amber' },
     ]
   },
+  satisfaction_design: {
+    title: '设计要素满意度', subtitle: '各设计要素的平均满意度评分与雷达图',
+    chartTitle: '设计要素满意度柱图 & 雷达图', endpoint: '/api/satisfaction_design',
+    dataTypes: ['ques'],
+    stats: [
+      { key: 'factor_count', label: '设计要素数', unit: '项', cls: '' },
+      { key: 'avg_score', label: '要素均值', unit: '分', cls: 'teal' },
+      { key: 'best_factor', label: '最高分要素', unit: '', cls: 'accent' },
+      { key: 'worst_factor', label: '最低分要素', unit: '', cls: 'amber' },
+    ]
+  },
 };
 
 // 需要平面图的视图
@@ -222,7 +233,14 @@ const NEEDS_BEH = new Set(['behavior_count','behavior_duration','behavior_rate',
 // 需要环境数据
 const NEEDS_ENV = new Set(['environment']);
 // 需要问卷数据
-const NEEDS_QUES = new Set(['satisfaction','satisfaction_region']);
+const NEEDS_QUES = new Set(['satisfaction','satisfaction_region','satisfaction_design']);
+
+function getQuestionnaireInputKey(view) {
+  if (view === 'satisfaction') return 'overall';
+  if (view === 'satisfaction_region') return 'region';
+  if (view === 'satisfaction_design') return 'design';
+  return null;
+}
 // 需要区域坐标（可选）
 const NEEDS_REGION = new Set(['openness','utilization']);
 
@@ -275,7 +293,6 @@ document.addEventListener('DOMContentLoaded', () => {
   bindNav();
   bindUploads();
   bindRunBtn();
-  bindClusterK();
   bindDownload();
   bindThemeToggle();
   bindColorSettings();
@@ -514,6 +531,8 @@ async function runAnalysis() {
     const f = document.getElementById('input-img').files[0];
     if (!f) { showToast('请上传空间平面图'); return; }
     fd.append('layout_img', f);
+    const bgMaskInput = document.getElementById('input-bgmask');
+    if (bgMaskInput && bgMaskInput.files[0]) fd.append('background_img', bgMaskInput.files[0]);
   }
   if (NEEDS_LOC.has(currentView)) {
     const f = document.getElementById('input-loc').files[0];
@@ -534,7 +553,11 @@ async function runAnalysis() {
   if (NEEDS_QUES.has(currentView)) {
     const f = document.getElementById('input-ques').files[0];
     if (!f) { showToast('请上传问卷数据'); return; }
-    fd.append('ques_data', f);
+    const qKey = getQuestionnaireInputKey(currentView);
+    if (qKey === 'overall') fd.append('ques_data_overall', f);
+    else if (qKey === 'region') fd.append('ques_data_region', f);
+    else if (qKey === 'design') fd.append('ques_data_design', f);
+    else fd.append('ques_data', f);
   }
   if (NEEDS_REGION.has(currentView)) {
     const f = document.getElementById('input-region').files[0];
@@ -568,7 +591,8 @@ function renderResult(data) {
   statsRow.innerHTML = '';
   const summary = data.summary || {};
   cfg.stats.forEach(s => {
-    const val = summary[s.key] ?? '-';
+    const raw = summary[s.key] ?? '-';
+    const val = (typeof raw === 'number' && !Number.isInteger(raw)) ? raw.toFixed(2) : raw;
     statsRow.insertAdjacentHTML('beforeend', `
       <div class="stat-card ${s.cls}">
         <div class="stat-label">${s.label}</div>

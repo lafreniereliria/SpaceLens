@@ -588,6 +588,11 @@
       <span>空间满意度</span>
       <div class="nav-badge" id="nbadge-satisfaction_region"></div>
     </button>
+    <button class="nav-item" data-view="satisfaction_design">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 7h16"/><path d="M7 12h10"/><path d="M10 17h4"/><circle cx="12" cy="12" r="9" opacity="0.15"/></svg>
+      <span>设计要素满意度</span>
+      <div class="nav-badge" id="nbadge-satisfaction_design"></div>
+    </button>
   </nav>
 
   <div class="sidebar-footer">
@@ -782,29 +787,33 @@ const SOURCE_FILE_LABEL = {
   loc:      { label: '定位数据', icon: '📍' },
   behavior: { label: '行为数据', icon: '👥' },
   env:      { label: '环境数据', icon: '🌡' },
-  ques:     { label: '问卷数据', icon: '📋' },
+  ques1:    { label: '整体满意度问卷', icon: '📋' },
+  ques2:    { label: '空间单元满意度问卷', icon: '📊' },
+  ques3:    { label: '设计要素满意度问卷', icon: '🧩' },
   region:   { label: '区域坐标', icon: '🗺' },
+  bgmask:   { label: '遮罩底图', icon: '⬛' },
 };
 
 const METRIC_SOURCE = {
-  heatmap:           ['img', 'loc'],
-  usetime:           ['img', 'loc'],
-  speed:             ['img', 'loc'],
-  duration:          ['img', 'loc'],
+  heatmap:           ['img', 'loc', 'bgmask'],
+  usetime:           ['img', 'loc', 'bgmask'],
+  speed:             ['img', 'loc', 'bgmask'],
+  duration:          ['img', 'loc', 'bgmask'],
   cluster:           ['img', 'loc'],
-  density:           ['img', 'loc'],
-  openness:          ['img', 'loc', 'region'],
+  density:           ['img', 'loc', 'bgmask'],
+  openness:          ['img', 'loc', 'region', 'bgmask'],
   topology:          ['loc'],
   difference:        ['img', 'loc'],
   trajectory:        ['img', 'loc'],
-  environment:       ['img', 'env'],
+  environment:       ['img', 'env', 'bgmask'],
   behavior_count:    ['img', 'behavior'],
   behavior_duration: ['img', 'behavior'],
   behavior_rate:     ['behavior'],
   behavior_entropy:  ['behavior'],
   utilization:       ['behavior', 'region'],
-  satisfaction:      ['ques'],
-  satisfaction_region: ['ques'],
+  satisfaction:      ['ques1'],
+  satisfaction_region: ['ques2'],
+  satisfaction_design: ['ques3'],
 };
 
 // 指标显示顺序（与侧边栏一一对应）
@@ -827,6 +836,7 @@ const METRIC_ORDER = [
   { id: 'utilization',        badge: 'C5'  },
   { id: 'satisfaction',       badge: 'D3'  },
   { id: 'satisfaction_region',badge: 'D4'  },
+  { id: 'satisfaction_design',badge: 'D5'  },
 ];
 
 // 会话数据缓存
@@ -862,7 +872,16 @@ function buildPanels() {
 
     // 环境参数需要子参数标签页
     var extraCtrl = '';
-    if (m.id === 'environment') {
+    if (m.id === 'cluster') {
+      extraCtrl = '<div class="cluster-k-ctrl" id="cluster-param" style="display:none;align-items:center;gap:10px;padding:10px 0 4px;">'
+        + '  <span style="font-size:13px;color:var(--subtext)">聚类数 K：</span>'
+        + '  <button id="k-minus" class="k-btn" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--spine);background:var(--ax-bg2);color:var(--text);font-size:16px;cursor:pointer;line-height:1;">−</button>'
+        + '  <span id="k-val" style="font-size:15px;font-weight:600;color:var(--accent);min-width:20px;text-align:center;">5</span>'
+        + '  <button id="k-plus" class="k-btn" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--spine);background:var(--ax-bg2);color:var(--text);font-size:16px;cursor:pointer;line-height:1;">＋</button>'
+        + '  <span style="font-size:11px;color:var(--subtext)">（2 – 12）</span>'
+        + '  <button id="k-rerun" class="metric-action-btn" style="margin-left:8px;" onclick="rerunCluster()">重新计算</button>'
+        + '</div>';
+    } else if (m.id === 'environment') {
       extraCtrl = '<div class="env-tabs" id="env-tabs">'
         + '<button class="env-tab active" data-pn="1" onclick="switchEnvParam(this,1)">温度</button>'
         + '<button class="env-tab" data-pn="2" onclick="switchEnvParam(this,2)">湿度</button>'
@@ -930,6 +949,12 @@ function buildPanels() {
   });
 }
 
+// ── 数值格式化：整数保持整数，小数保留两位 ──
+function fmtVal(v) {
+  if (typeof v === 'number' && !Number.isInteger(v)) return v.toFixed(2);
+  return v;
+}
+
 // ── 填充单个指标的结果 ──
 function fillPanel(metricId, data) {
   if (!data) return;
@@ -959,7 +984,8 @@ function fillPanel(metricId, data) {
     if (statsEl && cfg && data.summary) {
       statsEl.innerHTML = '';
       (cfg.stats || []).forEach(function(s) {
-        var val = (data.summary[s.key] !== undefined && data.summary[s.key] !== null) ? data.summary[s.key] : '—';
+        var raw = (data.summary[s.key] !== undefined && data.summary[s.key] !== null) ? data.summary[s.key] : '—';
+        var val = fmtVal(raw);
         statsEl.insertAdjacentHTML('beforeend',
           '<div class="result-stat ' + (s.cls||'') + '">'
           + '<div class="result-stat-label">' + s.label + '</div>'
@@ -1037,7 +1063,8 @@ function fillPanel(metricId, data) {
   if (statsEl && cfg && data.summary) {
     statsEl.innerHTML = '';
     (cfg.stats || []).forEach(function(s) {
-      var val = (data.summary[s.key] !== undefined && data.summary[s.key] !== null) ? data.summary[s.key] : '—';
+      var raw = (data.summary[s.key] !== undefined && data.summary[s.key] !== null) ? data.summary[s.key] : '—';
+      var val = fmtVal(raw);
       statsEl.insertAdjacentHTML('beforeend',
         '<div class="result-stat ' + (s.cls||'') + '">'
         + '<div class="result-stat-label">' + s.label + '</div>'
@@ -1126,7 +1153,33 @@ function _drawSatBarChart(barData) {
   ctx.fillStyle = C.avgLine;
   ctx.textAlign = 'right';
   ctx.font = '10px sans-serif';
-  ctx.fillText('均值 ' + avg.toFixed(1), PAD.left + chartW - 6, Math.max(PAD.top + 12, avgY - 6));
+  ctx.fillText('均值 ' + avg.toFixed(2), PAD.left + chartW - 6, Math.max(PAD.top + 12, avgY - 6));
+
+  // 图例（右上角）
+  var LX = PAD.left + chartW - 4;
+  var LY = PAD.top + 14;
+  var lineH = 16;
+  ctx.textAlign = 'right';
+  ctx.font = '10px sans-serif';
+  // 均值线图例
+  ctx.save();
+  ctx.setLineDash([5, 4]);
+  ctx.strokeStyle = C.avgLine;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(LX - 80, LY); ctx.lineTo(LX - 62, LY); ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = C.text;
+  ctx.fillText('均值 ' + avg.toFixed(2), LX, LY + 4);
+  // 高于均值色块
+  ctx.fillStyle = C.barHi;
+  ctx.fillRect(LX - 80, LY + lineH, 16, 10);
+  ctx.fillStyle = C.text;
+  ctx.fillText('高于均值', LX, LY + lineH + 9);
+  // 低于均值色块
+  ctx.fillStyle = C.barLo;
+  ctx.fillRect(LX - 80, LY + lineH * 2, 16, 10);
+  ctx.fillStyle = C.text;
+  ctx.fillText('低于均值', LX, LY + lineH * 2 + 9);
 
   // 柱子
   var barW = Math.max(2, Math.min(24, (chartW / n) * 0.7));
@@ -1255,6 +1308,79 @@ function switchEnvParam(btn, pn) {
   if (_sessionData) fillPanel('environment', _sessionData.results['environment_p' + pn] || {});
 }
 
+function bindClusterK() {
+  var minusBtn = document.getElementById('k-minus');
+  var plusBtn = document.getElementById('k-plus');
+  var valEl = document.getElementById('k-val');
+  if (!minusBtn || !plusBtn || !valEl) return;
+
+  minusBtn.addEventListener('click', function() {
+    if (kValue > 2) {
+      kValue--;
+      valEl.textContent = kValue;
+    }
+  });
+  plusBtn.addEventListener('click', function() {
+    if (kValue < 12) {
+      kValue++;
+      valEl.textContent = kValue;
+    }
+  });
+}
+
+async function rerunCluster() {
+  var sid = getSessionId();
+  if (!sid) {
+    alert('当前无会话，无法重新计算');
+    return;
+  }
+  var btn = document.getElementById('k-rerun');
+  var panelId = 'cluster';
+  var ph = document.getElementById('chart-ph-' + panelId);
+  var grid = document.getElementById('chart-grid-' + panelId);
+  var origText = btn ? btn.textContent : '';
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '计算中…';
+  }
+  if (ph) {
+    ph.style.display = 'flex';
+  }
+  if (grid) {
+    grid.style.display = 'none';
+  }
+
+  try {
+    var resp = await fetch('/api/session/' + sid + '/cluster', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        k: kValue,
+        theme: document.documentElement.getAttribute('data-theme') || 'light',
+        accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()
+      })
+    });
+    var data = await resp.json();
+    if (!resp.ok || data.error) {
+      throw new Error(data.error || '重算失败');
+    }
+    if (_sessionData) {
+      _sessionData.results = _sessionData.results || {};
+      _sessionData.results.cluster = data;
+    }
+    fillPanel('cluster', data);
+    setNavBadge('cluster', 'done');
+  } catch (e) {
+    alert('空间聚类重新计算失败：' + e.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = origText || '重新计算';
+    }
+  }
+}
+
 // ── 切换指标视图 ──
 function switchView(viewId) {
   _currentView = viewId;
@@ -1264,10 +1390,27 @@ function switchView(viewId) {
   var panel = document.getElementById('panel-' + viewId);
   if (panel) panel.classList.add('active');
 
+  // 视图专属控件显隐
+  var clusterCtrl = document.getElementById('cluster-param');
+  if (clusterCtrl) clusterCtrl.style.display = (viewId === 'cluster') ? 'flex' : 'none';
+  var envTabs = document.getElementById('env-tabs');
+  if (envTabs) envTabs.style.display = (viewId === 'environment') ? 'flex' : 'none';
+
   // 侧边栏导航高亮
   document.querySelectorAll('.nav-item[data-view]').forEach(function(b){ b.classList.remove('active'); });
   var navBtn = document.querySelector('.nav-item[data-view="' + viewId + '"]');
   if (navBtn) navBtn.classList.add('active');
+
+  if (viewId === 'cluster') {
+    var kEl = document.getElementById('k-val');
+    var curK = _sessionData && _sessionData.results && _sessionData.results.cluster && _sessionData.results.cluster.summary
+      ? _sessionData.results.cluster.summary.k
+      : null;
+    if (typeof curK === 'number') {
+      kValue = curK;
+      if (kEl) kEl.textContent = curK;
+    }
+  }
 
   // 环境参数特殊处理
   if (viewId === 'environment' && _sessionData) {
@@ -1375,6 +1518,14 @@ function startPolling(sid) {
             setNavBadge('environment', 'done');
           } else {
             fillPanel(metricId, results[metricId] || {});
+            if (metricId === 'cluster') {
+              var clusterSummary = results[metricId] && results[metricId].summary ? results[metricId].summary : null;
+              if (clusterSummary && typeof clusterSummary.k === 'number') {
+                kValue = clusterSummary.k;
+                var kEl = document.getElementById('k-val');
+                if (kEl) kEl.textContent = clusterSummary.k;
+              }
+            }
             setNavBadge(metricId, 'done');
           }
         });
@@ -1502,6 +1653,7 @@ function loadSession(sid) {
 // ── 初始化 ──
 document.addEventListener('DOMContentLoaded', function() {
   buildPanels();
+  bindClusterK();
   bindNav();
   bindThemeToggle();
   bindColorSettings();
@@ -1559,6 +1711,7 @@ var METRIC_DISPLAY = [
   { id: 'utilization',         badge: 'C5',  name: '功能利用率' },
   { id: 'satisfaction',        badge: 'D3',  name: '整体满意度' },
   { id: 'satisfaction_region', badge: 'D4',  name: '空间满意度' },
+  { id: 'satisfaction_design', badge: 'D5',  name: '设计要素满意度' },
 ];
 
 function openSaveModal() {

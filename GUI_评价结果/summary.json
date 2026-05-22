@@ -1,0 +1,152 @@
+{
+  "到访频次热力图": {
+    "total_records": 2220,
+    "unique_users": 346,
+    "peak_frequency": 0.03,
+    "covered_area_pct": 26.8
+  },
+  "使用时长": {
+    "total_records": 2220,
+    "total_duration_s": 17764,
+    "region_count": 9,
+    "peak_region": 1
+  },
+  "移动速率": {
+    "total_records": 2220,
+    "global_speed_ms": 0.5865,
+    "peak_speed_region": 6,
+    "region_count": 9
+  },
+  "停留时长": {
+    "total_records": 2220,
+    "total_dwell_s": 17764,
+    "avg_dwell_s": 8.0,
+    "peak_region": 1
+  },
+  "空间聚类": {
+    "k": 5,
+    "total_points": 1782,
+    "inertia": 33918065.6
+  },
+  "人员密度": {
+    "total_records": 2220,
+    "unique_users": 346,
+    "region_count": 9,
+    "peak_region": 1
+  },
+  "空间开放程度": {
+    "unique_users": 346,
+    "global_openness": 0.1927,
+    "peak_region": 10,
+    "region_count": 9
+  },
+  "拓扑连接关系": {
+    "region_count": 9,
+    "total_transitions": 590
+  },
+  "轨迹差异系数": {
+    "total_users": 346,
+    "avg_length_m": 30.1,
+    "max_diff_user": "237",
+    "region_count": 9
+  },
+  "轨迹长度": {
+    "total_users": 346,
+    "avg_length_m": 23.6,
+    "max_length_m": 156.7,
+    "min_length_m": 1.4
+  },
+  "环境参数_温度": {
+    "param": "温度(°C)",
+    "num_points": 20,
+    "mean": 20.58,
+    "max": 21.08,
+    "min": 20.29
+  },
+  "环境参数_湿度": {
+    "param": "湿度(%)",
+    "num_points": 20,
+    "mean": 68.76,
+    "max": 72.15,
+    "min": 66.59
+  },
+  "环境参数_光照": {
+    "param": "光照(lux)",
+    "num_points": 34,
+    "mean": 2417.06,
+    "max": 4220.0,
+    "min": 1618.9
+  },
+  "环境参数_风速": {
+    "param": "风速(m/s)",
+    "num_points": 20,
+    "mean": 0.91,
+    "max": 11.02,
+    "min": 0.0
+  },
+  "环境参数_噪声": {
+    "param": "噪声(dB)",
+    "num_points": 20,
+    "mean": 42.8,
+    "max": 46.1,
+    "min": 39.6
+  },
+  "行为人次": {
+    "total_records": 2137,
+    "behavior_types": 3,
+    "region_count": 8,
+    "behaviors": [
+      "1.休闲娱乐",
+      "2.吸烟",
+      "3.其他"
+    ]
+  },
+  "行为时长": {
+    "total_records": 2137,
+    "total_duration_s": 12892,
+    "behavior_types": 3,
+    "behaviors": [
+      "1.休闲娱乐",
+      "2.吸烟",
+      "3.其他"
+    ]
+  },
+  "行为发生率": {
+    "total_records": 2137,
+    "behavior_types": 3,
+    "behaviors": [
+      "1.休闲娱乐",
+      "2.吸烟",
+      "3.其他"
+    ],
+    "region_count": 8
+  },
+  "行为复合度": {
+    "region_count": 8,
+    "user_count": 346,
+    "avg_reg_entropy": 1.071,
+    "behavior_types": 3
+  },
+  "功能利用率": {
+    "region_count": 8,
+    "behavior_types": 3,
+    "global_util": 7.18,
+    "behaviors": [
+      "1.休闲娱乐",
+      "2.吸烟",
+      "3.其他"
+    ]
+  },
+  "整体满意度": {
+    "total_users": 100,
+    "avg_score": 82.0,
+    "max_score": 91,
+    "min_score": 71
+  },
+  "空间满意度": {
+    "region_count": 8,
+    "avg_score": 80.0,
+    "best_region": "1",
+    "worst_region": "3"
+  }
+}

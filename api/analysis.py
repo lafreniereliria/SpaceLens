@@ -106,6 +106,7 @@ if _CJK_FONT:
 from matplotlib.patches import FancyArrowPatch
 from scipy.cluster.vq import kmeans2 as _kmeans2
 from scipy.ndimage import gaussian_filter, binary_erosion, binary_dilation
+from scipy.interpolate import RBFInterpolator
 from PIL import Image
 
 analysis_bp = Blueprint('analysis', __name__)
@@ -153,9 +154,9 @@ def load_df(file_storage):
         df = pd.read_excel(file_storage)
 
     # 对已知数值列做容错转换：'/'、空字符串等占位符 → NaN，再强制转为数值类型
-    _numeric_cols = {'X', 'Y', 't', 'BehaviorNum', 'Satisfaction', 'UserNum'}
+    _numeric_cols = {'X', 'Y', 't', 'BehaviorNum', 'Satisfaction', 'UserNum', 'ParameterNum', 'Value', 'Region'}
     for col in _numeric_cols:
-        if col in df.columns and df[col].dtype == object:
+        if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
 
     return df
@@ -222,6 +223,44 @@ def extract_walkable_mask(img_arr: np.ndarray,
     return walkable
 
 
+def extract_measurement_mask(img_arr: np.ndarray,
+                             black_threshold: int = 20,
+                             erode_iters: int = 0,
+                             dilate_black_iters: int = 0) -> np.ndarray:
+    """从专门的背景遮罩图中提取“允许上色区域”。
+
+    约定：背景图中的黑色区域表示没有测量数据，不应涂色；
+    非黑区域表示允许绘制正式热力图。
+    返回 True = 允许上色，False = 不上色。
+    """
+    gray = np.dot(img_arr[..., :3], [0.299, 0.587, 0.114]).astype(np.uint8)
+    allowed = gray > black_threshold
+
+    if dilate_black_iters > 0:
+        black = ~allowed
+        black = binary_dilation(black, iterations=dilate_black_iters)
+        allowed = ~black
+
+    if erode_iters > 0:
+        allowed = binary_erosion(allowed, iterations=erode_iters)
+
+    if allowed.sum() < allowed.size * 0.05:
+        return np.ones(img_arr.shape[:2], dtype=bool)
+    return allowed
+
+
+def merge_masks(*masks):
+    """合并多个 bool mask，None 会被忽略。"""
+    valid = [m.astype(bool) for m in masks if m is not None]
+    if not valid:
+        return None
+    out = valid[0].copy()
+    for m in valid[1:]:
+        if m.shape == out.shape:
+            out &= m
+    return out
+
+
 def filter_points_in_mask(x: np.ndarray, y: np.ndarray,
                           mask: np.ndarray,
                           return_mask: bool = False):
@@ -273,10 +312,18 @@ def heatmap():
 
         # 提取可行走区域 mask，屏蔽黑色墙体
         walkable = extract_walkable_mask(img)
+        coverage_mask = None
+        bgmask_file = request.files.get('background_img')
+        if bgmask_file is not None:
+            try:
+                coverage_mask = extract_measurement_mask(load_img(bgmask_file))
+            except Exception:
+                coverage_mask = None
 
         # KDE 渐变热力图（无栅格），热力不渗入墙体
         overlay, density = _make_heatmap_overlay(img, x, y, alpha=0.70, cmap='plasma',
-                                                 walkable_mask=walkable)
+                                                 walkable_mask=walkable,
+                                                 coverage_mask=coverage_mask)
 
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
@@ -355,13 +402,116 @@ def _make_fs(data: bytes, filename: str) -> FileStorage:
     return FileStorage(stream=BytesIO(data), filename=filename)
 
 
+def _compute_cluster_result(loc_fs, img_fs, k, th, normalize_xy_fn=None, walkable_mask=None):
+    """公共聚类计算逻辑，供 run_all 与 session 内重算复用。"""
+    if loc_fs is None or img_fs is None:
+        return None
+
+    df = load_df(loc_fs)
+    if not {'X', 'Y'}.issubset(df.columns):
+        return None
+    if normalize_xy_fn is not None:
+        df = normalize_xy_fn(df)
+
+    img = load_img(img_fs)
+
+    x = df['X'].astype(float).values
+    y = df['Y'].astype(float).values
+
+    if walkable_mask is None:
+        try:
+            walkable_mask = extract_walkable_mask(img)
+        except Exception:
+            walkable_mask = None
+
+    if walkable_mask is not None:
+        x, y = filter_points_in_mask(x, y, walkable_mask)
+
+    if len(x) < 2 or len(y) < 2:
+        return None
+
+    data_xy = np.column_stack([x, y])
+    k = max(2, min(int(k), len(data_xy) - 1))
+
+    centers, labels = _kmeans2(
+        data_xy.astype(float), k,
+        iter=10, minit='points', missing='warn', seed=42
+    )
+    inertia = float(sum(
+        ((data_xy[labels == i] - c) ** 2).sum()
+        for i, c in enumerate(centers)
+    ))
+
+    palette = _get_cmap('tab10', k)
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    fig.patch.set_facecolor(th['fig_bg'])
+
+    ax0 = axes[0]
+    ax0.set_facecolor('white')
+    ax0.imshow(img, alpha=0.35)
+    ax0.axis('off')
+    for ci in range(k):
+        mask = labels == ci
+        ax0.scatter(x[mask], y[mask], s=12, color=palette(ci),
+                    alpha=0.7, label=f'簇 {ci+1}')
+    ax0.scatter(centers[:, 0], centers[:, 1], s=160, c='white',
+                marker='*', zorder=10, edgecolors='#ffcc00', linewidths=1)
+    for i, (cx, cy) in enumerate(centers):
+        ax0.annotate(f'C{i+1}', (cx, cy),
+                     xytext=(6, 6), textcoords='offset points',
+                     color='#ffcc00', fontsize=9, fontweight='bold')
+    ax0.set_title(f'空间聚类分析 (k={k})', color=th['text'], fontsize=13, pad=10)
+    ax0.legend(loc='upper right', fontsize=8, ncol=2,
+               facecolor=th['legend_bg'], edgecolor=th['legend_edge'], labelcolor=th['tick'])
+
+    ax1 = axes[1]
+    _styled_axes(ax1, th)
+    cluster_sizes = [int(np.sum(labels == ci)) for ci in range(k)]
+    cluster_labels = [f'簇 {ci+1}' for ci in range(k)]
+    colors_bar = [palette(ci) for ci in range(k)]
+    bars = ax1.bar(cluster_labels, cluster_sizes, color=colors_bar,
+                   alpha=0.85, width=0.55, edgecolor=th['bar_edge'], linewidth=0.5)
+    for bar in bars:
+        ax1.text(bar.get_x() + bar.get_width() / 2,
+                 bar.get_height() + 0.5,
+                 str(int(bar.get_height())),
+                 ha='center', va='bottom', color=th['bar_label'], fontsize=9)
+    ax1.set_ylabel('点位数量', color=th['subtext'], fontsize=10)
+    ax1.set_title('各聚类点位分布', color=th['text'], fontsize=13)
+    ax1.yaxis.grid(True, color=th['grid'], linewidth=0.5)
+    ax1.set_axisbelow(True)
+
+    plt.tight_layout(pad=2)
+    img_b64 = fig_to_base64(fig)
+    plt.close(fig)
+
+    clusters_info = []
+    for ci in range(k):
+        mask = labels == ci
+        clusters_info.append({
+            'id': ci + 1,
+            'size': int(mask.sum()),
+            'center_x': round(float(centers[ci, 0]), 2),
+            'center_y': round(float(centers[ci, 1]), 2),
+            'pct': round(float(mask.sum() / len(labels) * 100), 2),
+        })
+
+    summary = {
+        'k': k,
+        'total_points': int(len(x)),
+        'inertia': round(inertia, 2),
+        'clusters': clusters_info,
+    }
+    return {'image': img_b64, 'summary': summary}
+
+
 # ─────────────────────────────────────────────
 # /api/run_all  —  一键计算所有指标（立即返回 sid，后台线程计算）
 # ─────────────────────────────────────────────
 
 def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
-                env_b, env_n, ques_b, ques_n, region_b, region_n,
-                th):
+                env_b, env_n, ques1_b, ques1_n, ques2_b, ques2_n, ques3_b, ques3_n,
+                region_b, region_n, bgmask_b, bgmask_n, th):
     """后台线程：逐个计算指标，每算完一个就更新会话缓存"""
 
     def mk(b, n):
@@ -377,6 +527,20 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             except Exception:
                 _walkable = None
         return _walkable
+
+    # ── 可选的正式热力图覆盖遮罩（background.png 的黑色区域不涂色）──
+    _coverage = None
+    def _get_coverage_mask():
+        nonlocal _coverage
+        if _coverage is None:
+            try:
+                if bgmask_b:
+                    _coverage = extract_measurement_mask(load_img(mk(bgmask_b, bgmask_n)))
+                else:
+                    _coverage = None
+            except Exception:
+                _coverage = None
+        return _coverage
 
     # ── 坐标归一化：将 X/Y 线性缩放到图像像素范围 ──
     # 处理数据坐标系原点与平面图不对齐、或尺度不一致的情况
@@ -454,7 +618,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         img = load_img(mk(img_b, img_n))
         walkable = _get_walkable()
         overlay, density = _make_heatmap_overlay(img, x, y, alpha=0.70, cmap='plasma',
-                                                  walkable_mask=walkable)
+                                                  walkable_mask=walkable,
+                                                  coverage_mask=_get_coverage_mask())
         fig0, ax0 = plt.subplots(figsize=(9, 6)); fig0.patch.set_facecolor(th['fig_bg'])
         ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('到访频次热力图', color=th['text'], fontsize=13, pad=10)
@@ -494,7 +659,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         reg_ids=np.sort(np.unique(regions))
         reg_dur=np.array([t[regions==r].sum() for r in reg_ids])
         overlay,fg=_make_heatmap_overlay(img,x,y,weights=t,alpha=0.65,cmap='jet',
-                                          walkable_mask=_get_walkable())
+                                          walkable_mask=_get_walkable(),
+                                          coverage_mask=_get_coverage_mask())
         fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
         ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('空间使用时长热力图',color=th['text'],fontsize=13,pad=10)
@@ -537,7 +703,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             mean_speed=np.where(reg_dwell>0,reg_length/reg_dwell,0)
         weights=np.array([mean_speed[np.where(reg_ids==r)[0][0]] if r in reg_ids else 0 for r in regions_all])
         overlay,speed_grid=_make_heatmap_overlay(img,x_all,y_all,weights=weights,alpha=0.65,cmap='jet',
-                                         walkable_mask=_get_walkable())
+                                         walkable_mask=_get_walkable(),
+                                         coverage_mask=_get_coverage_mask())
         global_speed=reg_length.sum()/reg_dwell.sum() if reg_dwell.sum()>0 else 0
         fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
         ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
@@ -549,9 +716,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
-        _bar_common(ax1,reg_ids,mean_speed,color='#f5a623',ylabel='速率 (m/s)',th=th,show_mean=False)
-        ax1.axhline(global_speed,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'全局均值 {global_speed:.2f}')
-        ax1.legend(facecolor=th['legend_bg'],edgecolor=th['legend_edge'],labelcolor=th['tick'],fontsize=8)
+        _bar_common(ax1,reg_ids,mean_speed,color='#f5a623',ylabel='速率 (m/s)',th=th,
+                    show_mean=True,color_above='#f5a623',color_below='#00c9a7')
         ax1.set_title('各空间单元平均移动速率',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
         return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'global_speed_ms':round(float(global_speed),2),'avg_speed_ms':round(float(mean_speed.mean()),2),'max_speed_ms':round(float(mean_speed.max()),2),'min_speed_ms':round(float(mean_speed.min()),2),'peak_speed_region':int(reg_ids[np.argmax(mean_speed)]),'region_count':int(len(reg_ids))}}
@@ -571,7 +737,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         reg_ids=np.sort(np.unique(regions))
         reg_dwell=np.array([t[regions==r].sum() for r in reg_ids])
         overlay,fg=_make_heatmap_overlay(img,x,y,weights=t,alpha=0.65,cmap='jet',
-                                          walkable_mask=_get_walkable())
+                                          walkable_mask=_get_walkable(),
+                                          coverage_mask=_get_coverage_mask())
         fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
         ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('空间停留时长热力图 (s)',color=th['text'],fontsize=13,pad=10)
@@ -590,39 +757,14 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
     # ── A5 空间聚类 (trajectory cluster) ──
     def _cluster():
         if not loc_b or not img_b: return None
-        df=load_df(mk(loc_b,loc_n))
-        if not {'X','Y'}.issubset(df.columns): return None
-        df = _normalize_xy(df)
-        img=load_img(mk(img_b,img_n))
-        # 过滤不可走区域的点，再做聚类
-        walkable=_get_walkable()
-        x=df['X'].astype(float).values; y=df['Y'].astype(float).values
-        if walkable is not None:
-            x,y=filter_points_in_mask(x,y,walkable)
-        data_xy=np.column_stack([x,y]); k=max(2,min(5,len(data_xy)-1))
-        centers,labels=_kmeans2(data_xy.astype(float),k,iter=10,minit='points',missing='warn',seed=42)
-        inertia=float(sum(((data_xy[labels==i]-c)**2).sum() for i,c in enumerate(centers)))
-        palette=_get_cmap('tab10',k)
-        _ih, _iw = img.shape[:2]
-        fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
-        ax0.set_facecolor('white'); ax0.imshow(img,alpha=0.35); ax0.axis('off')
-        ax0.set_xlim(0, _iw); ax0.set_ylim(_ih, 0)
-        for ci in range(k):
-            mask=labels==ci; ax0.scatter(x[mask],y[mask],s=12,color=palette(ci),alpha=0.7,label=f'簇 {ci+1}')
-        ax0.scatter(centers[:,0],centers[:,1],s=160,c='white',marker='*',zorder=10,edgecolors='#ffcc00',linewidths=1)
-        ax0.set_title(f'空间聚类分析 (k={k})',color=th['text'],fontsize=13,pad=10)
-        ax0.legend(loc='upper right',fontsize=8,ncol=2,facecolor=th['legend_bg'],edgecolor=th['legend_edge'],labelcolor=th['tick'])
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
-        fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
-        _styled_axes(ax1,th)
-        cluster_sizes=[int(np.sum(labels==ci)) for ci in range(k)]
-        bars=ax1.bar([f'簇{ci+1}' for ci in range(k)],cluster_sizes,color=[palette(ci) for ci in range(k)],alpha=0.85,width=0.55,edgecolor=th['bar_edge'],linewidth=0.5)
-        for bar in bars:
-            ax1.text(bar.get_x()+bar.get_width()/2,bar.get_height()+0.5,str(int(bar.get_height())),ha='center',va='bottom',color=th['bar_label'],fontsize=9)
-        ax1.set_ylabel('点位数量',color=th['subtext'],fontsize=10); ax1.set_title('各聚类点位分布',color=th['text'],fontsize=13)
-        ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
-        plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'k':k,'total_points':len(x),'inertia':round(inertia,1)}}
+        return _compute_cluster_result(
+            mk(loc_b, loc_n),
+            mk(img_b, img_n),
+            5,
+            th,
+            normalize_xy_fn=_normalize_xy,
+            walkable_mask=_get_walkable(),
+        )
     _run_metric('cluster', _cluster)
 
     # ── A6 人员密度 ──
@@ -635,7 +777,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         regions=df['Region'].astype(int).values; img=load_img(mk(img_b,img_n))
         reg_ids=np.sort(np.unique(regions))
         reg_uu=np.array([df[df['Region']==r]['UserID'].nunique() for r in reg_ids])
-        overlay,density_grid=_make_heatmap_overlay(img,x,y,alpha=0.65,cmap='jet',walkable_mask=_get_walkable())
+        overlay,density_grid=_make_heatmap_overlay(img,x,y,alpha=0.65,cmap='jet',walkable_mask=_get_walkable(),
+                                                    coverage_mask=_get_coverage_mask())
         fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
         ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('人员分布热力图',color=th['text'],fontsize=13,pad=10)
@@ -675,7 +818,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         with np.errstate(divide='ignore',invalid='ignore'):
             openness_val=np.where(reg_areas>0,reg_uu/reg_areas,0)
         global_open=df['UserID'].nunique()/reg_areas.sum() if reg_areas.sum()>0 else 0
-        overlay,open_grid=_make_heatmap_overlay(img,x,y,alpha=0.65,cmap='jet',walkable_mask=_get_walkable())
+        overlay,open_grid=_make_heatmap_overlay(img,x,y,alpha=0.65,cmap='jet',walkable_mask=_get_walkable(),
+                                                 coverage_mask=_get_coverage_mask())
         fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
         ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('空间开放程度热力图',color=th['text'],fontsize=13,pad=10)
@@ -855,6 +999,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax0.set_title('人员轨迹长度差异系数',color=th['text'],fontsize=13,pad=10)
         ax0.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
+        _set_sparse_xticks(ax0, per_ids)
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
@@ -911,15 +1056,31 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         if not total_lengths:
             return None
-        sorted_len=sorted(total_lengths.items(),key=lambda x:x[1],reverse=True)
-        uids_s=[str(u) for u,_ in sorted_len]; lens_s=[l for _,l in sorted_len]
+        lens_arr=np.array(list(total_lengths.values()), dtype=float)
+        hist_min=float(np.min(lens_arr)); hist_max=float(np.max(lens_arr))
+        if np.isclose(hist_min, hist_max):
+            hist_min -= 0.5
+            hist_max += 0.5
+        bin_edges=np.linspace(hist_min, hist_max, 11)
+        counts, edges=np.histogram(lens_arr, bins=bin_edges)
+        labels=[]
+        for i in range(len(edges)-1):
+            left=edges[i]; right=edges[i+1]
+            labels.append(f'{left:.1f}-{right:.1f}')
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
-        bars=ax1.barh(uids_s,lens_s,color='#00c9a7',alpha=0.85,height=0.6)
+        xs=np.arange(len(counts))
+        bars=ax1.bar(xs, counts, color='#00c9a7', alpha=0.85, width=0.8)
         for bar in bars:
-            ax1.text(bar.get_width()+0.1,bar.get_y()+bar.get_height()/2,f'{bar.get_width():.1f}m',va='center',color=th['bar_label'],fontsize=8)
-        ax1.set_xlabel('轨迹长度 (m)',color=th['subtext'],fontsize=10); ax1.set_title('人员轨迹长度',color=th['text'],fontsize=13)
-        ax1.xaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True); ax1.invert_yaxis()
+            h=bar.get_height()
+            if h>0:
+                ax1.text(bar.get_x()+bar.get_width()/2, h+0.1, f'{int(h)}', ha='center', va='bottom', color=th['bar_label'], fontsize=8)
+        ax1.set_xticks(xs)
+        ax1.set_xticklabels(labels, fontsize=8, rotation=25, ha='right')
+        ax1.set_xlabel('轨迹长度分桶 (m)',color=th['subtext'],fontsize=10)
+        ax1.set_ylabel('用户数',color=th['subtext'],fontsize=10)
+        ax1.set_title('人员轨迹长度分布（10桶）',color=th['text'],fontsize=13)
+        ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
         return {'image':img_b64,'image2':img2_b64,'summary':{'total_users':len(user_ids),'avg_length_m':round(float(np.mean(list(total_lengths.values()))),1),'max_length_m':round(max(total_lengths.values()),1),'min_length_m':round(min(total_lengths.values()),1)}}
     _run_metric('trajectory', _trajectory_fn)
@@ -933,21 +1094,29 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             param_labels={1:'温度(°C)',2:'湿度(%)',3:'光照(lux)',4:'风速(m/s)',5:'噪声(dB)'}
             label=param_labels.get(param_num,f'参数{param_num}')
             sub=df[df['ParameterNum']==param_num].copy()
+            sub = sub.dropna(subset=['X', 'Y', 'Value'])
             if sub.empty: return {'no_data': True, 'label': label}
             ex=sub['X'].astype(float).values; ey=sub['Y'].astype(float).values; vals=sub['Value'].astype(float).values
             img=load_img(mk(img_b,img_n)); h_img,w_img=img.shape[:2]
-            from scipy.interpolate import griddata
-            xi=np.linspace(ex.min(),ex.max(),w_img); yi=np.linspace(ey.min(),ey.max(),h_img)
-            xi_g,yi_g=np.meshgrid(xi,yi)
-            interp=griddata((ex,ey),vals,(xi_g,yi_g),method='linear')
-            interp_filled=griddata((ex,ey),vals,(xi_g,yi_g),method='nearest')
-            interp=np.where(np.isnan(interp),interp_filled,interp)
-            vmin,vmax=float(np.nanmin(interp)),float(np.nanmax(interp))
-            interp_norm=(interp-vmin)/(vmax-vmin+1e-9)
-            cm=_get_cmap('RdYlBu_r'); heat_rgb=cm(interp_norm)[:,:,:3]
-            overlay=np.clip((img/255.0)*0.35+heat_rgb*0.65,0,1)
+            walkable = _get_walkable()
+            kernel_map = {1: 'linear', 2: 'linear', 3: 'gaussian', 4: 'linear', 5: 'linear'}
+            epsilon_map = {3: max(min(w_img, h_img) * 0.015, 4.0)}
+            overlay, interp, vmin, vmax = _make_rbf_overlay(
+                img, ex, ey, vals,
+                alpha=0.65,
+                cmap='RdYlBu_r',
+                walkable_mask=walkable,
+                coverage_mask=_get_coverage_mask(),
+                kernel=kernel_map.get(param_num, 'linear'),
+                smoothing=max(float(np.nanstd(vals)) * 0.03, 1e-6),
+                neighbors=min(max(len(vals), 8), 24),
+                epsilon=epsilon_map.get(param_num),
+            )
+            if interp is None:
+                return {'no_data': True, 'label': label}
             fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
             ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
+            ax0.scatter(ex, ey, c='white', s=24, zorder=5, edgecolors='#ffcc00', linewidths=0.8)
             ax0.set_title(f'{label} 空间分布',color=th['text'],fontsize=13,pad=10)
             sm=plt.cm.ScalarMappable(cmap='RdYlBu_r',norm=mcolors.Normalize(vmin,vmax))
             sm.set_array([]); cbar=fig.colorbar(sm,ax=ax0,fraction=0.03,pad=0.02)
@@ -1121,6 +1290,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax0.set_title('各空间单元行为复合度',color=th['text'],fontsize=13,pad=10)
         ax1=axes[1]; _styled_axes(ax1,th)
         _bar_common(ax1,uniq_users,user_entropy,color='#00c9a7',ylabel='行为熵值 (bits)',th=th)
+        _set_sparse_xticks(ax1, uniq_users)
         ax1.set_title('各使用者行为复合度',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
         return {'image':img_b64,'summary':{'region_count':int(len(uniq_reg)),'user_count':int(len(uniq_users)),'avg_reg_entropy':round(float(np.mean(reg_entropy)),2),'max_reg_entropy':round(float(np.max(reg_entropy)),2),'min_reg_entropy':round(float(np.min(reg_entropy)),2),'behavior_types':int(len(uniq_beh))}}
@@ -1172,10 +1342,11 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
 
     # ── D3 整体满意度 ──
     def _satisfaction_fn():
-        if not ques_b: return None
-        df=load_df(mk(ques_b,ques_n))
-        if not {'UserNum','Satisfaction'}.issubset(df.columns): return None
-        user_ids=df['UserNum'].values; scores=df['Satisfaction'].astype(float).values; avg_score=float(scores.mean())
+        if not ques1_b: return None
+        df=load_df(mk(ques1_b,ques1_n))
+        score_col = 'Satisfaction' if 'Satisfaction' in df.columns else 'Satisfaction1'
+        if not {'UserNum', score_col}.issubset(df.columns): return None
+        user_ids=df['UserNum'].values; scores=df[score_col].astype(float).values; avg_score=float(scores.mean())
         # 仅生成右侧分布直方图（左侧个人评分改为前端Canvas交互图）
         fig,ax1=plt.subplots(1,1,figsize=(7,6)); fig.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
@@ -1187,6 +1358,9 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1.set_xlabel('分数段',color=th['subtext'],fontsize=10); ax1.set_ylabel('人数',color=th['subtext'],fontsize=10)
         ax1.set_title('满意度分布',color=th['text'],fontsize=13)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
+        ax1.axhline(avg_score, color='#ff5e5e', linestyle='--', linewidth=1.5, label=f'均值 {avg_score:.2f}')
+        ax1.legend(loc='upper right', facecolor=th['legend_bg'], edgecolor=th.get('spine', th['legend_bg']),
+                   labelcolor=th.get('bar_label', th['text']), fontsize=8)
         plt.tight_layout(pad=2); img_dist_b64=fig_to_base64(fig); plt.close(fig)
         bar_data=[[str(uid),float(s)] for uid,s in zip(user_ids,scores)]
         return {'image_dist':img_dist_b64,'bar_data':bar_data,'avg_score':round(avg_score,1),'summary':{'total_users':int(len(df)),'avg_score':round(avg_score,1),'max_score':int(scores.max()),'min_score':int(scores.min())}}
@@ -1194,16 +1368,16 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
 
     # ── D4 空间区域满意度 ──
     def _sat_region():
-        if not ques_b: return None
-        df=load_df(mk(ques_b,ques_n))
+        if not ques2_b: return None
+        df=load_df(mk(ques2_b,ques2_n))
         if 'UserNum' not in df.columns: return None
-        sat_cols=[c for c in df.columns if c.startswith('Satisfaction') and c!='Satisfaction']
-        if not sat_cols: return None
-        avg_vals=df[sat_cols].mean().values
+        region_cols = [c for c in df.columns if c != 'UserNum']
+        if not region_cols: return None
+        avg_vals=df[region_cols].apply(pd.to_numeric, errors='coerce').mean().values
         reg_ids=[]
-        for c in sat_cols:
-            try: reg_ids.append(int(c.replace('Satisfaction','')))
-            except: reg_ids.append(c)
+        for c in region_cols:
+            try: reg_ids.append(int(str(c).replace('Satisfaction','')))
+            except: reg_ids.append(str(c))
         avg_score=float(avg_vals.mean())
         fig=plt.figure(figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
         ax0=fig.add_subplot(121); _styled_axes(ax0,th)
@@ -1229,6 +1403,39 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
         return {'image':img_b64,'summary':{'region_count':int(len(reg_ids)),'avg_score':round(avg_score,2),'max_score':round(float(np.max(avg_vals)),2),'min_score':round(float(np.min(avg_vals)),2),'best_region':str(reg_ids[int(np.argmax(avg_vals))]),'worst_region':str(reg_ids[int(np.argmin(avg_vals))])}}
     _run_metric('satisfaction_region', _sat_region)
+
+    # ── D5 设计要素满意度 ──
+    def _sat_design():
+        if not ques3_b: return None
+        df=load_df(mk(ques3_b,ques3_n))
+        if 'UserNum' not in df.columns: return None
+        design_cols = [c for c in df.columns if c != 'UserNum']
+        if not design_cols: return None
+        avg_vals=df[design_cols].apply(pd.to_numeric, errors='coerce').mean().values
+        factor_ids=[str(c).replace('设计要素', '') for c in design_cols]
+        avg_score=float(avg_vals.mean())
+        fig=plt.figure(figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
+        ax0=fig.add_subplot(121); _styled_axes(ax0,th)
+        colors=['#7c5cfc' if v>=avg_score else '#00c9a7' for v in avg_vals]
+        bars_f=ax0.bar([str(r) for r in factor_ids],avg_vals,color=colors,alpha=0.85,width=0.6)
+        for bar in bars_f:
+            h=bar.get_height()
+            ax0.text(bar.get_x()+bar.get_width()/2,h+1,f'{h:.2f}',ha='center',va='bottom',color=th['bar_label'],fontsize=8)
+        ax0.axhline(avg_score,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'均值 {avg_score:.2f}')
+        ax0.set_xlabel('设计要素编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('满意度均值',color=th['subtext'],fontsize=10)
+        ax0.set_title('各设计要素满意度',color=th['text'],fontsize=13,pad=10)
+        ax0.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
+        ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
+        ax1=fig.add_subplot(122,polar=True); ax1.set_facecolor(th['ax_bg2'])
+        theta=np.linspace(0,2*np.pi,len(factor_ids),endpoint=False)
+        vals_r=np.append(avg_vals,avg_vals[0]); theta_r=np.append(theta,theta[0])
+        ax1.plot(theta_r,vals_r,color=th['accent'],linewidth=2); ax1.fill(theta_r,vals_r,color=th['accent'],alpha=0.2)
+        ax1.set_xticks(theta); ax1.set_xticklabels([str(r) for r in factor_ids],color=th['subtext'],fontsize=8)
+        ax1.tick_params(colors=th['cbar_tick']); ax1.set_title('设计要素满意度雷达',color=th['text'],fontsize=13,pad=15)
+        ax1.spines['polar'].set_color('#2d2d3d'); ax1.grid(color=th['grid'],linewidth=0.5)
+        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
+        return {'image':img_b64,'summary':{'factor_count':int(len(factor_ids)),'avg_score':round(avg_score,2),'max_score':round(float(np.max(avg_vals)),2),'min_score':round(float(np.min(avg_vals)),2),'best_factor':str(factor_ids[int(np.argmax(avg_vals))]),'worst_factor':str(factor_ids[int(np.argmin(avg_vals))])}}
+    _run_metric('satisfaction_design', _sat_design)
 
     # ── 全部完成，标记 status + 存入数据库 ──
     with _sess_lock:
@@ -1343,7 +1550,8 @@ def _make_thumbnail(sess, max_size=200):
 @analysis_bp.route('/run_all', methods=['POST'])
 def run_all():
     """
-    接收：layout_img, loc_data, behavior_data, env_data, ques_data, region_data (optional)
+    接收：layout_img, loc_data, behavior_data, env_data,
+    ques_data_overall, ques_data_region, ques_data_design, region_data (optional)
     立即返回 { session_id }，后台线程异步计算各指标并写入缓存。
     """
     try:
@@ -1358,16 +1566,22 @@ def run_all():
         loc_b, loc_n       = _read('loc_data')
         beh_b, beh_n       = _read('behavior_data')
         env_b, env_n       = _read('env_data')
-        ques_b, ques_n     = _read('ques_data')
+        ques1_b, ques1_n   = _read('ques_data_overall')
+        ques2_b, ques2_n   = _read('ques_data_region')
+        ques3_b, ques3_n   = _read('ques_data_design')
         region_b, region_n = _read('region_data')
+        bgmask_b, bgmask_n = _read('background_img')
 
         # 读取前端传来的源文件路径（用于结果页「数据来源」点击打开）
         img_path    = request.form.get('layout_img_path',    img_n    or '')
         loc_path    = request.form.get('loc_data_path',      loc_n    or '')
         beh_path    = request.form.get('behavior_data_path', beh_n    or '')
-        env_path    = request.form.get('env_data_path',      env_n    or '')
-        ques_path   = request.form.get('ques_data_path',     ques_n   or '')
-        region_path = request.form.get('region_data_path',   region_n or '')
+        env_path    = request.form.get('env_data_path',           env_n    or '')
+        ques1_path  = request.form.get('ques_data_overall_path',  ques1_n  or '')
+        ques2_path  = request.form.get('ques_data_region_path',   ques2_n  or '')
+        ques3_path  = request.form.get('ques_data_design_path',   ques3_n  or '')
+        region_path = request.form.get('region_data_path',        region_n or '')
+        bgmask_path = request.form.get('background_img_path',      bgmask_n or '')
 
         # 桌面端：尝试解析为绝对路径（Qt chooseFiles 已注入）
         def _best_path(raw, filename):
@@ -1378,8 +1592,11 @@ def run_all():
         loc_path    = _best_path(loc_path,    loc_n)
         beh_path    = _best_path(beh_path,    beh_n)
         env_path    = _best_path(env_path,    env_n)
-        ques_path   = _best_path(ques_path,   ques_n)
+        ques1_path  = _best_path(ques1_path,  ques1_n)
+        ques2_path  = _best_path(ques2_path,  ques2_n)
+        ques3_path  = _best_path(ques3_path,  ques3_n)
         region_path = _best_path(region_path, region_n)
+        bgmask_path = _best_path(bgmask_path, bgmask_n)
 
         # 从已解析的绝对路径推导文件夹绝对路径
         # 先直接查路径表里是否有文件夹名的记录（文件夹选择时注入的）
@@ -1398,7 +1615,7 @@ def run_all():
 
         if not _abs_folder:
             _abs_folder = _abs_folder_from_sources(
-                img_path, loc_path, beh_path, env_path, ques_path, region_path
+                img_path, loc_path, beh_path, env_path, ques1_path, ques2_path, ques3_path, region_path, bgmask_path
             )
 
         # 计算各文件 MD5，用于去重
@@ -1409,8 +1626,11 @@ def run_all():
             'loc':    _md5(loc_b),
             'beh':    _md5(beh_b),
             'env':    _md5(env_b),
-            'ques':   _md5(ques_b),
+            'ques1':  _md5(ques1_b),
+            'ques2':  _md5(ques2_b),
+            'ques3':  _md5(ques3_b),
             'region': _md5(region_b),
+            'bgmask': _md5(bgmask_b),
         }
 
         building_type = request.form.get('building_type', 'unknown')
@@ -1438,27 +1658,41 @@ def run_all():
                 'ts':       _time.time(),
                 'status':   'running',
                 '_raw_img_b': img_b,     # 保留原图用于生成缩略图
+                '_img_b': img_b,
+                '_img_n': img_n,
+                '_loc_b': loc_b,
+                '_loc_n': loc_n,
+                '_bgmask_b': bgmask_b,
+                '_bgmask_n': bgmask_n,
                 '_files_md5': files_md5, # 各文件 MD5，用于去重
                 'source_files': {        # 各源文件名/相对路径（用于结果页展示）
                     'img':    img_path    or None,
                     'loc':    loc_path    or None,
                     'beh':    beh_path    or None,
                     'env':    env_path    or None,
-                    'ques':   ques_path   or None,
+                    'ques1':  ques1_path  or None,
+                    'ques2':  ques2_path  or None,
+                    'ques3':  ques3_path  or None,
                     'region': region_path or None,
+                    'bgmask': bgmask_path or None,
                 },
                 '_debug_img_b': img_b[:4] if img_b else None,
                 '_debug_loc_b': loc_b[:4] if loc_b else None,
                 '_debug_beh_b': beh_b[:4] if beh_b else None,
                 '_debug_env_b': env_b[:4] if env_b else None,
-                '_debug_ques_b': ques_b[:4] if ques_b else None,
+                '_debug_ques1_b': ques1_b[:4] if ques1_b else None,
+                '_debug_ques2_b': ques2_b[:4] if ques2_b else None,
+                '_debug_ques3_b': ques3_b[:4] if ques3_b else None,
                 '_debug_files': {
                     'img': (img_n, len(img_b) if img_b else 0),
                     'loc': (loc_n, len(loc_b) if loc_b else 0),
                     'beh': (beh_n, len(beh_b) if beh_b else 0),
                     'env': (env_n, len(env_b) if env_b else 0),
-                    'ques': (ques_n, len(ques_b) if ques_b else 0),
+                    'ques1': (ques1_n, len(ques1_b) if ques1_b else 0),
+                    'ques2': (ques2_n, len(ques2_b) if ques2_b else 0),
+                    'ques3': (ques3_n, len(ques3_b) if ques3_b else 0),
                     'region': (region_n, len(region_b) if region_b else 0),
+                    'bgmask': (bgmask_n, len(bgmask_b) if bgmask_b else 0),
                 },
             }
 
@@ -1466,7 +1700,8 @@ def run_all():
         t = _threading.Thread(
             target=_bg_compute,
             args=(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
-                  env_b, env_n, ques_b, ques_n, region_b, region_n, th),
+                  env_b, env_n, ques1_b, ques1_n, ques2_b, ques2_n, ques3_b, ques3_n,
+                  region_b, region_n, bgmask_b, bgmask_n, th),
             daemon=True,
         )
         t.start()
@@ -1527,11 +1762,95 @@ def get_session(sid):
     })
 
 
+@analysis_bp.route('/session/<sid>/cluster', methods=['POST'])
+def recompute_session_cluster(sid):
+    try:
+        with _sess_lock:
+            sess = _sessions.get(sid)
+        if sess is None:
+            return jsonify({'error': '会话不存在或已过期'}), 404
+
+        loc_b = sess.get('_loc_b')
+        loc_n = sess.get('_loc_n')
+        img_b = sess.get('_img_b')
+        img_n = sess.get('_img_n')
+        if not loc_b or not img_b:
+            return jsonify({'error': '当前会话缺少定位数据或平面图，无法重算空间聚类'}), 400
+
+        try:
+            k = int(request.json.get('k') if request.is_json else request.form.get('k', 5))
+        except Exception:
+            k = 5
+
+        theme_name = request.json.get('theme', 'dark') if request.is_json else request.form.get('theme', 'dark')
+        accent_param = request.json.get('accent', '') if request.is_json else request.form.get('accent', '')
+        th = _theme(theme_name)
+        if accent_param:
+            th['accent'] = accent_param
+
+        def _normalize_xy_session(df):
+            try:
+                arr = load_img(_make_fs(img_b, img_n))
+                img_w, img_h = arr.shape[1], arr.shape[0]
+            except Exception:
+                return df
+            if 'X' not in df.columns or 'Y' not in df.columns or len(df) == 0:
+                return df
+            x = pd.to_numeric(df['X'], errors='coerce').astype(float)
+            y = pd.to_numeric(df['Y'], errors='coerce').astype(float)
+            valid = np.isfinite(x) & np.isfinite(y)
+            if not valid.any():
+                return df
+            xmin, xmax = float(np.nanmin(x[valid])), float(np.nanmax(x[valid]))
+            ymin, ymax = float(np.nanmin(y[valid])), float(np.nanmax(y[valid]))
+            need = (xmin < 0) or (ymin < 0) or (xmax > img_w) or (ymax > img_h)
+            if not need:
+                return df
+            out = df.copy()
+            if xmax > xmin:
+                out.loc[valid, 'X'] = (x[valid] - xmin) / (xmax - xmin) * max(img_w - 1, 1)
+            if ymax > ymin:
+                out.loc[valid, 'Y'] = (y[valid] - ymin) / (ymax - ymin) * max(img_h - 1, 1)
+            return out
+
+        walkable_mask = None
+        try:
+            walkable_mask = extract_walkable_mask(load_img(_make_fs(img_b, img_n)))
+        except Exception:
+            walkable_mask = None
+
+        result = _compute_cluster_result(
+            _make_fs(loc_b, loc_n),
+            _make_fs(img_b, img_n),
+            k,
+            th,
+            normalize_xy_fn=_normalize_xy_session,
+            walkable_mask=walkable_mask,
+        )
+        if result is None:
+            return jsonify({'error': '数据不足，无法计算当前 K 值下的空间聚类'}), 400
+
+        with _sess_lock:
+            sess = _sessions.get(sid)
+            if sess is None:
+                return jsonify({'error': '会话不存在或已过期'}), 404
+            sess['results']['cluster'] = result
+            if 'cluster' not in sess['computed']:
+                sess['computed'].append('cluster')
+            if 'cluster' in sess['skipped']:
+                sess['skipped'].remove('cluster')
+            sess['ts'] = _time.time()
+
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @analysis_bp.route('/open_source/<sid>/<key>', methods=['POST'])
 def open_source(sid, key):
     """
     桌面端专用：在资源管理器/Finder 中打开（或高亮）指定源文件。
-    key: img | loc | beh | env | ques | region
+    key: img | loc | beh | env | ques1 | ques2 | ques3 | region
     """
     import subprocess as _sub
     import sys as _sys
@@ -1621,6 +1940,7 @@ _METRIC_NAMES = {
     'utilization':         '功能利用率',
     'satisfaction':        '整体满意度',
     'satisfaction_region': '空间满意度',
+    'satisfaction_design': '设计要素满意度',
 }
 
 # 每个指标各子图的标题（用于保存文件名）
@@ -1647,6 +1967,7 @@ _METRIC_CHART_TITLES = {
     'utilization':         ['各空间单元功能利用率_堆叠', '各空间单元总功能利用率'],
     'satisfaction':        ['整体满意度'],
     'satisfaction_region': ['各空间单元满意度'],
+    'satisfaction_design': ['各设计要素满意度'],
 }
 
 
@@ -2163,7 +2484,7 @@ def _write_summary_xlsx(zf, metric_id, cn_name, summary):
 def api_check_duplicate():
     """
     检查即将创建的项目是否与历史记录重复。
-    接受 multipart/form-data：building_type + 核心文件（img/loc/beh/env/ques）。
+    接受 multipart/form-data：building_type + 核心文件（img/loc/beh/env/ques1/ques2/ques3）。
     后端统一用 MD5 计算哈希，与数据库中存储的 MD5 进行比对。
     region 文件不参与去重（可选辅助文件）。
     返回:
@@ -2193,7 +2514,9 @@ def api_check_duplicate():
             'loc':  _md5(request.files.get('loc')),
             'beh':  _md5(request.files.get('beh')),
             'env':  _md5(request.files.get('env')),
-            'ques': _md5(request.files.get('ques')),
+            'ques1': _md5(request.files.get('ques1')),
+            'ques2': _md5(request.files.get('ques2')),
+            'ques3': _md5(request.files.get('ques3')),
         }
         # 过滤掉 None 值后再计算 dedup_key
         files_md5_nonempty = {k: v for k, v in files_md5.items() if v}
@@ -2218,7 +2541,7 @@ def api_check_duplicate():
                         stored_md5_full = {}
                     # 只取核心键参与比对（忽略 region）
                     stored_md5_core = {k: v for k, v in stored_md5_full.items()
-                                       if k in ('img', 'loc', 'beh', 'env', 'ques') and v}
+                                       if k in ('img', 'loc', 'beh', 'env', 'ques1', 'ques2', 'ques3') and v}
                     if _dedup_key(stored_md5_core, row['building_type']) == dedup_key:
                         p = dict(row)
                         p['computed'] = _j.loads(p.get('computed') or '[]')
@@ -2684,24 +3007,36 @@ def trajectory():
                    facecolor=th['legend_bg'], edgecolor=th['legend_edge'],
                    labelcolor=th['tick'])
 
-        # 右：轨迹长度排行
+        # 右：轨迹长度分桶分布（10 桶）
         ax1 = axes[1]
         _styled_axes(ax1, th)
 
-        sorted_len = sorted(total_lengths.items(), key=lambda x: x[1], reverse=True)
-        uids_s = [str(u) for u, _ in sorted_len]
-        lens_s = [l for _, l in sorted_len]
+        lens_arr = np.array(list(total_lengths.values()), dtype=float)
+        hist_min = float(np.min(lens_arr))
+        hist_max = float(np.max(lens_arr))
+        if np.isclose(hist_min, hist_max):
+            hist_min -= 0.5
+            hist_max += 0.5
+        bin_edges = np.linspace(hist_min, hist_max, 11)
+        counts, edges = np.histogram(lens_arr, bins=bin_edges)
+        labels_bins = []
+        for i in range(len(edges) - 1):
+            labels_bins.append(f'{edges[i]:.1f}-{edges[i+1]:.1f}')
 
-        bars = ax1.barh(uids_s, lens_s, color='#00c9a7', alpha=0.85, height=0.6)
+        xs = np.arange(len(counts))
+        bars = ax1.bar(xs, counts, color='#00c9a7', alpha=0.85, width=0.8)
         for bar in bars:
-            ax1.text(bar.get_width() + 0.1, bar.get_y() + bar.get_height() / 2,
-                     f'{bar.get_width():.1f}m',
-                     va='center', color=th['bar_label'], fontsize=8)
-        ax1.set_xlabel('轨迹长度 (m)', color=th['subtext'], fontsize=10)
-        ax1.set_title('人员轨迹长度', color=th['text'], fontsize=13)
-        ax1.xaxis.grid(True, color=th['grid'], linewidth=0.5)
+            h = bar.get_height()
+            if h > 0:
+                ax1.text(bar.get_x() + bar.get_width() / 2, h + 0.1,
+                         f'{int(h)}', ha='center', va='bottom', color=th['bar_label'], fontsize=8)
+        ax1.set_xticks(xs)
+        ax1.set_xticklabels(labels_bins, fontsize=8, rotation=25, ha='right')
+        ax1.set_xlabel('轨迹长度分桶 (m)', color=th['subtext'], fontsize=10)
+        ax1.set_ylabel('用户数', color=th['subtext'], fontsize=10)
+        ax1.set_title('人员轨迹长度分布（10桶）', color=th['text'], fontsize=13)
+        ax1.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax1.set_axisbelow(True)
-        ax1.invert_yaxis()
 
         plt.tight_layout(pad=2)
         img_b64 = fig_to_base64(fig)
@@ -2849,10 +3184,17 @@ def cluster():
 # ─────────────────────────────────────────────
 
 def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
-                          bandwidth=None, theme='dark', walkable_mask=None):
+                          bandwidth=None, theme='dark', walkable_mask=None, coverage_mask=None):
     """KDE 像素级高斯密度热力图叠加，返回 (overlay RGB float[0,1], density_2d)
-    
-    walkable_mask: bool 数组 (H,W)，False 的区域（黑色墙体）不叠加热力色。
+
+    walkable_mask : bool 数组 (H,W)，False = 平面图自动识别的墙体，
+                   仅用于高斯平滑后抑制密度渗入墙体，不影响整体填色范围。
+    coverage_mask : bool 数组 (H,W)，False = background.png 黑色区域（禁止上色）。
+                   提供后采用"两步渲染"：
+                   Step1: 将 coverage_mask=True 区域统一铺上颜色图 0 值色（不透明底色）
+                   Step2: 有密度的像素按实际密度值覆盖（alpha 叠加，边缘渐变）
+                   coverage_mask=False 区域显示底图原色，不做任何热力叠加。
+    未提供 coverage_mask 时：仅 density>0 处做 alpha 叠加（原有行为）。
     """
     h, w = img_arr.shape[:2]
 
@@ -2864,36 +3206,190 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
         w_val = weights[i] if weights is not None else 1.0
         density[yi[i], xi[i]] += w_val
 
-    # 固定小带宽保留聚集点细节
     if bandwidth is None:
         bandwidth = max(int(min(h, w) * 0.025), 8)
 
     density_smooth = gaussian_filter(density, sigma=bandwidth)
 
-    # ── 屏蔽不可走区域（墙体/黑色区域）──
+    # walkable_mask 只用于抑制密度渗入墙体
     if walkable_mask is not None:
         density_smooth = density_smooth * walkable_mask.astype(float)
 
+    cm = _get_cmap(cmap)
+    img_f = img_arr / 255.0
+
+    # ── 有 coverage_mask：两步渲染 ────────────────────────────────────────
+    if coverage_mask is not None:
+        fill_mask = coverage_mask.astype(bool)   # True = 允许涂色
+
+        overlay = img_f.copy()
+
+        # Step 1: fill_mask 区域铺一层轻薄底色（表示"0值/无数据但可测量"）。
+        #   alpha=0.25 半透明，保留平面图结构线可见；取 cm(0.15) 避免 0值过深。
+        base_color = np.array(cm(0.15)[:3], dtype=float)
+        base_alpha = 0.25
+        overlay[fill_mask] = (
+            img_f[fill_mask] * (1 - base_alpha) + base_color * base_alpha
+        )
+
+        # Step 2: 归一化密度；只处理 density_norm 超过阈值的像素（避免高斯
+        #   扩散极小值把底色用白色覆盖）。混合起点用 overlay（Step1底色），
+        #   而不是 img_f，确保边缘渐变从底色出发而非从白底图出发。
+        vmax = density_smooth.max()
+        if vmax > 0:
+            pos_vals = density_smooth[fill_mask & (density_smooth > 0)]
+            if len(pos_vals) == 0:
+                pos_vals = density_smooth[density_smooth > 0]
+            p99 = float(np.percentile(pos_vals, 99)) if len(pos_vals) else float(vmax)
+            density_norm = np.clip(density_smooth / p99, 0, 1)
+            density_soft = np.power(density_norm, 0.45)   # gamma 软化边缘
+
+            heat_rgba = cm(density_norm)
+            heat_rgb  = heat_rgba[:, :, :3]
+
+            # 只更新归一化密度 > 0.01 的像素，排除高斯尾部极小值
+            DATA_THRESH = 0.01
+            data_mask = fill_mask & (density_norm > DATA_THRESH)
+            a = density_soft[data_mask]
+            # 从 overlay（Step1底色）出发插值到热力纯色
+            overlay[data_mask] = (
+                overlay[data_mask] * (1 - a[:, None]) + heat_rgb[data_mask] * a[:, None]
+            )
+
+        return np.clip(overlay, 0, 1), density_smooth
+
+    # ── 无 coverage_mask：原有行为，仅 density>0 处做 alpha 叠加 ───────────
     vmax = density_smooth.max()
     if vmax <= 0:
-        return img_arr / 255.0, density
+        return img_f, density
 
-    # 99 分位数拉伸
     pos_vals = density_smooth[density_smooth > 0]
-    p99 = np.percentile(pos_vals, 99) if len(pos_vals) else vmax
+    p99 = float(np.percentile(pos_vals, 99)) if len(pos_vals) else float(vmax)
     density_norm = np.clip(density_smooth / p99, 0, 1)
-
-    # gamma < 1 让边缘衰减更平缓（0.5 → 平方根曲线，过渡更柔和）
     density_soft = np.power(density_norm, 0.45)
 
-    cm = _get_cmap(cmap)
-    heat_rgba = cm(density_norm)          # 颜色仍按线性密度取色
+    heat_rgba = cm(density_norm)
     heat_rgb  = heat_rgba[:, :, :3]
-    heat_alpha = density_soft * alpha     # 透明度用软化后的值，边缘更柔
+    heat_alpha = density_soft * alpha
 
-    img_f = img_arr / 255.0
     overlay = img_f * (1 - heat_alpha[:, :, None]) + heat_rgb * heat_alpha[:, :, None]
     return np.clip(overlay, 0, 1), density_smooth
+
+
+def _make_rbf_overlay(img_arr, x, y, values, alpha=0.65, cmap='RdYlBu_r',
+                      walkable_mask=None, coverage_mask=None, kernel='linear', smoothing=None,
+                      neighbors=None, epsilon=None):
+    """使用 RBFInterpolator 对稀疏测点生成连续标量场热力图。
+
+    适用于环境温湿度/光照/CO2/PM 等连续测点数据；
+    不适用于到访频次这类事件密度分布。
+    
+    coverage_mask : bool 数组 (H,W)，False = background.png 黑色区域（禁止上色）。
+                   提供后采用"两步渲染"：
+                   Step1: 将 coverage_mask=True 区域统一铺上颜色图中值色（不透明底色）
+                   Step2: 有插值数据的像素按实际值覆盖（alpha 叠加）
+                   coverage_mask=False 区域显示底图原色，不做任何热力叠加。
+    未提供 coverage_mask 时：仅有插值数据处做 alpha 叠加（原有行为）。
+    
+    返回 (overlay RGB float[0,1], field_2d, vmin, vmax)
+    """
+    h, w = img_arr.shape[:2]
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    values = np.asarray(values, dtype=float)
+
+    valid = np.isfinite(x) & np.isfinite(y) & np.isfinite(values)
+    x = x[valid]
+    y = y[valid]
+    values = values[valid]
+    if len(values) < 3:
+        return img_arr / 255.0, None, None, None
+
+    pts = np.column_stack([x, y])
+    grid_x, grid_y = np.meshgrid(np.arange(w, dtype=float), np.arange(h, dtype=float))
+    grid_pts = np.column_stack([grid_x.ravel(), grid_y.ravel()])
+
+    if smoothing is None:
+        vstd = float(np.nanstd(values)) if len(values) else 0.0
+        smoothing = max(vstd * 0.05, 1e-6)
+
+    try:
+        rbf_kwargs = dict(kernel=kernel, smoothing=smoothing)
+        if neighbors is not None:
+            rbf_kwargs['neighbors'] = int(neighbors)
+        if epsilon is not None and kernel in ('gaussian', 'multiquadric', 'inverse_multiquadric', 'inverse_quadratic'):
+            rbf_kwargs['epsilon'] = epsilon
+        rbf = RBFInterpolator(pts, values, **rbf_kwargs)
+        field = rbf(grid_pts).reshape(h, w)
+    except Exception:
+        # 兜底：退回到较稳定的 linear + nearest 填洞思路
+        from scipy.interpolate import griddata
+        field = griddata(pts, values, (grid_x, grid_y), method='linear')
+        field_nearest = griddata(pts, values, (grid_x, grid_y), method='nearest')
+        field = np.where(np.isnan(field), field_nearest, field)
+
+    effective_mask = merge_masks(walkable_mask, coverage_mask)
+    if effective_mask is not None:
+        walk = effective_mask.astype(bool)
+        if np.any(walk):
+            field = np.where(walk, field, np.nan)
+
+    finite_vals = field[np.isfinite(field)]
+    if finite_vals.size == 0:
+        return img_arr / 255.0, None, None, None
+
+    vmin = float(np.nanpercentile(finite_vals, 2))
+    vmax = float(np.nanpercentile(finite_vals, 98))
+    if not np.isfinite(vmin) or not np.isfinite(vmax) or np.isclose(vmin, vmax):
+        vmin = float(np.nanmin(finite_vals))
+        vmax = float(np.nanmax(finite_vals))
+        if np.isclose(vmin, vmax):
+            vmax = vmin + 1e-6
+
+    field_clip = np.clip(field, vmin, vmax)
+    field_norm = (field_clip - vmin) / (vmax - vmin + 1e-9)
+    field_norm = np.where(np.isfinite(field_norm), field_norm, 0.0)
+
+    cm = _get_cmap(cmap)
+    img_f = img_arr / 255.0
+
+    # ── 有 coverage_mask：两步渲染 ────────────────────────────────────────
+    if coverage_mask is not None:
+        fill_mask = coverage_mask.astype(bool)   # True = 允许涂色
+        overlay = img_f.copy()
+
+        # Step 1: fill_mask 区域铺一层底色（取颜色图中值，避免极端色）
+        #   alpha=0.30 半透明，保留平面图结构线可见
+        base_color = np.array(cm(0.5)[:3], dtype=float)
+        base_alpha = 0.30
+        overlay[fill_mask] = (
+            img_f[fill_mask] * (1 - base_alpha) + base_color * base_alpha
+        )
+
+        # Step 2: 有插值数据的像素用实际颜色覆盖
+        heat_rgba = cm(field_norm)
+        heat_rgb = heat_rgba[:, :, :3]
+        
+        data_mask = fill_mask & np.isfinite(field)
+        if np.any(data_mask):
+            # 从 overlay（Step1底色）出发插值到热力纯色
+            overlay[data_mask] = (
+                overlay[data_mask] * (1 - alpha) + heat_rgb[data_mask] * alpha
+            )
+
+        return np.clip(overlay, 0, 1), field, vmin, vmax
+
+    # ── 无 coverage_mask：原有行为，仅有插值数据处做 alpha 叠加 ───────────
+    heat_rgba = cm(field_norm)
+    heat_rgb = heat_rgba[:, :, :3]
+
+    alpha_map = np.full((h, w), alpha, dtype=float)
+    if effective_mask is not None:
+        alpha_map = alpha_map * effective_mask.astype(float)
+    alpha_map = np.where(np.isfinite(field), alpha_map, 0.0)
+
+    overlay = img_f * (1 - alpha_map[:, :, None]) + heat_rgb * alpha_map[:, :, None]
+    return np.clip(overlay, 0, 1), field, vmin, vmax
 
 
 def _styled_axes(ax, th=None):
@@ -2958,6 +3454,47 @@ def _bar_common(ax, x_vals, y_vals, color=None, xlabel='区域编号', ylabel=''
                   labelcolor=th.get('bar_label', th['text']), fontsize=8)
 
 
+def _set_sparse_xticks(ax, labels):
+    labels = [str(v) for v in labels]
+    n = len(labels)
+    if n <= 3:
+        ax.set_xticks(range(n))
+        ax.set_xticklabels(labels, fontsize=8)
+        return
+    idxs = [0, n // 2, n - 1]
+    dedup = []
+    for i in idxs:
+        if i not in dedup:
+            dedup.append(i)
+    ax.set_xticks(dedup)
+    ax.set_xticklabels([labels[i] for i in dedup], fontsize=8)
+
+
+def _extract_satisfaction_groups(df):
+    """从问卷数据中提取满意度列分组。
+
+    约定：
+    - Satisfaction: 整体满意度
+    - Satisfaction1~8: 空间满意度
+    - Satisfaction9~24: 设计要素满意度（若存在）
+    """
+    sat_cols = [c for c in df.columns if c.startswith('Satisfaction') and c != 'Satisfaction']
+    sat_cols = sorted(sat_cols, key=lambda c: int(c.replace('Satisfaction', '')) if c.replace('Satisfaction', '').isdigit() else 10**9)
+    region_cols = []
+    design_cols = []
+    for c in sat_cols:
+        suffix = c.replace('Satisfaction', '')
+        if suffix.isdigit():
+            idx = int(suffix)
+            if 1 <= idx <= 8:
+                region_cols.append(c)
+            elif idx >= 9:
+                design_cols.append(c)
+        else:
+            region_cols.append(c)
+    return sat_cols, region_cols, design_cols
+
+
 # ─────────────────────────────────────────────
 # A2 使用时长
 # ─────────────────────────────────────────────
@@ -2994,7 +3531,9 @@ def usetime():
         reg_durations = np.array([t[regions == r].sum() for r in reg_ids])
 
         # 热力叠加（以 t 为权重）
-        overlay, freq_grid = _make_heatmap_overlay(img, x, y, weights=t, alpha=0.65, cmap='jet')
+        overlay, freq_grid = _make_heatmap_overlay(img, x, y, weights=t, alpha=0.65, cmap='jet',
+                                                    walkable_mask=extract_walkable_mask(img),
+                                                    coverage_mask=extract_measurement_mask(load_img(request.files.get('background_img'))) if request.files.get('background_img') is not None else None)
 
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
@@ -3089,7 +3628,9 @@ def speed():
         # 热力叠加（以速率为权重）
         weights = np.array([mean_speed[np.where(reg_ids == r)[0][0]] if r in reg_ids else 0
                             for r in regions_all])
-        overlay, speed_grid = _make_heatmap_overlay(img, x_all, y_all, weights=weights, alpha=0.65, cmap='jet')
+        overlay, speed_grid = _make_heatmap_overlay(img, x_all, y_all, weights=weights, alpha=0.65, cmap='jet',
+                                                     walkable_mask=extract_walkable_mask(img),
+                                                     coverage_mask=extract_measurement_mask(load_img(request.files.get('background_img'))) if request.files.get('background_img') is not None else None)
 
         global_speed = reg_length.sum() / reg_dwell.sum() if reg_dwell.sum() > 0 else 0
 
@@ -3108,9 +3649,8 @@ def speed():
 
         ax1 = axes[1]
         _styled_axes(ax1, th)
-        _bar_common(ax1, reg_ids, mean_speed, color='#f5a623', ylabel='速率 (m/s)', th=th, show_mean=False)
-        ax1.axhline(global_speed, color='#ff5e5e', linestyle='--', linewidth=1.5, label=f'全局均值 {global_speed:.2f}')
-        ax1.legend(facecolor=th['legend_bg'], edgecolor=th['legend_edge'], labelcolor=th['tick'], fontsize=8)
+        _bar_common(ax1, reg_ids, mean_speed, color='#f5a623', ylabel='速率 (m/s)', th=th,
+                    show_mean=True, color_above='#f5a623', color_below='#00c9a7')
         ax1.set_title('各空间单元平均移动速率', color=th['text'], fontsize=13)
 
         plt.tight_layout(pad=2)
@@ -3119,7 +3659,7 @@ def speed():
 
         summary = {
             'total_records': int(len(df)),
-            'global_speed_ms': round(float(global_speed), 4),
+            'global_speed_ms': round(float(global_speed), 2),
             'peak_speed_region': int(reg_ids[np.argmax(mean_speed)]),
             'region_count': int(len(reg_ids)),
         }
@@ -3159,7 +3699,9 @@ def duration():
         reg_ids = np.sort(np.unique(regions))
         reg_dwell = np.array([t[regions == r].sum() for r in reg_ids])
 
-        overlay, freq_grid = _make_heatmap_overlay(img, x, y, weights=t, alpha=0.65, cmap='jet')
+        overlay, freq_grid = _make_heatmap_overlay(img, x, y, weights=t, alpha=0.65, cmap='jet',
+                                                    walkable_mask=extract_walkable_mask(img),
+                                                    coverage_mask=extract_measurement_mask(load_img(request.files.get('background_img'))) if request.files.get('background_img') is not None else None)
 
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
@@ -3227,7 +3769,9 @@ def density():
         # 每区域独立人员数
         reg_unique_users = np.array([df[df['Region'] == r]['UserID'].nunique() for r in reg_ids])
 
-        overlay, density_grid = _make_heatmap_overlay(img, x, y, alpha=0.65, cmap='jet')
+        overlay, density_grid = _make_heatmap_overlay(img, x, y, alpha=0.65, cmap='jet',
+                                                       walkable_mask=extract_walkable_mask(img),
+                                                       coverage_mask=extract_measurement_mask(load_img(request.files.get('background_img'))) if request.files.get('background_img') is not None else None)
 
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
@@ -3314,7 +3858,9 @@ def openness():
 
         global_open = df['UserID'].nunique() / reg_areas.sum() if reg_areas.sum() > 0 else 0
 
-        overlay, open_grid = _make_heatmap_overlay(img, x, y, alpha=0.65, cmap='jet')
+        overlay, open_grid = _make_heatmap_overlay(img, x, y, alpha=0.65, cmap='jet',
+                                                    walkable_mask=extract_walkable_mask(img),
+                                                    coverage_mask=extract_measurement_mask(load_img(request.files.get('background_img'))) if request.files.get('background_img') is not None else None)
 
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
@@ -3512,6 +4058,7 @@ def difference():
         ax0.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
         ax0.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax0.set_axisbelow(True)
+        _set_sparse_xticks(ax0, per_ids)
         fig.patch.set_facecolor(th['fig_bg'])
 
         ax1 = axes[1]
@@ -3569,8 +4116,9 @@ def environment():
         label = param_labels.get(param_num, f'参数{param_num}')
 
         sub = df[df['ParameterNum'] == param_num].copy()
+        sub = sub.dropna(subset=['X', 'Y', 'Value'])
         if sub.empty:
-            return jsonify({'error': f'无参数编号 {param_num} 的数据'}), 400
+            return jsonify({'error': f'参数编号 {param_num} 缺少有效数值数据'}), 400
 
         ex = sub['X'].astype(float).values
         ey = sub['Y'].astype(float).values
@@ -3578,22 +4126,29 @@ def environment():
 
         img = load_img(img_file)
         h_img, w_img = img.shape[:2]
-
-        # 散点插值到图像坐标系
-        from scipy.interpolate import griddata
-        xi = np.linspace(ex.min(), ex.max(), w_img)
-        yi = np.linspace(ey.min(), ey.max(), h_img)
-        xi_g, yi_g = np.meshgrid(xi, yi)
-        interp = griddata((ex, ey), vals, (xi_g, yi_g), method='linear')
-        interp_filled = griddata((ex, ey), vals, (xi_g, yi_g), method='nearest')
-        interp = np.where(np.isnan(interp), interp_filled, interp)
-
-        vmin, vmax = float(np.nanmin(interp)), float(np.nanmax(interp))
-        interp_norm = (interp - vmin) / (vmax - vmin + 1e-9)
-        cm = _get_cmap('RdYlBu_r')
-        heat_rgb = cm(interp_norm)[:, :, :3]
-        overlay = (img / 255.0) * 0.35 + heat_rgb * 0.65
-        overlay = np.clip(overlay, 0, 1)
+        walkable = extract_walkable_mask(img)
+        coverage_mask = None
+        bgmask_file = request.files.get('background_img')
+        if bgmask_file is not None:
+            try:
+                coverage_mask = extract_measurement_mask(load_img(bgmask_file))
+            except Exception:
+                coverage_mask = None
+        kernel_map = {1: 'linear', 2: 'linear', 3: 'gaussian', 4: 'linear', 5: 'linear'}
+        epsilon_map = {3: max(min(w_img, h_img) * 0.015, 4.0)}
+        overlay, interp, vmin, vmax = _make_rbf_overlay(
+            img, ex, ey, vals,
+            alpha=0.65,
+            cmap='RdYlBu_r',
+            walkable_mask=walkable,
+            coverage_mask=coverage_mask,
+            kernel=kernel_map.get(param_num, 'linear'),
+            smoothing=max(float(np.nanstd(vals)) * 0.03, 1e-6),
+            neighbors=min(max(len(vals), 8), 24),
+            epsilon=epsilon_map.get(param_num),
+        )
+        if interp is None:
+            return jsonify({'error': '有效环境测点过少，无法进行空间插值'}), 400
 
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
@@ -3601,9 +4156,7 @@ def environment():
         ax0 = axes[0]
         ax0.set_facecolor('white')
         ax0.imshow(overlay)
-        ax0.scatter(ex * (w_img / (ex.max() - ex.min() + 1)),
-                    ey * (h_img / (ey.max() - ey.min() + 1)),
-                    c='white', s=30, zorder=5, edgecolors='#ffcc00', linewidths=0.8)
+        ax0.scatter(ex, ey, c='white', s=24, zorder=5, edgecolors='#ffcc00', linewidths=0.8)
         ax0.axis('off')
         ax0.set_title(f'{label} 空间分布', color=th['text'], fontsize=13, pad=10)
 
@@ -4097,17 +4650,18 @@ def satisfaction():
         accent_param = request.form.get('accent')
         if accent_param:
             th['accent'] = accent_param
-        ques_file = request.files.get('ques_data')
+        ques_file = request.files.get('ques_data_overall') or request.files.get('ques_data')
         if ques_file is None:
-            return jsonify({'error': '请上传问卷数据'}), 400
+            return jsonify({'error': '请上传整体满意度问卷数据'}), 400
 
         df = load_df(ques_file)
-        required = {'UserNum', 'Satisfaction'}
+        score_col = 'Satisfaction' if 'Satisfaction' in df.columns else 'Satisfaction1'
+        required = {'UserNum', score_col}
         if not required.issubset(df.columns):
             return jsonify({'error': f'缺少列: {required - set(df.columns)}'}), 400
 
         user_ids = df['UserNum'].values
-        scores = df['Satisfaction'].astype(float).values
+        scores = df[score_col].astype(float).values
         avg_score = float(scores.mean())
 
         # 仅生成右侧分布直方图（左侧个人评分改为前端Canvas交互图）
@@ -4128,6 +4682,9 @@ def satisfaction():
         ax1.set_title('满意度分布', color=th['text'], fontsize=13)
         ax1.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax1.set_axisbelow(True)
+        ax1.axhline(avg_score, color='#ff5e5e', linestyle='--', linewidth=1.5, label=f'均值 {avg_score:.2f}')
+        ax1.legend(loc='upper right', facecolor=th['legend_bg'], edgecolor=th.get('spine', th['legend_bg']),
+                   labelcolor=th.get('bar_label', th['text']), fontsize=8)
 
         plt.tight_layout(pad=2)
         img_dist_b64 = fig_to_base64(fig)
@@ -4158,27 +4715,25 @@ def satisfaction_region():
         accent_param = request.form.get('accent')
         if accent_param:
             th['accent'] = accent_param
-        ques_file = request.files.get('ques_data')
+        ques_file = request.files.get('ques_data_region') or request.files.get('ques_data')
         if ques_file is None:
-            return jsonify({'error': '请上传问卷数据'}), 400
+            return jsonify({'error': '请上传空间单元满意度问卷数据'}), 400
 
         df = load_df(ques_file)
         if 'UserNum' not in df.columns:
             return jsonify({'error': '缺少 UserNum 列'}), 400
 
-        # 满意度列：除 UserNum 和 Satisfaction 外的其余 SatisfactionX 列
-        sat_cols = [c for c in df.columns if c.startswith('Satisfaction') and c != 'Satisfaction']
-        if not sat_cols:
-            return jsonify({'error': '未找到区域满意度列 (SatisfactionX)'}), 400
+        region_cols = [c for c in df.columns if c != 'UserNum']
+        if not region_cols:
+            return jsonify({'error': '未找到空间单元满意度列'}), 400
 
-        avg_vals = df[sat_cols].mean().values
-        # 从列名提取区域编号（如 Satisfaction3 → 3）
+        avg_vals = df[region_cols].apply(pd.to_numeric, errors='coerce').mean().values
         reg_ids = []
-        for c in sat_cols:
+        for c in region_cols:
             try:
-                reg_ids.append(int(c.replace('Satisfaction', '')))
+                reg_ids.append(int(str(c).replace('Satisfaction', '')))
             except Exception:
-                reg_ids.append(c)
+                reg_ids.append(str(c))
         avg_score = float(avg_vals.mean())
 
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
@@ -4198,7 +4753,6 @@ def satisfaction_region():
         ax0.set_axisbelow(True)
         fig.patch.set_facecolor(th['fig_bg'])
 
-        # 右侧：雷达图
         ax1 = fig.add_subplot(122, polar=True)
         ax1.set_facecolor(th['ax_bg2'])
         theta = np.linspace(0, 2 * np.pi, len(reg_ids), endpoint=False)
@@ -4225,6 +4779,83 @@ def satisfaction_region():
             'best_region': str(reg_ids[int(np.argmax(avg_vals))]),
             'worst_region': str(reg_ids[int(np.argmin(avg_vals))]),
             'regions': region_details,
+        }
+        return jsonify({'image': img_b64, 'summary': summary})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ─────────────────────────────────────────────
+# D5 设计要素满意度
+# ─────────────────────────────────────────────
+
+@analysis_bp.route('/satisfaction_design', methods=['POST'])
+def satisfaction_design():
+    try:
+        theme_name = request.form.get('theme', 'dark')
+        th = _theme(theme_name)
+        accent_param = request.form.get('accent')
+        if accent_param:
+            th['accent'] = accent_param
+        ques_file = request.files.get('ques_data_design') or request.files.get('ques_data')
+        if ques_file is None:
+            return jsonify({'error': '请上传设计要素满意度问卷数据'}), 400
+
+        df = load_df(ques_file)
+        if 'UserNum' not in df.columns:
+            return jsonify({'error': '缺少 UserNum 列'}), 400
+
+        design_cols = [c for c in df.columns if c != 'UserNum']
+        if not design_cols:
+            return jsonify({'error': '未找到设计要素满意度列'}), 400
+
+        avg_vals = df[design_cols].apply(pd.to_numeric, errors='coerce').mean().values
+        factor_ids = [str(c).replace('设计要素', '') for c in design_cols]
+        avg_score = float(avg_vals.mean())
+
+        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+        fig.patch.set_facecolor(th['fig_bg'])
+
+        ax0 = axes[0]
+        _styled_axes(ax0, th)
+        colors = ['#7c5cfc' if v >= avg_score else '#00c9a7' for v in avg_vals]
+        ax0.bar([str(r) for r in factor_ids], avg_vals, color=colors, alpha=0.85, width=0.6)
+        ax0.axhline(avg_score, color='#ff5e5e', linestyle='--', linewidth=1.5,
+                    label=f'均值 {avg_score:.1f}')
+        ax0.set_xlabel('设计要素编号', color=th['subtext'], fontsize=10)
+        ax0.set_ylabel('满意度均值', color=th['subtext'], fontsize=10)
+        ax0.set_title('各设计要素满意度', color=th['text'], fontsize=13, pad=10)
+        ax0.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
+        ax0.yaxis.grid(True, color=th['grid'], linewidth=0.5)
+        ax0.set_axisbelow(True)
+        fig.patch.set_facecolor(th['fig_bg'])
+
+        ax1 = fig.add_subplot(122, polar=True)
+        ax1.set_facecolor(th['ax_bg2'])
+        theta = np.linspace(0, 2 * np.pi, len(factor_ids), endpoint=False)
+        vals_r = np.append(avg_vals, avg_vals[0])
+        theta_r = np.append(theta, theta[0])
+        ax1.plot(theta_r, vals_r, color=th['accent'], linewidth=2)
+        ax1.fill(theta_r, vals_r, color=th['accent'], alpha=0.2)
+        ax1.set_xticks(theta)
+        ax1.set_xticklabels([str(r) for r in factor_ids], color=th['subtext'], fontsize=8)
+        ax1.tick_params(colors=th['cbar_tick'])
+        ax1.set_title('设计要素满意度雷达', color=th['text'], fontsize=13, pad=15)
+        ax1.spines['polar'].set_color('#2d2d3d')
+        ax1.grid(color=th['grid'], linewidth=0.5)
+
+        plt.tight_layout(pad=2)
+        img_b64 = fig_to_base64(fig)
+        plt.close(fig)
+
+        factor_details = [{'factor': str(r), 'avg_score': round(float(v), 1)}
+                          for r, v in zip(factor_ids, avg_vals)]
+        summary = {
+            'factor_count': int(len(factor_ids)),
+            'avg_score': round(avg_score, 1),
+            'best_factor': str(factor_ids[int(np.argmax(avg_vals))]),
+            'worst_factor': str(factor_ids[int(np.argmin(avg_vals))]),
+            'factors': factor_details,
         }
         return jsonify({'image': img_b64, 'summary': summary})
     except Exception as e:

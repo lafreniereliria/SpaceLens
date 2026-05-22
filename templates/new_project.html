@@ -360,17 +360,35 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
           <div class="match-file" id="mf-env" style="display:none"></div>
           <div class="match-none" id="mn-env">未找到</div>
         </div>
-        <div class="match-row" id="mr-ques">
-          <div class="match-dot miss" id="dot-ques"></div>
-          <div class="match-label">问卷数据</div>
-          <div class="match-file" id="mf-ques" style="display:none"></div>
-          <div class="match-none" id="mn-ques">未找到</div>
+        <div class="match-row" id="mr-ques1">
+          <div class="match-dot miss" id="dot-ques1"></div>
+          <div class="match-label">整体满意度</div>
+          <div class="match-file" id="mf-ques1" style="display:none"></div>
+          <div class="match-none" id="mn-ques1">未找到</div>
+        </div>
+        <div class="match-row" id="mr-ques2">
+          <div class="match-dot miss" id="dot-ques2"></div>
+          <div class="match-label">空间单元满意度</div>
+          <div class="match-file" id="mf-ques2" style="display:none"></div>
+          <div class="match-none" id="mn-ques2">未找到</div>
+        </div>
+        <div class="match-row" id="mr-ques3">
+          <div class="match-dot miss" id="dot-ques3"></div>
+          <div class="match-label">设计要素满意度</div>
+          <div class="match-file" id="mf-ques3" style="display:none"></div>
+          <div class="match-none" id="mn-ques3">未找到</div>
         </div>
         <div class="match-row" id="mr-region">
           <div class="match-dot miss" id="dot-region"></div>
           <div class="match-label">区域坐标</div>
           <div class="match-file" id="mf-region" style="display:none"></div>
           <div class="match-none" id="mn-region">未找到 (可选)</div>
+        </div>
+        <div class="match-row" id="mr-bgmask">
+          <div class="match-dot miss" id="dot-bgmask"></div>
+          <div class="match-label">遮罩底图</div>
+          <div class="match-file" id="mf-bgmask" style="display:none"></div>
+          <div class="match-none" id="mn-bgmask">未找到 (可选)</div>
         </div>
       </div>
     </div>
@@ -444,16 +462,34 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
           <div class="file-row-info"><div class="file-row-label">环境数据</div><div class="file-row-hint">含 X、Y、ParameterNum、Value 列</div><div class="file-row-name" id="sname-env">未选择</div></div>
           <button class="file-btn">选择</button>
         </div>
-        <div class="file-row" id="row-ques" onclick="triggerFile('sinput-ques')">
-          <input type="file" id="sinput-ques" accept=".csv,.xlsx,.xls" hidden>
+        <div class="file-row" id="row-ques1" onclick="triggerFile('sinput-ques1')">
+          <input type="file" id="sinput-ques1" accept=".csv,.xlsx,.xls" hidden>
           <div class="file-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg></div>
-          <div class="file-row-info"><div class="file-row-label">问卷数据</div><div class="file-row-hint">含 UserNum、Satisfaction 列</div><div class="file-row-name" id="sname-ques">未选择</div></div>
+          <div class="file-row-info"><div class="file-row-label">整体满意度问卷</div><div class="file-row-hint">推荐文件名 questionnaire_1.xlsx，含 UserNum、Satisfaction1 / Satisfaction 列</div><div class="file-row-name" id="sname-ques1">未选择</div></div>
+          <button class="file-btn">选择</button>
+        </div>
+        <div class="file-row" id="row-ques2" onclick="triggerFile('sinput-ques2')">
+          <input type="file" id="sinput-ques2" accept=".csv,.xlsx,.xls" hidden>
+          <div class="file-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg></div>
+          <div class="file-row-info"><div class="file-row-label">空间单元满意度问卷</div><div class="file-row-hint">推荐文件名 questionnaire_2.xlsx，含 UserNum 与各空间单元评分列</div><div class="file-row-name" id="sname-ques2">未选择</div></div>
+          <button class="file-btn">选择</button>
+        </div>
+        <div class="file-row" id="row-ques3" onclick="triggerFile('sinput-ques3')">
+          <input type="file" id="sinput-ques3" accept=".csv,.xlsx,.xls" hidden>
+          <div class="file-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg></div>
+          <div class="file-row-info"><div class="file-row-label">设计要素满意度问卷</div><div class="file-row-hint">推荐文件名 questionnaire_3.xlsx，含 UserNum、设计要素1~24 列</div><div class="file-row-name" id="sname-ques3">未选择</div></div>
           <button class="file-btn">选择</button>
         </div>
         <div class="file-row" id="row-region" onclick="triggerFile('sinput-region')">
           <input type="file" id="sinput-region" accept=".csv,.xlsx,.xls" hidden>
           <div class="file-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 22 8 22 16 12 22 2 16 2 8"/></svg></div>
           <div class="file-row-info"><div class="file-row-label">区域坐标（可选）</div><div class="file-row-hint">含 Region、X、Y 列</div><div class="file-row-name" id="sname-region">未选择</div></div>
+          <button class="file-btn">选择</button>
+        </div>
+        <div class="file-row" id="row-bgmask" onclick="triggerFile('sinput-bgmask')">
+          <input type="file" id="sinput-bgmask" accept="image/*" hidden>
+          <div class="file-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 16l3-3 2 2 5-5 2 2"/></svg></div>
+          <div class="file-row-info"><div class="file-row-label">遮罩底图（可选）</div><div class="file-row-hint">推荐 background.png，黑色区域将不涂色</div><div class="file-row-name" id="sname-bgmask">未选择</div></div>
           <button class="file-btn">选择</button>
         </div>
       </div>
@@ -565,17 +601,25 @@ var EXACT_NAME_MAP = {
              'behav.xlsx','behav.csv'],
   env:      ['environment.xlsx','environment.csv',
              'env.xlsx','env.csv'],
-  ques:     ['questionnaire.xlsx','questionnaire.csv',
-             'survey.xlsx','survey.csv',
-             'ques.xlsx','ques.csv'],
+  ques1:    ['questionnaire_1.xlsx','questionnaire_1.csv',
+             'questionnaire1.xlsx','questionnaire1.csv',
+             'survey_1.xlsx','survey_1.csv'],
+  ques2:    ['questionnaire_2.xlsx','questionnaire_2.csv',
+             'questionnaire2.xlsx','questionnaire2.csv',
+             'survey_2.xlsx','survey_2.csv'],
+  ques3:    ['questionnaire_3.xlsx','questionnaire_3.csv',
+             'questionnaire3.xlsx','questionnaire3.csv',
+             'survey_3.xlsx','survey_3.csv'],
   region:   ['region_coordinates.xlsx','region_coordinates.csv',
              'region.xlsx','region.csv',
              'coordinates.xlsx','coordinates.csv'],
+  bgmask:   ['background.png','background.jpg','background.jpeg',
+             'mask.png','mask.jpg','mask.jpeg'],
 };
 var IMG_EXTS = ['.png','.jpg','.jpeg','.bmp','.webp'];
 
 // 存放已匹配的 File 对象（文件夹模式）
-var folderFiles = { img:null, loc:null, behavior:null, env:null, ques:null, region:null };
+var folderFiles = { img:null, loc:null, behavior:null, env:null, ques1:null, ques2:null, ques3:null, region:null, bgmask:null };
 var _folderName = '';  // 文件夹名称，用于结果页标题
 
 function matchFiles(fileList){
@@ -589,7 +633,7 @@ function matchFiles(fileList){
   var usedFiles = new Set();
 
   // 精确匹配：按候选名单顺序查找，找到即止，已用文件不重复分配
-  ['img','loc','behavior','env','ques','region'].forEach(function(slot){
+  ['img','loc','behavior','env','ques1','ques2','ques3','region','bgmask'].forEach(function(slot){
     var candidates = EXACT_NAME_MAP[slot];
     for(var i = 0; i < candidates.length; i++){
       var key = candidates[i].toLowerCase();
@@ -618,7 +662,7 @@ function matchFiles(fileList){
 
 function showMatchResult(assigned){
   document.getElementById('match-list').style.display='flex';
-  ['img','loc','behavior','env','ques','region'].forEach(function(slot){
+  ['img','loc','behavior','env','ques1','ques2','ques3','region','bgmask'].forEach(function(slot){
     var f=assigned[slot];
     folderFiles[slot]=f||null;
     var dot=document.getElementById('dot-'+slot);
@@ -670,7 +714,7 @@ df.addEventListener('drop',function(e){
 
 // 分别导入
 function triggerFile(inputId){ document.getElementById(inputId).click(); }
-['img','loc','behavior','env','ques','region'].forEach(function(key){
+['img','loc','behavior','env','ques1','ques2','ques3','region','bgmask'].forEach(function(key){
   var inp=document.getElementById('sinput-'+key);
   inp.addEventListener('change',function(){
     if(this.files[0]){
@@ -719,15 +763,16 @@ function triggerCheckDuplicate() {
 async function checkDuplicate(files) {
   var btn = document.getElementById('btn-check-dup');
   try {
-    // 将文件通过 multipart 发给后端，由后端统一用 MD5 计算哈希
-    // 只发核心输入文件（img/loc/behavior/env/ques），region 可选不参与去重
+    // 只发核心输入文件（img/loc/behavior/env/ques1/ques2/ques3），region 可选不参与去重
     var fd = new FormData();
     fd.append('building_type', selectedType || '');
     if(files.img)      fd.append('img',      files.img);
     if(files.loc)      fd.append('loc',      files.loc);
     if(files.behavior) fd.append('beh',      files.behavior);
     if(files.env)      fd.append('env',      files.env);
-    if(files.ques)     fd.append('ques',     files.ques);
+    if(files.ques1)    fd.append('ques1',    files.ques1);
+    if(files.ques2)    fd.append('ques2',    files.ques2);
+    if(files.ques3)    fd.append('ques3',    files.ques3);
     // region 不参与去重（可选文件，有无不影响核心数据）
 
     var resp = await fetch('/api/projects/check_duplicate', {
@@ -817,40 +862,55 @@ function startCalc(){
     if(folderFiles.img)      fd.append('layout_img',     folderFiles.img);
     if(folderFiles.loc)      fd.append('loc_data',       folderFiles.loc);
     if(folderFiles.behavior) fd.append('behavior_data',  folderFiles.behavior);
-    if(folderFiles.env)      fd.append('env_data',       folderFiles.env);
-    if(folderFiles.ques)     fd.append('ques_data',      folderFiles.ques);
-    if(folderFiles.region)   fd.append('region_data',    folderFiles.region);
-    if(!folderFiles.img && !folderFiles.loc && !folderFiles.behavior && !folderFiles.env && !folderFiles.ques){
+    if(folderFiles.env)      fd.append('env_data',              folderFiles.env);
+    if(folderFiles.ques1)    fd.append('ques_data_overall',     folderFiles.ques1);
+    if(folderFiles.ques2)    fd.append('ques_data_region',      folderFiles.ques2);
+    if(folderFiles.ques3)    fd.append('ques_data_design',      folderFiles.ques3);
+    if(folderFiles.region)   fd.append('region_data',           folderFiles.region);
+    if(folderFiles.bgmask)   fd.append('background_img',        folderFiles.bgmask);
+    if(!folderFiles.img && !folderFiles.loc && !folderFiles.behavior && !folderFiles.env && !folderFiles.ques1 && !folderFiles.ques2 && !folderFiles.ques3){
       alert('未识别到任何数据文件，请检查文件夹内容'); return;
     }
     // 传递文件相对路径（含文件夹名），后端可据此还原文件名
     if(folderFiles.img)      fd.append('layout_img_path',    folderFiles.img.webkitRelativePath || folderFiles.img.name);
     if(folderFiles.loc)      fd.append('loc_data_path',      folderFiles.loc.webkitRelativePath || folderFiles.loc.name);
     if(folderFiles.behavior) fd.append('behavior_data_path', folderFiles.behavior.webkitRelativePath || folderFiles.behavior.name);
-    if(folderFiles.env)      fd.append('env_data_path',      folderFiles.env.webkitRelativePath || folderFiles.env.name);
-    if(folderFiles.ques)     fd.append('ques_data_path',     folderFiles.ques.webkitRelativePath || folderFiles.ques.name);
-    if(folderFiles.region)   fd.append('region_data_path',  folderFiles.region.webkitRelativePath || folderFiles.region.name);
+    if(folderFiles.env)      fd.append('env_data_path',            folderFiles.env.webkitRelativePath || folderFiles.env.name);
+    if(folderFiles.ques1)    fd.append('ques_data_overall_path',   folderFiles.ques1.webkitRelativePath || folderFiles.ques1.name);
+    if(folderFiles.ques2)    fd.append('ques_data_region_path',    folderFiles.ques2.webkitRelativePath || folderFiles.ques2.name);
+    if(folderFiles.ques3)    fd.append('ques_data_design_path',    folderFiles.ques3.webkitRelativePath || folderFiles.ques3.name);
+    if(folderFiles.region)   fd.append('region_data_path',         folderFiles.region.webkitRelativePath || folderFiles.region.name);
+    if(folderFiles.bgmask)   fd.append('background_img_path',      folderFiles.bgmask.webkitRelativePath || folderFiles.bgmask.name);
   } else {
     var img=document.getElementById('sinput-img').files[0];
     var loc=document.getElementById('sinput-loc').files[0];
     var beh=document.getElementById('sinput-behavior').files[0];
     var env=document.getElementById('sinput-env').files[0];
-    var ques=document.getElementById('sinput-ques').files[0];
+    var ques1=document.getElementById('sinput-ques1').files[0];
+    var ques2=document.getElementById('sinput-ques2').files[0];
+    var ques3=document.getElementById('sinput-ques3').files[0];
     var reg=document.getElementById('sinput-region').files[0];
-    if(!img && !loc && !beh && !env && !ques){ alert('请至少上传一种数据文件'); return; }
-    if(img)  fd.append('layout_img',    img);
-    if(loc)  fd.append('loc_data',      loc);
-    if(beh)  fd.append('behavior_data', beh);
-    if(env)  fd.append('env_data',      env);
-    if(ques) fd.append('ques_data',     ques);
-    if(reg)  fd.append('region_data',   reg);
+    var bgmask=document.getElementById('sinput-bgmask') ? document.getElementById('sinput-bgmask').files[0] : null;
+    if(!img && !loc && !beh && !env && !ques1 && !ques2 && !ques3){ alert('请至少上传一种数据文件'); return; }
+    if(img)   fd.append('layout_img',           img);
+    if(loc)   fd.append('loc_data',             loc);
+    if(beh)   fd.append('behavior_data',        beh);
+    if(env)   fd.append('env_data',             env);
+    if(ques1) fd.append('ques_data_overall',    ques1);
+    if(ques2) fd.append('ques_data_region',     ques2);
+    if(ques3) fd.append('ques_data_design',     ques3);
+    if(reg)   fd.append('region_data',          reg);
+    if(bgmask) fd.append('background_img',      bgmask);
     // 单文件模式只有文件名，无完整路径
-    if(img)  fd.append('layout_img_path',    img.name);
-    if(loc)  fd.append('loc_data_path',      loc.name);
-    if(beh)  fd.append('behavior_data_path', beh.name);
-    if(env)  fd.append('env_data_path',      env.name);
-    if(ques) fd.append('ques_data_path',     ques.name);
-    if(reg)  fd.append('region_data_path',   reg.name);
+    if(img)   fd.append('layout_img_path',          img.name);
+    if(loc)   fd.append('loc_data_path',            loc.name);
+    if(beh)   fd.append('behavior_data_path',       beh.name);
+    if(env)   fd.append('env_data_path',            env.name);
+    if(ques1) fd.append('ques_data_overall_path',   ques1.name);
+    if(ques2) fd.append('ques_data_region_path',    ques2.name);
+    if(ques3) fd.append('ques_data_design_path',    ques3.name);
+    if(reg)   fd.append('region_data_path',         reg.name);
+    if(bgmask) fd.append('background_img_path',     bgmask.name);
   }
 
   // 附加主题

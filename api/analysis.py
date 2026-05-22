@@ -3221,20 +3221,9 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
     # ── 有 coverage_mask：两步渲染 ────────────────────────────────────────
     if coverage_mask is not None:
         fill_mask = coverage_mask.astype(bool)   # True = 允许涂色
-
         overlay = img_f.copy()
 
-        # Step 1: fill_mask 区域铺一层轻薄底色（表示"0值/无数据但可测量"）。
-        #   alpha=0.25 半透明，保留平面图结构线可见；取 cm(0.15) 避免 0值过深。
-        base_color = np.array(cm(0.15)[:3], dtype=float)
-        base_alpha = 0.25
-        overlay[fill_mask] = (
-            img_f[fill_mask] * (1 - base_alpha) + base_color * base_alpha
-        )
-
-        # Step 2: 归一化密度；只处理 density_norm 超过阈值的像素（避免高斯
-        #   扩散极小值把底色用白色覆盖）。混合起点用 overlay（Step1底色），
-        #   而不是 img_f，确保边缘渐变从底色出发而非从白底图出发。
+        # 先计算归一化密度，确定数据范围
         vmax = density_smooth.max()
         if vmax > 0:
             pos_vals = density_smooth[fill_mask & (density_smooth > 0)]
@@ -3247,13 +3236,35 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
             heat_rgba = cm(density_norm)
             heat_rgb  = heat_rgba[:, :, :3]
 
-            # 只更新归一化密度 > 0.01 的像素，排除高斯尾部极小值
+            # 计算有数据区域的最小归一化值（边缘颜色）
             DATA_THRESH = 0.01
             data_mask = fill_mask & (density_norm > DATA_THRESH)
+            if np.any(data_mask):
+                # 取有效数据区域的最小归一化值对应的颜色作为背景色
+                min_norm_val = float(np.percentile(density_norm[data_mask], 5))  # 5分位数，避免极端值
+                base_color = np.array(cm(min_norm_val)[:3], dtype=float)
+            else:
+                # 无有效数据时，使用 colormap 最小值色
+                base_color = np.array(cm(0.0)[:3], dtype=float)
+
+            # Step 1: fill_mask 区域铺底色（使用边缘颜色，实现平滑过渡）
+            base_alpha = 0.30  # 半透明，保留平面图结构线可见
+            overlay[fill_mask] = (
+                img_f[fill_mask] * (1 - base_alpha) + base_color * base_alpha
+            )
+
+            # Step 2: 有数据的像素用实际颜色覆盖
             a = density_soft[data_mask]
             # 从 overlay（Step1底色）出发插值到热力纯色
             overlay[data_mask] = (
                 overlay[data_mask] * (1 - a[:, None]) + heat_rgb[data_mask] * a[:, None]
+            )
+        else:
+            # 无数据时，使用 colormap 最小值色作为背景
+            base_color = np.array(cm(0.0)[:3], dtype=float)
+            base_alpha = 0.30
+            overlay[fill_mask] = (
+                img_f[fill_mask] * (1 - base_alpha) + base_color * base_alpha
             )
 
         return np.clip(overlay, 0, 1), density_smooth
@@ -3358,19 +3369,27 @@ def _make_rbf_overlay(img_arr, x, y, values, alpha=0.65, cmap='RdYlBu_r',
         fill_mask = coverage_mask.astype(bool)   # True = 允许涂色
         overlay = img_f.copy()
 
-        # Step 1: fill_mask 区域铺一层底色（取颜色图中值，避免极端色）
-        #   alpha=0.30 半透明，保留平面图结构线可见
-        base_color = np.array(cm(0.5)[:3], dtype=float)
-        base_alpha = 0.30
+        heat_rgba = cm(field_norm)
+        heat_rgb = heat_rgba[:, :, :3]
+        
+        data_mask = fill_mask & np.isfinite(field)
+        
+        if np.any(data_mask):
+            # 计算有插值数据区域的最小归一化值（边缘颜色）
+            # 取有效数据的5分位数对应的颜色作为背景色，实现平滑过渡
+            min_norm_val = float(np.percentile(field_norm[data_mask], 5))
+            base_color = np.array(cm(min_norm_val)[:3], dtype=float)
+        else:
+            # 无有效数据时，使用 colormap 中值色
+            base_color = np.array(cm(0.5)[:3], dtype=float)
+
+        # Step 1: fill_mask 区域铺底色（使用边缘颜色）
+        base_alpha = 0.30  # 半透明，保留平面图结构线可见
         overlay[fill_mask] = (
             img_f[fill_mask] * (1 - base_alpha) + base_color * base_alpha
         )
 
         # Step 2: 有插值数据的像素用实际颜色覆盖
-        heat_rgba = cm(field_norm)
-        heat_rgb = heat_rgba[:, :, :3]
-        
-        data_mask = fill_mask & np.isfinite(field)
         if np.any(data_mask):
             # 从 overlay（Step1底色）出发插值到热力纯色
             overlay[data_mask] = (

@@ -3190,10 +3190,9 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
     walkable_mask : bool 数组 (H,W)，False = 平面图自动识别的墙体，
                    仅用于高斯平滑后抑制密度渗入墙体，不影响整体填色范围。
     coverage_mask : bool 数组 (H,W)，False = background.png 黑色区域（禁止上色）。
-                   提供后采用"两步渲染"：
-                   Step1: 将 coverage_mask=True 区域统一铺上颜色图 0 值色（不透明底色）
-                   Step2: 有密度的像素按实际密度值覆盖（alpha 叠加，边缘渐变）
-                   coverage_mask=False 区域显示底图原色，不做任何热力叠加。
+                   提供后采用"填充0值点"策略：
+                   在 coverage_mask=True 区域均匀撒0值点，确保整个区域都有数据，
+                   高斯平滑后实现完整热力场，无明显边界。
     未提供 coverage_mask 时：仅 density>0 处做 alpha 叠加（原有行为）。
     """
     h, w = img_arr.shape[:2]
@@ -3201,10 +3200,47 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
     xi = np.clip(np.round(x).astype(int), 0, w - 1)
     yi = np.clip(np.round(y).astype(int), 0, h - 1)
 
+    # ── 有 coverage_mask：在非background区域填充0值点 ──────────────────────
+    if coverage_mask is not None:
+        fill_mask = coverage_mask.astype(bool)
+        
+        # 计算原始数据点的密度（用于确定填充点的间隔）
+        if len(xi) > 0:
+            # 估算数据点的平均间距
+            data_area = np.sum(fill_mask)  # 可测量区域面积（像素数）
+            avg_spacing = int(np.sqrt(data_area / max(len(xi), 1)))
+            # 填充点间隔：取平均间距的1.5倍，避免过密
+            fill_spacing = max(int(avg_spacing * 1.5), 10)
+        else:
+            fill_spacing = 20  # 默认间隔
+        
+        # 在 coverage_mask=True 区域均匀撒0值点
+        fill_y, fill_x = np.where(fill_mask)
+        # 稀疏采样：每隔 fill_spacing 取一个点
+        sample_indices = np.arange(0, len(fill_x), fill_spacing)
+        fill_x_sampled = fill_x[sample_indices]
+        fill_y_sampled = fill_y[sample_indices]
+        
+        # 合并原始数据点和填充的0值点
+        xi_all = np.concatenate([xi, fill_x_sampled])
+        yi_all = np.concatenate([yi, fill_y_sampled])
+        
+        if weights is not None:
+            # 填充点权重为0
+            weights_all = np.concatenate([weights, np.zeros(len(fill_x_sampled))])
+        else:
+            # 原始点权重为1，填充点权重为0
+            weights_all = np.concatenate([np.ones(len(xi)), np.zeros(len(fill_x_sampled))])
+    else:
+        xi_all = xi
+        yi_all = yi
+        weights_all = weights
+
+    # 构建密度图
     density = np.zeros((h, w), dtype=float)
-    for i in range(len(xi)):
-        w_val = weights[i] if weights is not None else 1.0
-        density[yi[i], xi[i]] += w_val
+    for i in range(len(xi_all)):
+        w_val = weights_all[i] if weights_all is not None else 1.0
+        density[yi_all[i], xi_all[i]] += w_val
 
     if bandwidth is None:
         bandwidth = max(int(min(h, w) * 0.025), 8)
@@ -3218,14 +3254,13 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
     cm = _get_cmap(cmap)
     img_f = img_arr / 255.0
 
-    # ── 有 coverage_mask：两步渲染 ────────────────────────────────────────
+    # ── 有 coverage_mask：整个区域都有数据（含0值点），直接渲染 ──────────────
     if coverage_mask is not None:
-        fill_mask = coverage_mask.astype(bool)   # True = 允许涂色
-        overlay = img_f.copy()
-
-        # 先计算归一化密度，确定数据范围
+        fill_mask = coverage_mask.astype(bool)
+        
         vmax = density_smooth.max()
         if vmax > 0:
+            # 归一化密度
             pos_vals = density_smooth[fill_mask & (density_smooth > 0)]
             if len(pos_vals) == 0:
                 pos_vals = density_smooth[density_smooth > 0]
@@ -3233,39 +3268,20 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
             density_norm = np.clip(density_smooth / p99, 0, 1)
             density_soft = np.power(density_norm, 0.45)   # gamma 软化边缘
 
-            heat_rgba = cm(density_norm)
-            heat_rgb  = heat_rgba[:, :, :3]
+            heat_rgba = cm(density_norm)  # 返回 (H, W, 4)
+            heat_rgb  = heat_rgba[:, :, :3]  # 取前3通道 (H, W, 3)
 
-            # 计算有数据区域的最小归一化值（边缘颜色）
-            DATA_THRESH = 0.01
-            data_mask = fill_mask & (density_norm > DATA_THRESH)
-            if np.any(data_mask):
-                # 取有效数据区域的最小归一化值对应的颜色作为背景色
-                min_norm_val = float(np.percentile(density_norm[data_mask], 5))  # 5分位数，避免极端值
-                base_color = np.array(cm(min_norm_val)[:3], dtype=float)
-            else:
-                # 无有效数据时，使用 colormap 最小值色
-                base_color = np.array(cm(0.0)[:3], dtype=float)
-
-            # Step 1: fill_mask 区域铺底色（使用边缘颜色，实现平滑过渡）
-            base_alpha = 0.30  # 半透明，保留平面图结构线可见
+            # 整个 fill_mask 区域都用热力色渲染（包括0值区域）
+            overlay = img_f.copy()
+            # 使用固定 alpha，不依赖 density_soft（否则0值区域 alpha=0）
+            alpha_3d = np.full((h, w, 1), alpha, dtype=float)
+            # 对 fill_mask 区域做混合
             overlay[fill_mask] = (
-                img_f[fill_mask] * (1 - base_alpha) + base_color * base_alpha
-            )
-
-            # Step 2: 有数据的像素用实际颜色覆盖
-            a = density_soft[data_mask]
-            # 从 overlay（Step1底色）出发插值到热力纯色
-            overlay[data_mask] = (
-                overlay[data_mask] * (1 - a[:, None]) + heat_rgb[data_mask] * a[:, None]
+                img_f[fill_mask] * (1 - alpha) + heat_rgb[fill_mask] * alpha
             )
         else:
-            # 无数据时，使用 colormap 最小值色作为背景
-            base_color = np.array(cm(0.0)[:3], dtype=float)
-            base_alpha = 0.30
-            overlay[fill_mask] = (
-                img_f[fill_mask] * (1 - base_alpha) + base_color * base_alpha
-            )
+            # 无数据时，保持原图
+            overlay = img_f.copy()
 
         return np.clip(overlay, 0, 1), density_smooth
 
@@ -3296,10 +3312,9 @@ def _make_rbf_overlay(img_arr, x, y, values, alpha=0.65, cmap='RdYlBu_r',
     不适用于到访频次这类事件密度分布。
     
     coverage_mask : bool 数组 (H,W)，False = background.png 黑色区域（禁止上色）。
-                   提供后采用"两步渲染"：
-                   Step1: 将 coverage_mask=True 区域统一铺上颜色图中值色（不透明底色）
-                   Step2: 有插值数据的像素按实际值覆盖（alpha 叠加）
-                   coverage_mask=False 区域显示底图原色，不做任何热力叠加。
+                   提供后采用"填充均值点"策略：
+                   在 coverage_mask=True 区域均匀撒均值点，确保整个区域都有插值数据，
+                   RBF插值后实现完整标量场，无明显边界。
     未提供 coverage_mask 时：仅有插值数据处做 alpha 叠加（原有行为）。
     
     返回 (overlay RGB float[0,1], field_2d, vmin, vmax)
@@ -3315,6 +3330,29 @@ def _make_rbf_overlay(img_arr, x, y, values, alpha=0.65, cmap='RdYlBu_r',
     values = values[valid]
     if len(values) < 3:
         return img_arr / 255.0, None, None, None
+
+    # ── 有 coverage_mask：在非background区域填充均值点 ──────────────────────
+    if coverage_mask is not None:
+        fill_mask = coverage_mask.astype(bool)
+        
+        # 计算原始数据的均值，作为填充点的值
+        fill_value = float(np.mean(values))
+        
+        # 计算填充点间隔
+        data_area = np.sum(fill_mask)
+        avg_spacing = int(np.sqrt(data_area / max(len(x), 1)))
+        fill_spacing = max(int(avg_spacing * 2), 20)  # 填充点更稀疏
+        
+        # 在 coverage_mask=True 区域均匀撒均值点
+        fill_y, fill_x = np.where(fill_mask)
+        sample_indices = np.arange(0, len(fill_x), fill_spacing)
+        fill_x_sampled = fill_x[sample_indices].astype(float)
+        fill_y_sampled = fill_y[sample_indices].astype(float)
+        
+        # 合并原始数据点和填充的均值点
+        x = np.concatenate([x, fill_x_sampled])
+        y = np.concatenate([y, fill_y_sampled])
+        values = np.concatenate([values, np.full(len(fill_x_sampled), fill_value)])
 
     pts = np.column_stack([x, y])
     grid_x, grid_y = np.meshgrid(np.arange(w, dtype=float), np.arange(h, dtype=float))
@@ -3364,37 +3402,21 @@ def _make_rbf_overlay(img_arr, x, y, values, alpha=0.65, cmap='RdYlBu_r',
     cm = _get_cmap(cmap)
     img_f = img_arr / 255.0
 
-    # ── 有 coverage_mask：两步渲染 ────────────────────────────────────────
+    # ── 有 coverage_mask：整个区域都有插值数据（含均值点），直接渲染 ──────────
     if coverage_mask is not None:
-        fill_mask = coverage_mask.astype(bool)   # True = 允许涂色
-        overlay = img_f.copy()
-
+        fill_mask = coverage_mask.astype(bool)
+        
         heat_rgba = cm(field_norm)
         heat_rgb = heat_rgba[:, :, :3]
         
-        data_mask = fill_mask & np.isfinite(field)
-        
-        if np.any(data_mask):
-            # 计算有插值数据区域的最小归一化值（边缘颜色）
-            # 取有效数据的5分位数对应的颜色作为背景色，实现平滑过渡
-            min_norm_val = float(np.percentile(field_norm[data_mask], 5))
-            base_color = np.array(cm(min_norm_val)[:3], dtype=float)
-        else:
-            # 无有效数据时，使用 colormap 中值色
-            base_color = np.array(cm(0.5)[:3], dtype=float)
-
-        # Step 1: fill_mask 区域铺底色（使用边缘颜色）
-        base_alpha = 0.30  # 半透明，保留平面图结构线可见
-        overlay[fill_mask] = (
-            img_f[fill_mask] * (1 - base_alpha) + base_color * base_alpha
-        )
-
-        # Step 2: 有插值数据的像素用实际颜色覆盖
-        if np.any(data_mask):
-            # 从 overlay（Step1底色）出发插值到热力纯色
-            overlay[data_mask] = (
-                overlay[data_mask] * (1 - alpha) + heat_rgb[data_mask] * alpha
-            )
+        # 整个 fill_mask 区域都用热力色渲染（包括均值区域）
+        overlay = img_f.copy()
+        # 扩展 alpha 到 3 通道
+        alpha_3d = np.full((h, w, 1), alpha, dtype=float)
+        # 对整个图像做混合
+        overlay = img_f * (1 - alpha_3d) + heat_rgb * alpha_3d
+        # 确保 fill_mask 外的区域保持原图
+        overlay[~fill_mask] = img_f[~fill_mask]
 
         return np.clip(overlay, 0, 1), field, vmin, vmax
 

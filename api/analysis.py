@@ -3184,7 +3184,8 @@ def cluster():
 # ─────────────────────────────────────────────
 
 def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
-                          bandwidth=None, theme='dark', walkable_mask=None, coverage_mask=None):
+                          bandwidth=None, theme='dark', walkable_mask=None, coverage_mask=None,
+                          return_debug_points=False):
     """KDE 像素级高斯密度热力图叠加，返回 (overlay RGB float[0,1], density_2d)
 
     walkable_mask : bool 数组 (H,W)，False = 平面图自动识别的墙体，
@@ -3194,6 +3195,7 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
                    在 coverage_mask=True 区域均匀撒0值点，确保整个区域都有数据，
                    高斯平滑后实现完整热力场，无明显边界。
     未提供 coverage_mask 时：仅 density>0 处做 alpha 叠加（原有行为）。
+    return_debug_points : 若 True，额外返回 debug_info dict，含原始点和填充点坐标+值。
     """
     h, w = img_arr.shape[:2]
 
@@ -3201,6 +3203,8 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
     yi = np.clip(np.round(y).astype(int), 0, h - 1)
 
     # ── 有 coverage_mask：在非background区域填充0值点 ──────────────────────
+    fill_x_sampled = np.array([], dtype=int)
+    fill_y_sampled = np.array([], dtype=int)
     if coverage_mask is not None:
         fill_mask = coverage_mask.astype(bool)
         
@@ -3281,6 +3285,17 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
         else:
             overlay = img_f.copy()
 
+        if return_debug_points:
+            # 原始点权重
+            orig_weights = weights if weights is not None else np.ones(len(xi))
+            debug_info = {
+                'orig_x': xi.tolist(),       # 原始点像素x
+                'orig_y': yi.tolist(),       # 原始点像素y
+                'orig_w': orig_weights.tolist(),  # 原始点权重（实际值）
+                'fill_x': fill_x_sampled.tolist(),   # 填充点像素x
+                'fill_y': fill_y_sampled.tolist(),   # 填充点像素y
+            }
+            return np.clip(overlay, 0, 1), density_smooth, debug_info
         return np.clip(overlay, 0, 1), density_smooth
 
     # ── 无 coverage_mask：原有行为，仅 density>0 处做 alpha 叠加 ───────────
@@ -4363,21 +4378,44 @@ def behavior_duration():
         palette = _get_cmap('tab10', len(uniq_beh))
 
         # 热力叠加（以 t 为权重，参考移动速率热力图，加入 walkable_mask 和 coverage_mask）
-        overlay, beh_grid = _make_heatmap_overlay(
+        overlay, beh_grid, debug_pts = _make_heatmap_overlay(
             img, x, y, weights=t, alpha=0.65, cmap='jet',
             walkable_mask=extract_walkable_mask(img),
             coverage_mask=extract_measurement_mask(
                 load_img(request.files.get('background_img'))
-            ) if request.files.get('background_img') is not None else None
+            ) if request.files.get('background_img') is not None else None,
+            return_debug_points=True
         )
 
-        # 图1：行为时长热力图（独立图）
+        # 图1：行为时长热力图（独立图，带数据点标注）
         fig0, ax0 = plt.subplots(figsize=(9, 6))
         fig0.patch.set_facecolor(th['fig_bg'])
         ax0.set_facecolor('white')
         ax0.imshow(overlay)
         ax0.axis('off')
         ax0.set_title('行为时长热力图 (s)', color=th['text'], fontsize=13, pad=10)
+
+        # 标注填充0值点（灰色小点，不带数值标签，点太多只画散点）
+        if debug_pts and len(debug_pts['fill_x']) > 0:
+            ax0.scatter(debug_pts['fill_x'], debug_pts['fill_y'],
+                        c='gray', s=4, alpha=0.35, zorder=3, label='填充0值点')
+
+        # 标注原始数据点（白色圆圈 + 数值标签）
+        if debug_pts and len(debug_pts['orig_x']) > 0:
+            ox = debug_pts['orig_x']
+            oy = debug_pts['orig_y']
+            ow = debug_pts['orig_w']
+            ax0.scatter(ox, oy, c='white', s=30, edgecolors='black',
+                        linewidths=0.8, zorder=5, label='实际数据点')
+            for px, py, pv in zip(ox, oy, ow):
+                ax0.text(px + 3, py - 3, f'{pv:.1f}',
+                         color='white', fontsize=5, fontweight='bold',
+                         zorder=6, ha='left', va='bottom',
+                         bbox=dict(boxstyle='round,pad=0.1', fc='black', alpha=0.45, lw=0))
+
+        ax0.legend(loc='lower right', fontsize=7,
+                   facecolor=th.get('legend_bg', '#222'), edgecolor='gray',
+                   labelcolor='white', markerscale=1.5)
         vmax_beh = float(beh_grid.max()) if beh_grid is not None and float(beh_grid.max()) > 0 else 1.0
         sm = plt.cm.ScalarMappable(cmap='jet', norm=mcolors.Normalize(0, vmax_beh))
         sm.set_array([])

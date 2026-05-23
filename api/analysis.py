@@ -4363,35 +4363,53 @@ def behavior_duration():
                 dur_matrix[i, j] = t[(regions == r) & (beh_nums == b)].sum()
 
         palette = _get_cmap('tab10', len(uniq_beh))
-        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-        fig.patch.set_facecolor(th['fig_bg'])
 
-        # 热力叠加（以 t 为权重）
-        overlay, _ = _make_heatmap_overlay(img, x, y, weights=t, alpha=0.65, cmap='jet')
-        ax0 = axes[0]
+        # 热力叠加（以 t 为权重，参考移动速率热力图，加入 walkable_mask 和 coverage_mask）
+        overlay, beh_grid = _make_heatmap_overlay(
+            img, x, y, weights=t, alpha=0.65, cmap='jet',
+            walkable_mask=extract_walkable_mask(img),
+            coverage_mask=extract_measurement_mask(
+                load_img(request.files.get('background_img'))
+            ) if request.files.get('background_img') is not None else None
+        )
+
+        # 图1：行为时长热力图（独立图）
+        fig0, ax0 = plt.subplots(figsize=(9, 6))
+        fig0.patch.set_facecolor(th['fig_bg'])
         ax0.set_facecolor('white')
         ax0.imshow(overlay)
         ax0.axis('off')
         ax0.set_title('行为时长热力图 (s)', color=th['text'], fontsize=13, pad=10)
+        vmax_beh = float(beh_grid.max()) if beh_grid is not None and float(beh_grid.max()) > 0 else 1.0
+        sm = plt.cm.ScalarMappable(cmap='jet', norm=mcolors.Normalize(0, vmax_beh))
+        sm.set_array([])
+        cbar = fig0.colorbar(sm, ax=ax0, fraction=0.03, pad=0.02)
+        cbar.ax.tick_params(colors=th['cbar_tick'], labelsize=8)
+        cbar.set_label('行为时长强度', color=th['subtext'], fontsize=9)
+        plt.tight_layout(pad=2)
+        img_b64 = fig_to_base64(fig0)
+        plt.close(fig0)
 
-        ax1 = axes[1]
+        # 图2：各空间单元行为时长柱状图（独立图，按行为类型分组）
+        fig1, ax1 = plt.subplots(figsize=(9, 6))
+        fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1, th)
-        bw = 0.7 / len(uniq_beh)
+        bw = 0.7 / max(len(uniq_beh), 1)
         xs = np.arange(len(uniq_reg))
         for j, b in enumerate(uniq_beh):
             ax1.bar(xs + j * bw - 0.35 + bw/2, dur_matrix[:, j], width=bw,
                     color=palette(j), alpha=0.85, label=beh_labels[j])
-        ax1.set_xticks(xs); ax1.set_xticklabels(uniq_reg, fontsize=8)
+        ax1.set_xticks(xs)
+        ax1.set_xticklabels(uniq_reg, fontsize=8)
         ax1.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
         ax1.set_ylabel('时长 (s)', color=th['subtext'], fontsize=10)
         ax1.set_title('各空间单元行为时长', color=th['text'], fontsize=13)
         ax1.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
         ax1.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax1.set_axisbelow(True)
-
         plt.tight_layout(pad=2)
-        img_b64 = fig_to_base64(fig)
-        plt.close(fig)
+        img2_b64 = fig_to_base64(fig1)
+        plt.close(fig1)
 
         summary = {
             'total_records': int(len(df)),
@@ -4399,7 +4417,7 @@ def behavior_duration():
             'behavior_types': len(uniq_beh),
             'behaviors': beh_labels,
         }
-        return jsonify({'image': img_b64, 'summary': summary})
+        return jsonify({'image': img_b64, 'image2': img2_b64, 'summary': summary})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

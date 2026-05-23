@@ -3331,29 +3331,7 @@ def _make_rbf_overlay(img_arr, x, y, values, alpha=0.65, cmap='RdYlBu_r',
     if len(values) < 3:
         return img_arr / 255.0, None, None, None
 
-    # ── 有 coverage_mask：在非background区域填充均值点 ──────────────────────
-    if coverage_mask is not None:
-        fill_mask = coverage_mask.astype(bool)
-        
-        # 计算原始数据的均值，作为填充点的值
-        fill_value = float(np.mean(values))
-        
-        # 计算填充点间隔
-        data_area = np.sum(fill_mask)
-        avg_spacing = int(np.sqrt(data_area / max(len(x), 1)))
-        fill_spacing = max(int(avg_spacing * 2), 20)  # 填充点更稀疏
-        
-        # 在 coverage_mask=True 区域均匀撒均值点
-        fill_y, fill_x = np.where(fill_mask)
-        sample_indices = np.arange(0, len(fill_x), fill_spacing)
-        fill_x_sampled = fill_x[sample_indices].astype(float)
-        fill_y_sampled = fill_y[sample_indices].astype(float)
-        
-        # 合并原始数据点和填充的均值点
-        x = np.concatenate([x, fill_x_sampled])
-        y = np.concatenate([y, fill_y_sampled])
-        values = np.concatenate([values, np.full(len(fill_x_sampled), fill_value)])
-
+    # 原始测点坐标（像素空间）
     pts = np.column_stack([x, y])
     grid_x, grid_y = np.meshgrid(np.arange(w, dtype=float), np.arange(h, dtype=float))
     grid_pts = np.column_stack([grid_x.ravel(), grid_y.ravel()])
@@ -3371,12 +3349,31 @@ def _make_rbf_overlay(img_arr, x, y, values, alpha=0.65, cmap='RdYlBu_r',
         rbf = RBFInterpolator(pts, values, **rbf_kwargs)
         field = rbf(grid_pts).reshape(h, w)
     except Exception:
-        # 兜底：退回到较稳定的 linear + nearest 填洞思路
         from scipy.interpolate import griddata
         field = griddata(pts, values, (grid_x, grid_y), method='linear')
         field_nearest = griddata(pts, values, (grid_x, grid_y), method='nearest')
         field = np.where(np.isnan(field), field_nearest, field)
 
+    # coverage_mask 区域内用 nearest 填洞，确保整个可测区域都有值（不填均值点）
+    if coverage_mask is not None:
+        fill_mask = coverage_mask.astype(bool)
+        nan_in_fill = fill_mask & ~np.isfinite(field)
+        if np.any(nan_in_fill):
+            from scipy.interpolate import griddata
+            known_mask = fill_mask & np.isfinite(field)
+            if np.any(known_mask):
+                ky, kx = np.where(known_mask)
+                kv = field[known_mask]
+                ny, nx = np.where(nan_in_fill)
+                filled = griddata(
+                    np.column_stack([kx, ky]),
+                    kv,
+                    np.column_stack([nx, ny]),
+                    method='nearest'
+                )
+                field[nan_in_fill] = filled
+
+    # walkable_mask 仅用于抑制墙体渗透
     effective_mask = merge_masks(walkable_mask, coverage_mask)
     if effective_mask is not None:
         walk = effective_mask.astype(bool)
@@ -3402,21 +3399,18 @@ def _make_rbf_overlay(img_arr, x, y, values, alpha=0.65, cmap='RdYlBu_r',
     cm = _get_cmap(cmap)
     img_f = img_arr / 255.0
 
-    # ── 有 coverage_mask：整个区域都有插值数据（含均值点），直接渲染 ──────────
+    # ── 有 coverage_mask：仅在 fill_mask 区域叠加热力色 ──────────────────────
     if coverage_mask is not None:
         fill_mask = coverage_mask.astype(bool)
-        
+
         heat_rgba = cm(field_norm)
         heat_rgb = heat_rgba[:, :, :3]
-        
-        # 整个 fill_mask 区域都用热力色渲染（包括均值区域）
+
+        # 只对 fill_mask 区域做 alpha 叠加，背景区域保持原图
         overlay = img_f.copy()
-        # 扩展 alpha 到 3 通道
-        alpha_3d = np.full((h, w, 1), alpha, dtype=float)
-        # 对整个图像做混合
-        overlay = img_f * (1 - alpha_3d) + heat_rgb * alpha_3d
-        # 确保 fill_mask 外的区域保持原图
-        overlay[~fill_mask] = img_f[~fill_mask]
+        overlay[fill_mask] = (
+            img_f[fill_mask] * (1 - alpha) + heat_rgb[fill_mask] * alpha
+        )
 
         return np.clip(overlay, 0, 1), field, vmin, vmax
 

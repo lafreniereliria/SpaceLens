@@ -4377,15 +4377,23 @@ def behavior_duration():
 
         palette = _get_cmap('tab10', len(uniq_beh))
 
+        # 是否显示数据点标注（前端开关控制）
+        show_points = request.form.get('show_points', '0') == '1'
+
         # 热力叠加（以 t 为权重，参考移动速率热力图，加入 walkable_mask 和 coverage_mask）
-        overlay, beh_grid, debug_pts = _make_heatmap_overlay(
+        hm_result = _make_heatmap_overlay(
             img, x, y, weights=t, alpha=0.65, cmap='jet',
             walkable_mask=extract_walkable_mask(img),
             coverage_mask=extract_measurement_mask(
                 load_img(request.files.get('background_img'))
             ) if request.files.get('background_img') is not None else None,
-            return_debug_points=True
+            return_debug_points=show_points   # 仅在需要时解析调试点
         )
+        if show_points:
+            overlay, beh_grid, debug_pts = hm_result
+        else:
+            overlay, beh_grid = hm_result
+            debug_pts = None
 
         # 图1：行为时长热力图（独立图，带数据点标注）
         fig0, ax0 = plt.subplots(figsize=(9, 6))

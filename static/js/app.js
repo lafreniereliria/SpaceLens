@@ -564,6 +564,11 @@ async function runAnalysis() {
     if (f) fd.append('region_data', f);  // 可选
   }
   if (currentView === 'cluster') fd.append('k', kValue);
+  // 行为时长：是否显示数据点
+  if (currentView === 'behavior_duration') {
+    const toggle = document.getElementById('show-points-toggle');
+    fd.append('show_points', toggle && toggle.checked ? '1' : '0');
+  }
 
   setLoading(true);
   hideResult();

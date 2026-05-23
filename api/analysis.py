@@ -3254,33 +3254,31 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
     cm = _get_cmap(cmap)
     img_f = img_arr / 255.0
 
-    # ── 有 coverage_mask：整个区域都有数据（含0值点），直接渲染 ──────────────
+    # ── 有 coverage_mask：整个区域都有数据（含0值点），按密度驱动渲染 ──────────
     if coverage_mask is not None:
         fill_mask = coverage_mask.astype(bool)
-        
+
         vmax = density_smooth.max()
         if vmax > 0:
-            # 归一化密度
             pos_vals = density_smooth[fill_mask & (density_smooth > 0)]
             if len(pos_vals) == 0:
                 pos_vals = density_smooth[density_smooth > 0]
             p99 = float(np.percentile(pos_vals, 99)) if len(pos_vals) else float(vmax)
             density_norm = np.clip(density_smooth / p99, 0, 1)
-            density_soft = np.power(density_norm, 0.45)   # gamma 软化边缘
 
-            heat_rgba = cm(density_norm)  # 返回 (H, W, 4)
-            heat_rgb  = heat_rgba[:, :, :3]  # 取前3通道 (H, W, 3)
+            heat_rgba = cm(density_norm)  # (H, W, 4)
+            heat_rgb  = heat_rgba[:, :, :3]  # (H, W, 3)
 
-            # 整个 fill_mask 区域都用热力色渲染（包括0值区域）
             overlay = img_f.copy()
-            # 使用固定 alpha，不依赖 density_soft（否则0值区域 alpha=0）
-            alpha_3d = np.full((h, w, 1), alpha, dtype=float)
-            # 对 fill_mask 区域做混合
+            # alpha 跟密度走：密度越高越不透明，密度=0时 alpha_min 保证有微弱底色
+            alpha_min = 0.15          # 0值区域的最低透明度，让无数据区域有一丝底色
+            heat_alpha = alpha_min + density_norm * (alpha - alpha_min)  # [alpha_min, alpha]
+            # 只对 fill_mask 区域叠加
             overlay[fill_mask] = (
-                img_f[fill_mask] * (1 - alpha) + heat_rgb[fill_mask] * alpha
+                img_f[fill_mask] * (1 - heat_alpha[fill_mask, None]) +
+                heat_rgb[fill_mask] * heat_alpha[fill_mask, None]
             )
         else:
-            # 无数据时，保持原图
             overlay = img_f.copy()
 
         return np.clip(overlay, 0, 1), density_smooth

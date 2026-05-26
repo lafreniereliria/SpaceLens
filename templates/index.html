@@ -88,17 +88,19 @@
   overflow: hidden;
   box-shadow: var(--shadow);
 }
-/* 多图网格：2列并排，第3张单独占满行 */
+/* 多图布局：单列纵向排列，每张图单独占满一行 */
 .result-chart-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 1px;
   background: var(--border);
   align-items: stretch;
 }
 .result-chart-grid img {
   width: 100%;
-  height: 420px;
+  height: auto;
+  min-height: 320px;
+  max-height: 620px;
   display: block;
   background: var(--bg-card);
   object-fit: contain;
@@ -1044,11 +1046,7 @@ function fillPanel(metricId, data) {
     // 若只有1张图，改为单列（img1 占满整行）
     if (grid) {
       grid.style.display = 'grid';
-      if (!data.image2 && !data.image3) {
-        grid.style.gridTemplateColumns = '1fr';
-      } else {
-        grid.style.gridTemplateColumns = '1fr 1fr';
-      }
+      grid.style.gridTemplateColumns = '1fr';
     }
     if (ph)  { ph.style.display = 'none'; }
     _enableMetricBtns(metricId, true, !!data.summary);

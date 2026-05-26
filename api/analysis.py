@@ -3251,9 +3251,6 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
     # ── 有 coverage_mask：整个区域都有数据（含0值点），固定 alpha 全量渲染 ──────────
     if coverage_mask is not None:
         fill_mask = coverage_mask.astype(bool)
-        # 同时排除墙体区域（walkable_mask=False），避免墙体被上色
-        if walkable_mask is not None:
-            fill_mask = fill_mask & walkable_mask.astype(bool)
 
         vmax = density_smooth.max()
         if vmax > 0:
@@ -3266,19 +3263,14 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
             heat_rgba = cm(density_norm)  # (H, W, 4)
             heat_rgb  = heat_rgba[:, :, :3]  # (H, W, 3)
 
-            # 整个 fill_mask 区域固定 alpha 叠加（0值区域也完全上色，不留透明区域）
-            overlay = img_f.copy()
-            overlay[fill_mask] = (
-                img_f[fill_mask] * (1 - alpha) + heat_rgb[fill_mask] * alpha
-            )
+            # 全图固定 alpha 叠加，结构线/墙体通过 alpha 半透明透出
+            overlay = img_f * (1 - alpha) + heat_rgb * alpha
         else:
             overlay = img_f.copy()
 
         return np.clip(overlay, 0, 1), density_smooth
 
-    # ── 无 coverage_mask：用 walkable_mask 限定范围，固定 alpha 全量叠加 ──────
-    # walkable 区域内：0值也完全上色（补最低 colormap 颜色），无透明区域
-    # 墙体/图外区域：不上色，保留底图
+    # ── 无 coverage_mask：全图固定 alpha 叠加，0值区显示最低颜色，结构线透过来 ──
     vmax = density_smooth.max()
     if vmax <= 0:
         return img_f, density
@@ -3290,16 +3282,8 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
     heat_rgba = cm(density_norm)
     heat_rgb  = heat_rgba[:, :, :3]
 
-    overlay = img_f.copy()
-    if walkable_mask is not None:
-        paint_mask = walkable_mask.astype(bool)
-    else:
-        # 无 walkable_mask：全图上色
-        paint_mask = np.ones(img_arr.shape[:2], dtype=bool)
-
-    overlay[paint_mask] = (
-        img_f[paint_mask] * (1 - alpha) + heat_rgb[paint_mask] * alpha
-    )
+    # 全图固定 alpha 叠加：0密度区显示最低颜色，结构线通过半透明可见
+    overlay = img_f * (1 - alpha) + heat_rgb * alpha
     return np.clip(overlay, 0, 1), density_smooth
 
 

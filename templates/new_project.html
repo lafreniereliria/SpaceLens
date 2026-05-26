@@ -127,6 +127,22 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
 .file-btn { font-size:12px; padding:5px 12px; border:1px solid var(--border); border-radius:6px; background:transparent; color:var(--text-secondary); cursor:pointer; flex-shrink:0; transition:all 0.15s; }
 .file-btn:hover { border-color:var(--accent); color:var(--accent); }
 .file-row.has-file .file-btn { border-color:var(--accent); color:var(--accent); }
+.restore-banner { display:none; margin-bottom:14px; padding:12px 14px; border:1px solid rgba(var(--accent-rgb),0.28); border-radius:9px; background:rgba(var(--accent-rgb),0.06); color:var(--text-secondary); font-size:12px; line-height:1.5; }
+.restore-banner.visible { display:block; }
+
+/* region name mapping */
+.mapping-box { margin-top:18px; padding:14px; border:1px solid var(--border); border-radius:9px; background:var(--bg-deep); }
+.mapping-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:10px; }
+.mapping-title { font-size:13px; font-weight:600; color:var(--text-primary); }
+.mapping-hint { font-size:11px; color:var(--text-dim); margin-top:2px; }
+.mapping-list { display:flex; flex-direction:column; gap:8px; }
+.mapping-row { display:grid; grid-template-columns:minmax(90px,0.8fr) minmax(140px,1.4fr) 32px; gap:8px; align-items:center; }
+.mapping-row input { min-width:0; padding:9px 10px; border:1px solid var(--border); border-radius:7px; background:var(--bg); color:var(--text-primary); font-size:12px; outline:none; }
+.mapping-row input:focus { border-color:var(--accent); box-shadow:0 0 0 2px rgba(var(--accent-rgb),0.1); }
+.mapping-remove { width:32px; height:32px; border:1px solid var(--border); border-radius:7px; background:transparent; color:var(--text-secondary); cursor:pointer; }
+.mapping-remove:hover { border-color:#ef4444; color:#ef4444; }
+.btn-small { padding:7px 12px; border:1px solid var(--border); border-radius:7px; background:transparent; color:var(--text-secondary); font-size:12px; cursor:pointer; }
+.btn-small:hover { border-color:var(--accent); color:var(--accent); }
 
 /* bottom bar */
 .bottom-bar { position:fixed; bottom:0; left:0; right:0; background:var(--bg-card); border-top:1px solid var(--border); padding:14px 40px; display:flex; justify-content:flex-end; gap:12px; z-index:20; }
@@ -437,6 +453,9 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
 
     <!-- 分别导入 -->
     <div class="upload-mode" id="mode-separate">
+      <div class="restore-banner" id="restore-banner">
+        已从历史项目带回导入文件。未重新选择的文件会继续使用原路径；需要替换时，点击对应行单独选择新文件后再计算。
+      </div>
       <div class="file-list">
         <div class="file-row" id="row-img" onclick="triggerFile('sinput-img')">
           <input type="file" id="sinput-img" accept="image/*" hidden>
@@ -493,6 +512,17 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
           <button class="file-btn">选择</button>
         </div>
       </div>
+    </div>
+
+    <div class="mapping-box">
+      <div class="mapping-head">
+        <div>
+          <div class="mapping-title">空间单元编号对应房间名称</div>
+          <div class="mapping-hint">生成图表时优先显示房间名称；未配置的编号仍显示原始序号。</div>
+        </div>
+        <button class="btn-small" type="button" onclick="addRegionMapRow()">添加对应关系</button>
+      </div>
+      <div class="mapping-list" id="region-map-list"></div>
     </div>
 
   </div><!-- end section-block -->
@@ -621,6 +651,20 @@ var IMG_EXTS = ['.png','.jpg','.jpeg','.bmp','.webp'];
 // 存放已匹配的 File 对象（文件夹模式）
 var folderFiles = { img:null, loc:null, behavior:null, env:null, ques1:null, ques2:null, ques3:null, region:null, bgmask:null };
 var _folderName = '';  // 文件夹名称，用于结果页标题
+var _restoredSourceFiles = {};
+var _restoredProjectId = null;
+var _slotFieldMap = {
+  img:'layout_img', loc:'loc_data', behavior:'behavior_data', env:'env_data',
+  ques1:'ques_data_overall', ques2:'ques_data_region', ques3:'ques_data_design',
+  region:'region_data', bgmask:'background_img'
+};
+var _sourceKeyMap = { img:'img', loc:'loc', behavior:'beh', env:'env', ques1:'ques1', ques2:'ques2', ques3:'ques3', region:'region', bgmask:'bgmask' };
+
+function _esc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
 function matchFiles(fileList){
   var files = Array.from(fileList);
@@ -720,9 +764,88 @@ function triggerFile(inputId){ document.getElementById(inputId).click(); }
     if(this.files[0]){
       document.getElementById('sname-'+key).textContent=this.files[0].name;
       document.getElementById('row-'+key).classList.add('has-file');
+      document.getElementById('row-'+key).dataset.changed='1';
     }
   });
 });
+
+function _displayPathName(path){
+  if(!path) return '';
+  var parts = String(path).split(/[\\/]/);
+  return parts[parts.length - 1] || path;
+}
+
+function _restoreSeparateFiles(sourceFiles){
+  _restoredSourceFiles = sourceFiles || {};
+  var any = false;
+  Object.keys(_slotFieldMap).forEach(function(slot){
+    var srcKey = _sourceKeyMap[slot];
+    var path = _restoredSourceFiles[srcKey];
+    if(!path) return;
+    any = true;
+    var nameEl = document.getElementById('sname-'+slot);
+    var row = document.getElementById('row-'+slot);
+    if(nameEl) nameEl.textContent = '已恢复：' + _displayPathName(path);
+    if(row){
+      row.classList.add('has-file');
+      row.dataset.restored = '1';
+      row.dataset.changed = '0';
+    }
+  });
+  if(any){
+    switchImport('separate');
+    document.getElementById('restore-banner').classList.add('visible');
+  }
+}
+
+function addRegionMapRow(regionId, roomName){
+  var list = document.getElementById('region-map-list');
+  var row = document.createElement('div');
+  row.className = 'mapping-row';
+  row.innerHTML =
+    '<input class="region-map-id" placeholder="区域编号" value="'+_esc(regionId||'')+'">' +
+    '<input class="region-map-name" placeholder="房间名称" value="'+_esc(roomName||'')+'">' +
+    '<button class="mapping-remove" type="button" title="删除">×</button>';
+  row.querySelector('.mapping-remove').addEventListener('click', function(){ row.remove(); });
+  list.appendChild(row);
+}
+
+function collectRegionNameMap(){
+  var out = {};
+  document.querySelectorAll('#region-map-list .mapping-row').forEach(function(row){
+    var id = (row.querySelector('.region-map-id').value || '').trim();
+    var name = (row.querySelector('.region-map-name').value || '').trim();
+    if(id && name) out[id] = name;
+  });
+  return out;
+}
+
+function loadRestoredProjectIfNeeded(){
+  var params = new URLSearchParams(window.location.search);
+  var pid = params.get('project_id') || params.get('pid');
+  if(!pid) return;
+  _restoredProjectId = pid;
+  fetch('/api/projects/'+encodeURIComponent(pid)+'/view')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if(data.error){ return; }
+      if(data.building_type){
+        var card = document.querySelector('.type-card[data-type="'+data.building_type+'"]');
+        if(card) selectType(card);
+      }
+      if(data.project_name){
+        var inp = document.getElementById('project-name-input');
+        inp.value = data.project_name;
+        inp.dataset.userEdited = '1';
+      }
+      _folderName = data.folder_name || '';
+      _restoreSeparateFiles(data.source_files || {});
+      var mapping = data.region_name_map || {};
+      Object.keys(mapping).forEach(function(k){ addRegionMapRow(k, mapping[k]); });
+      if(!Object.keys(mapping).length) addRegionMapRow();
+    })
+    .catch(function(){});
+}
 
 // ── 重复项目检测 ──
 var _dupProject = null;
@@ -891,7 +1014,10 @@ function startCalc(){
     var ques3=document.getElementById('sinput-ques3').files[0];
     var reg=document.getElementById('sinput-region').files[0];
     var bgmask=document.getElementById('sinput-bgmask') ? document.getElementById('sinput-bgmask').files[0] : null;
-    if(!img && !loc && !beh && !env && !ques1 && !ques2 && !ques3){ alert('请至少上传一种数据文件'); return; }
+    var hasRestoredCore = ['img','loc','behavior','env','ques1','ques2','ques3'].some(function(slot){
+      return !!_restoredSourceFiles[_sourceKeyMap[slot]];
+    });
+    if(!img && !loc && !beh && !env && !ques1 && !ques2 && !ques3 && !hasRestoredCore){ alert('请至少上传一种数据文件'); return; }
     if(img)   fd.append('layout_img',           img);
     if(loc)   fd.append('loc_data',             loc);
     if(beh)   fd.append('behavior_data',        beh);
@@ -901,17 +1027,25 @@ function startCalc(){
     if(ques3) fd.append('ques_data_design',     ques3);
     if(reg)   fd.append('region_data',          reg);
     if(bgmask) fd.append('background_img',      bgmask);
-    // 单文件模式只有文件名，无完整路径
-    if(img)   fd.append('layout_img_path',          img.name);
-    if(loc)   fd.append('loc_data_path',            loc.name);
-    if(beh)   fd.append('behavior_data_path',       beh.name);
-    if(env)   fd.append('env_data_path',            env.name);
-    if(ques1) fd.append('ques_data_overall_path',   ques1.name);
-    if(ques2) fd.append('ques_data_region_path',    ques2.name);
-    if(ques3) fd.append('ques_data_design_path',    ques3.name);
-    if(reg)   fd.append('region_data_path',         reg.name);
-    if(bgmask) fd.append('background_img_path',     bgmask.name);
+    // 单文件模式：新选择的文件用文件名；历史恢复且未替换的文件用原路径
+    [
+      ['img', img], ['loc', loc], ['behavior', beh], ['env', env],
+      ['ques1', ques1], ['ques2', ques2], ['ques3', ques3], ['region', reg], ['bgmask', bgmask]
+    ].forEach(function(pair){
+      var slot = pair[0];
+      var file = pair[1];
+      var field = _slotFieldMap[slot];
+      var srcKey = _sourceKeyMap[slot];
+      var pathField = field + '_path';
+      if(file) {
+        fd.append(pathField, file.name);
+      } else if(_restoredSourceFiles[srcKey]) {
+        fd.append(pathField, _restoredSourceFiles[srcKey]);
+      }
+    });
   }
+
+  fd.append('region_name_map', JSON.stringify(collectRegionNameMap()));
 
   // 附加主题
   fd.append('theme', localStorage.getItem('theme')||'light');
@@ -934,6 +1068,12 @@ function startCalc(){
       overlay.classList.remove('active');
       alert('请求失败：'+e.message);
     });
+}
+
+if(new URLSearchParams(window.location.search).get('project_id') || new URLSearchParams(window.location.search).get('pid')){
+  loadRestoredProjectIfNeeded();
+} else {
+  addRegionMapRow();
 }
 </script>
 </body>

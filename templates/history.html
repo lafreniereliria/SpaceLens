@@ -496,6 +496,9 @@ function renderCard(p) {
       '<button class="card-btn" onclick="exportProject('+p.id+')">',
         '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>另存为',
       '</button>',
+      '<button class="card-btn" onclick="editProjectInputs('+p.id+')">',
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>修改数据',
+      '</button>',
       '<button class="card-btn danger" onclick="confirmDelete('+p.id+',\''+_escAttr(p.name)+'\')">',
         '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>删除',
       '</button>',
@@ -685,6 +688,10 @@ function viewProject(pid, sessionId) {
     .catch(function(e){ showToast('操作失败：'+e.message, 'error'); });
 }
 
+function editProjectInputs(pid) {
+  window.location.href = '/new_project?project_id=' + encodeURIComponent(pid);
+}
+
 function _showExpiredOptions(pid, resultFolder) {
   _currentViewPid = pid;
   if(resultFolder) {
@@ -696,14 +703,14 @@ function _showExpiredOptions(pid, resultFolder) {
     )) {
       openFolderDialog(resultFolder);
     } else {
-      window.location.href='/new_project';
+      window.location.href='/new_project?project_id=' + encodeURIComponent(pid);
     }
   } else {
     // 从未保存过结果文件
     if(confirm('该项目的计算结果已过期（程序重启后内存清除）。\n\n点击「确定」手动指定已备份的结果文件夹；\n点击「取消」重新计算。')) {
       openFolderDialog('');
     } else {
-      window.location.href='/new_project';
+      window.location.href='/new_project?project_id=' + encodeURIComponent(pid);
     }
   }
 }

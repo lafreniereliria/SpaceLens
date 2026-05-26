@@ -411,6 +411,7 @@ def heatmap():
         accent_param = request.form.get('accent')
         if accent_param:
             th['accent'] = accent_param
+        region_name_map = _parse_region_name_map(request.form.get('region_name_map', ''))
 
         img = load_img(img_file)
 
@@ -449,8 +450,8 @@ def heatmap():
 
         if 'Region' in df.columns:
             region_cnt = df.groupby('Region').size().reset_index(name='count')
-            _bar_common(ax1, region_cnt['Region'], region_cnt['count'],
-                        color=th['accent'], ylabel='到访人次', th=th)
+            _bar_common(ax1, _region_labels(region_cnt['Region'], region_name_map), region_cnt['count'],
+                        color=th['accent'], xlabel='空间单元', ylabel='到访人次', th=th)
             ax1.set_title('各空间单元到访频次', color=th['text'], fontsize=13)
         else:
             ax1.text(0.5, 0.5, '无区域数据\n(需要 Region 列)',
@@ -498,9 +499,62 @@ def _clone_file(fs: FileStorage):
     return data
 
 
+def _read_source_path(path):
+    """Read a previously selected local source file when the user keeps it during recompute."""
+    if not path:
+        return None
+    try:
+        import os as _os
+        if not _os.path.isabs(path) or not _os.path.isfile(path):
+            return None
+        with open(path, 'rb') as f:
+            return f.read()
+    except Exception:
+        return None
+
+
 def _make_fs(data: bytes, filename: str) -> FileStorage:
     """从 bytes 重建 FileStorage"""
     return FileStorage(stream=BytesIO(data), filename=filename)
+
+
+def _parse_region_name_map(raw):
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+        if not isinstance(data, dict):
+            return {}
+        out = {}
+        for k, v in data.items():
+            key = str(k).strip()
+            val = str(v).strip() if v is not None else ''
+            if key and val:
+                out[key] = val
+        return out
+    except Exception:
+        return {}
+
+
+def _region_key(region_id):
+    try:
+        f = float(region_id)
+        if f.is_integer():
+            return str(int(f))
+    except Exception:
+        pass
+    return str(region_id)
+
+
+def _region_label(region_id, region_name_map=None, prefix='区域 '):
+    key = _region_key(region_id)
+    if region_name_map and key in region_name_map:
+        return region_name_map[key]
+    return f'{prefix}{key}'
+
+
+def _region_labels(region_ids, region_name_map=None, prefix='区域 '):
+    return [_region_label(r, region_name_map, prefix=prefix) for r in region_ids]
 
 
 def _compute_cluster_result(loc_fs, img_fs, k, th, normalize_xy_fn=None, walkable_mask=None):
@@ -616,8 +670,9 @@ def _compute_cluster_result(loc_fs, img_fs, k, th, normalize_xy_fn=None, walkabl
 
 def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
                 env_b, env_n, ques1_b, ques1_n, ques2_b, ques2_n, ques3_b, ques3_n,
-                region_b, region_n, bgmask_b, bgmask_n, th):
+                region_b, region_n, bgmask_b, bgmask_n, th, region_name_map=None):
     """后台线程：逐个计算指标，每算完一个就更新会话缓存"""
+    region_name_map = region_name_map or {}
 
     def mk(b, n):
         return _make_fs(b, n) if b else None
@@ -736,7 +791,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             fig1, ax1 = plt.subplots(figsize=(9, 6)); fig1.patch.set_facecolor(th['fig_bg'])
             _styled_axes(ax1, th)
             rc = df.groupby('Region').size().reset_index(name='count')
-            _bar_common(ax1, rc['Region'], rc['count'], color=th['accent'], ylabel='到访人次', th=th)
+            _bar_common(ax1, _region_labels(rc['Region'], region_name_map), rc['count'], color=th['accent'], xlabel='空间单元', ylabel='到访人次', th=th)
             ax1.set_title('各空间单元到访频次', color=th['text'], fontsize=13)
             plt.tight_layout(pad=2); img2_b64 = fig_to_base64(fig1); plt.close(fig1)
         return {'image': img_b64, 'image2': img2_b64, 'summary': {
@@ -774,7 +829,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
-        _bar_common(ax1,reg_ids,reg_dur,color='#00c9a7',ylabel='时长 (s)',th=th)
+        _bar_common(ax1,_region_labels(reg_ids, region_name_map),reg_dur,color='#00c9a7',xlabel='空间单元',ylabel='时长 (s)',th=th)
         ax1.set_title('各空间单元使用时长',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
         return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'seconds_per_record':USAGE_SECONDS_PER_RECORD,'total_duration_s':round(float(weights.sum()),2),'avg_duration_s':round(float(reg_dur.mean()),2),'max_duration_s':round(float(reg_dur.max()),2),'min_duration_s':round(float(reg_dur.min()),2),'region_count':int(len(reg_ids)),'peak_region':int(reg_ids[np.argmax(reg_dur)])}}
@@ -819,7 +874,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
-        _bar_common(ax1,reg_ids,mean_speed,color='#f5a623',ylabel='速率 (m/s)',th=th,
+        _bar_common(ax1,_region_labels(reg_ids, region_name_map),mean_speed,color='#f5a623',xlabel='空间单元',ylabel='速率 (m/s)',th=th,
                     show_mean=True,color_above='#f5a623',color_below='#00c9a7')
         ax1.set_title('各空间单元平均移动速率',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
@@ -851,7 +906,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
-        _bar_common(ax1,reg_ids,reg_dwell,color=th['accent'],ylabel='时长 (s)',th=th)
+        _bar_common(ax1,_region_labels(reg_ids, region_name_map),reg_dwell,color=th['accent'],xlabel='空间单元',ylabel='时长 (s)',th=th)
         ax1.set_title('各空间单元停留时长',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
         return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'total_dwell_s':round(float(t.sum()),2),'avg_dwell_s':round(float(reg_dwell.mean()),2),'max_dwell_s':round(float(reg_dwell.max()),2),'min_dwell_s':round(float(reg_dwell.min()),2),'peak_region':int(reg_ids[np.argmax(reg_dwell)])}}
@@ -892,7 +947,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
-        _bar_common(ax1,reg_ids,reg_uu,color='#00c9a7',ylabel='独立人员数',th=th)
+        _bar_common(ax1,_region_labels(reg_ids, region_name_map),reg_uu,color='#00c9a7',xlabel='空间单元',ylabel='独立人员数',th=th)
         ax1.set_title('各空间单元独立人员数',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
         return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'unique_users':int(df['UserID'].nunique()),'avg_density':round(float(reg_uu.mean()),2),'max_density':round(float(reg_uu.max()),2),'min_density':round(float(reg_uu.min()),2),'region_count':int(len(reg_ids)),'peak_region':int(reg_ids[np.argmax(reg_uu)])}}
@@ -933,7 +988,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
-        _bar_common(ax1,reg_ids,openness_val,color='#f5a623',ylabel='人/㎡',th=th)
+        _bar_common(ax1,_region_labels(reg_ids, region_name_map),openness_val,color='#f5a623',xlabel='空间单元',ylabel='人/㎡',th=th)
         ax1.axhline(global_open,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'整体 {global_open:.2f}')
         _legend_upper_right(ax1, th)
         ax1.set_title('各空间单元开放程度 (人/㎡)',color=th['text'],fontsize=13)
@@ -967,9 +1022,9 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         fig0,ax0=plt.subplots(figsize=(9,8)); fig0.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax0,th)
         im=ax0.imshow(trans_display,cmap='YlOrRd',aspect='auto',origin='upper')
-        ax0.set_xticks(range(n)); ax0.set_xticklabels(reg_ids,fontsize=8)
-        ax0.set_yticks(range(n)); ax0.set_yticklabels(ytick_labels,fontsize=8)
-        ax0.set_xlabel('目标区域',color=th['subtext'],fontsize=10); ax0.set_ylabel('出发区域',color=th['subtext'],fontsize=10)
+        ax0.set_xticks(range(n)); ax0.set_xticklabels(_region_labels(reg_ids, region_name_map, prefix=''),fontsize=8,rotation=30,ha='right')
+        ax0.set_yticks(range(n)); ax0.set_yticklabels(_region_labels(ytick_labels, region_name_map, prefix=''),fontsize=8)
+        ax0.set_xlabel('目标空间单元',color=th['subtext'],fontsize=10); ax0.set_ylabel('出发空间单元',color=th['subtext'],fontsize=10)
         ax0.set_title('区域人员转移矩阵',color=th['text'],fontsize=13,pad=10)
         vmax_val = trans.max() if trans.max()>0 else 1
         # 对角线（left-bottom→right-top）：display 中的"自环"格，di+j==n-1 即真实对角 ri==j
@@ -1003,8 +1058,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         for bar in bars_out:
             h=bar.get_height()
             if h>0: ax1.text(bar.get_x()+bar.get_width()/2,h+h*0.02,str(int(h)),ha='center',va='bottom',color=th['bar_label'],fontsize=7)
-        ax1.set_xticks(xs); ax1.set_xticklabels(reg_ids,fontsize=8)
-        ax1.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax1.set_ylabel('流量',color=th['subtext'],fontsize=10)
+        ax1.set_xticks(xs); ax1.set_xticklabels(_region_labels(reg_ids, region_name_map, prefix=''),fontsize=8,rotation=30,ha='right')
+        ax1.set_xlabel('空间单元',color=th['subtext'],fontsize=10); ax1.set_ylabel('流量',color=th['subtext'],fontsize=10)
         ax1.set_title('各空间单元人员流入/流出量',color=th['text'],fontsize=13)
         _legend_upper_right(ax1, th)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
@@ -1051,9 +1106,11 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
                             transform=ax2.transAxes,color=node_colors[i],
                             ec='white',lw=1.2,zorder=5,clip_on=False)
             ax2.add_patch(circ)
-            ax2.text(nx_pos[i],ny_pos[i]-node_r[i]-0.025,str(reg_ids[i]),
-                     ha='center',va='top',fontsize=8,fontweight='bold',
-                     color=th['text'],transform=ax2.transAxes)
+            label = _region_label(reg_ids[i], region_name_map, prefix='')
+            flow_label = f'{int(total_flow[i])}人'
+            ax2.text(nx_pos[i],ny_pos[i],f'{label}\n{flow_label}',
+                     ha='center',va='center',fontsize=8,fontweight='bold',
+                     color='white',transform=ax2.transAxes,zorder=6,linespacing=1.05)
         ax2.set_xlim(0,1); ax2.set_ylim(0,1)
         plt.tight_layout(pad=2); img3_b64=fig_to_base64(fig2); plt.close(fig2)
 
@@ -1280,8 +1337,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             for bar in bars_c:
                 h=bar.get_height()
                 if h>0: ax1.text(bar.get_x()+bar.get_width()/2,h+h*0.02,str(int(h)),ha='center',va='bottom',color=th['bar_label'],fontsize=7)
-        ax1.set_xticks(xs); ax1.set_xticklabels(uniq_reg,fontsize=8)
-        ax1.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax1.set_ylabel('人次',color=th['subtext'],fontsize=10)
+        ax1.set_xticks(xs); ax1.set_xticklabels(_region_labels(uniq_reg, region_name_map, prefix=''),fontsize=8,rotation=30,ha='right')
+        ax1.set_xlabel('空间单元',color=th['subtext'],fontsize=10); ax1.set_ylabel('人次',color=th['subtext'],fontsize=10)
         ax1.set_title('各空间单元行为发生人次',color=th['text'],fontsize=13)
         _legend_upper_right(ax1, th)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
@@ -1324,8 +1381,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             for bar in bars_d:
                 h=bar.get_height()
                 if h>0: ax1.text(bar.get_x()+bar.get_width()/2,h+h*0.02,f'{h:.0f}',ha='center',va='bottom',color=th['bar_label'],fontsize=7)
-        ax1.set_xticks(xs); ax1.set_xticklabels(uniq_reg,fontsize=8)
-        ax1.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax1.set_ylabel('时长 (s)',color=th['subtext'],fontsize=10)
+        ax1.set_xticks(xs); ax1.set_xticklabels(_region_labels(uniq_reg, region_name_map, prefix=''),fontsize=8,rotation=30,ha='right')
+        ax1.set_xlabel('空间单元',color=th['subtext'],fontsize=10); ax1.set_ylabel('时长 (s)',color=th['subtext'],fontsize=10)
         ax1.set_title('各空间单元行为时长',color=th['text'],fontsize=13)
         _legend_upper_right(ax1, th)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
@@ -1351,12 +1408,12 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax0,th); bottom=np.zeros(len(uniq_reg))
         for j,b in enumerate(uniq_beh):
-            seg_bars=ax0.bar(uniq_reg.astype(str),rate_matrix[:,j],bottom=bottom,color=palette(j),alpha=0.85,label=beh_labels[j])
+            seg_bars=ax0.bar(_region_labels(uniq_reg, region_name_map, prefix=''),rate_matrix[:,j],bottom=bottom,color=palette(j),alpha=0.85,label=beh_labels[j])
             for bi,bar in enumerate(seg_bars):
                 h=rate_matrix[bi,j]
                 if h>0.02: ax0.text(bar.get_x()+bar.get_width()/2,bottom[bi]+h/2,f'{h:.1%}',ha='center',va='center',color='white',fontsize=7,fontweight='bold')
             bottom+=rate_matrix[:,j]
-        ax0.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('发生率',color=th['subtext'],fontsize=10)
+        ax0.set_xlabel('空间单元',color=th['subtext'],fontsize=10); ax0.set_ylabel('发生率',color=th['subtext'],fontsize=10)
         ax0.set_title('各空间单元行为发生率 (堆叠)',color=th['text'],fontsize=13,pad=10)
         _legend_upper_right(ax0, th)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
@@ -1369,8 +1426,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             for bar in bars_r:
                 h=bar.get_height()
                 if h>0.01: ax1.text(bar.get_x()+bar.get_width()/2,h+h*0.04,f'{h:.1%}',ha='center',va='bottom',color=th['bar_label'],fontsize=7)
-        ax1.set_xticks(xs); ax1.set_xticklabels(uniq_reg,fontsize=8)
-        ax1.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax1.set_ylabel('发生率',color=th['subtext'],fontsize=10)
+        ax1.set_xticks(xs); ax1.set_xticklabels(_region_labels(uniq_reg, region_name_map, prefix=''),fontsize=8,rotation=30,ha='right')
+        ax1.set_xlabel('空间单元',color=th['subtext'],fontsize=10); ax1.set_ylabel('发生率',color=th['subtext'],fontsize=10)
         ax1.set_title('各空间单元行为发生率 (分组)',color=th['text'],fontsize=13)
         _legend_upper_right(ax1, th)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
@@ -1399,7 +1456,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             probs=np.array([t[u_mask&(beh_nums==b)].sum()/total_t if total_t>0 else 0 for b in uniq_beh]); user_entropy.append(entropy(probs))
         fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax0,th)
-        _bar_common(ax0,uniq_reg,reg_entropy,color=th['accent'],ylabel='行为熵值 (bits)',th=th)
+        _bar_common(ax0,_region_labels(uniq_reg, region_name_map),reg_entropy,color=th['accent'],xlabel='空间单元',ylabel='行为熵值 (bits)',th=th)
         ax0.set_title('各空间单元行为复合度',color=th['text'],fontsize=13,pad=10)
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
@@ -1448,19 +1505,19 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax0,th); bottom=np.zeros(len(uniq_reg))
         for j,b in enumerate(uniq_beh):
-            seg_bars=ax0.bar(uniq_reg.astype(str),util_share_matrix[:,j],bottom=bottom,color=palette(j),alpha=0.85,label=beh_labels[j])
+            seg_bars=ax0.bar(_region_labels(uniq_reg, region_name_map, prefix=''),util_share_matrix[:,j],bottom=bottom,color=palette(j),alpha=0.85,label=beh_labels[j])
             for bi,bar in enumerate(seg_bars):
                 h=util_share_matrix[bi,j]
                 if h>0.02: ax0.text(bar.get_x()+bar.get_width()/2,bottom[bi]+h/2,f'{h:.1%}',ha='center',va='center',color='white',fontsize=7,fontweight='bold')
             bottom+=util_share_matrix[:,j]
-        ax0.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('占比',color=th['subtext'],fontsize=10)
+        ax0.set_xlabel('空间单元',color=th['subtext'],fontsize=10); ax0.set_ylabel('占比',color=th['subtext'],fontsize=10)
         ax0.set_title('各空间单元功能利用率占比 (堆叠)',color=th['text'],fontsize=13,pad=10)
         _legend_upper_right(ax0, th)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
-        _bar_common(ax1,uniq_reg,total_util,color='#f5a623',ylabel='s/㎡',th=th)
+        _bar_common(ax1,_region_labels(uniq_reg, region_name_map),total_util,color='#f5a623',xlabel='空间单元',ylabel='s/㎡',th=th)
         global_util=dur_matrix.sum()/reg_areas.sum() if reg_areas.sum()>0 else 0
         ax1.axhline(global_util,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'全局均值 {global_util:.2f}')
         _legend_upper_right(ax1, th)
@@ -1507,15 +1564,16 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             try: reg_ids.append(int(str(c).replace('Satisfaction','')))
             except: reg_ids.append(str(c))
         avg_score=float(avg_vals.mean())
+        reg_labels = _region_labels(reg_ids, region_name_map, prefix='')
         fig0=plt.figure(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
         ax0=fig0.add_subplot(111); _styled_axes(ax0,th)
         colors=['#7c5cfc' if v>=avg_score else '#00c9a7' for v in avg_vals]
-        bars_r=ax0.bar([str(r) for r in reg_ids],avg_vals,color=colors,alpha=0.85,width=0.6)
+        bars_r=ax0.bar(reg_labels,avg_vals,color=colors,alpha=0.85,width=0.6)
         for bar in bars_r:
             h=bar.get_height()
             ax0.text(bar.get_x()+bar.get_width()/2,h+1,f'{h:.2f}',ha='center',va='bottom',color=th['bar_label'],fontsize=8)
         ax0.axhline(avg_score,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'均值 {avg_score:.2f}')
-        ax0.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('满意度均值',color=th['subtext'],fontsize=10)
+        ax0.set_xlabel('空间单元',color=th['subtext'],fontsize=10); ax0.set_ylabel('满意度均值',color=th['subtext'],fontsize=10)
         ax0.set_title('各空间单元满意度',color=th['text'],fontsize=13,pad=10)
         _legend_upper_right(ax0, th)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
@@ -1527,7 +1585,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1.plot(theta_r,vals_r,color=th['accent'],linewidth=2); ax1.fill(theta_r,vals_r,color=th['accent'],alpha=0.2)
         for i,(th_i,val) in enumerate(zip(theta,avg_vals)):
             ax1.annotate(f'{val:.2f}',(th_i,val),xytext=(0,6),textcoords='offset points',ha='center',va='bottom',color=th['bar_label'],fontsize=7)
-        ax1.set_xticks(theta); ax1.set_xticklabels([str(r) for r in reg_ids],color=th['subtext'],fontsize=8)
+        ax1.set_xticks(theta); ax1.set_xticklabels(reg_labels,color=th['subtext'],fontsize=8)
         ax1.tick_params(colors=th['cbar_tick']); ax1.set_title('区域满意度雷达',color=th['text'],fontsize=13,pad=15)
         ax1.spines['polar'].set_color('#2d2d3d'); ax1.grid(color=th['grid'],linewidth=0.5)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
@@ -1651,6 +1709,7 @@ def _persist_results_to_disk(sid, sess):
             'theme':         sess.get('theme', 'light'),
             'accent':        sess.get('accent', '#0ea5e9'),
             'source_files':  sess.get('source_files', {}),  # 绝对路径，用于"数据来源"点击打开
+            'region_name_map': sess.get('region_name_map', {}),
         }
         with open(_os.path.join(result_dir, 'meta.json'), 'w', encoding='utf-8') as f:
             _json.dump(meta, f, ensure_ascii=False, indent=2)
@@ -1730,6 +1789,25 @@ def run_all():
         region_path = _best_path(region_path, region_n)
         bgmask_path = _best_path(bgmask_path, bgmask_n)
 
+        def _fill_from_source(data, name, path):
+            if data:
+                return data, name
+            restored = _read_source_path(path)
+            if not restored:
+                return data, name
+            import os as _os_src
+            return restored, name or _os_src.path.basename(path)
+
+        img_b, img_n       = _fill_from_source(img_b, img_n, img_path)
+        loc_b, loc_n       = _fill_from_source(loc_b, loc_n, loc_path)
+        beh_b, beh_n       = _fill_from_source(beh_b, beh_n, beh_path)
+        env_b, env_n       = _fill_from_source(env_b, env_n, env_path)
+        ques1_b, ques1_n   = _fill_from_source(ques1_b, ques1_n, ques1_path)
+        ques2_b, ques2_n   = _fill_from_source(ques2_b, ques2_n, ques2_path)
+        ques3_b, ques3_n   = _fill_from_source(ques3_b, ques3_n, ques3_path)
+        region_b, region_n = _fill_from_source(region_b, region_n, region_path)
+        bgmask_b, bgmask_n = _fill_from_source(bgmask_b, bgmask_n, bgmask_path)
+
         # 从已解析的绝对路径推导文件夹绝对路径
         # 先直接查路径表里是否有文件夹名的记录（文件夹选择时注入的）
         import os as _os_r
@@ -1770,6 +1848,7 @@ def run_all():
         project_name  = request.form.get('project_name',  '')
         theme_name    = request.form.get('theme', 'dark')
         accent_param  = request.form.get('accent', '')
+        region_name_map = _parse_region_name_map(request.form.get('region_name_map', ''))
 
         th = _theme(theme_name)
         if accent_param:
@@ -1808,6 +1887,7 @@ def run_all():
                     'region': region_path or None,
                     'bgmask': bgmask_path or None,
                 },
+                'region_name_map': region_name_map,
                 '_debug_img_b': img_b[:4] if img_b else None,
                 '_debug_loc_b': loc_b[:4] if loc_b else None,
                 '_debug_beh_b': beh_b[:4] if beh_b else None,
@@ -1833,7 +1913,7 @@ def run_all():
             target=_bg_compute,
             args=(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
                   env_b, env_n, ques1_b, ques1_n, ques2_b, ques2_n, ques3_b, ques3_n,
-                  region_b, region_n, bgmask_b, bgmask_n, th),
+                  region_b, region_n, bgmask_b, bgmask_n, th, region_name_map),
             daemon=True,
         )
         t.start()
@@ -1890,6 +1970,7 @@ def get_session(sid):
         'results':       sess.get('results',  {}),
         'status':        sess.get('status', 'running'),
         'source_files':  sess.get('source_files', {}),
+        'region_name_map': sess.get('region_name_map', {}),
         'debug_errors':  {k: v.get('error','') for k, v in sess.get('results', {}).items() if isinstance(v, dict) and v.get('error')},
     })
 
@@ -2857,6 +2938,8 @@ def api_view_project(pid):
                 'computed':      sess.get('computed', []),
                 'skipped':       sess.get('skipped',  []),
                 'results':       sess.get('results',  {}),
+                'source_files':  sess.get('source_files', {}),
+                'region_name_map': sess.get('region_name_map', {}),
                 'status':        'done',
                 'from_db':       False,
             })
@@ -2894,6 +2977,8 @@ def api_view_project(pid):
                     'computed':      restored.get('computed', []),
                     'skipped':       restored.get('skipped',  []),
                     'results':       restored.get('results',  {}),
+                    'source_files':  restored.get('source_files', {}),
+                    'region_name_map': restored.get('region_name_map', {}),
                     'status':        'done',
                     'from_db':       True,
                     'restored_from': disk_folder,
@@ -2908,6 +2993,8 @@ def api_view_project(pid):
             'computed':      proj['computed'],
             'skipped':       proj['skipped'],
             'results':       {},
+            'source_files':  proj.get('source_files') or {},
+            'region_name_map': {},
             'status':        'expired',
             'from_db':       True,
             'result_folder': proj.get('result_folder', ''),
@@ -2979,6 +3066,7 @@ def _restore_session_from_disk(sid, result_folder):
             'accent':        meta.get('accent', '#0ea5e9'),
             'results':       results,
             'source_files':  source_files_meta,  # 恢复绝对路径，供"数据来源"点击打开
+            'region_name_map': meta.get('region_name_map', {}),
         }
     except Exception:
         return None
@@ -3895,6 +3983,7 @@ def duration():
         accent_param = request.form.get('accent')
         if accent_param:
             th['accent'] = accent_param
+        region_name_map = _parse_region_name_map(request.form.get('region_name_map', ''))
         loc_file = request.files.get('loc_data')
         img_file = request.files.get('layout_img')
         if loc_file is None or img_file is None:
@@ -3936,7 +4025,8 @@ def duration():
 
         ax1 = axes[1]
         _styled_axes(ax1, th)
-        _bar_common(ax1, reg_ids, reg_dwell, color=th['accent'], ylabel='时长 (s)')
+        _bar_common(ax1, _region_labels(reg_ids, region_name_map), reg_dwell,
+                    color=th['accent'], xlabel='空间单元', ylabel='时长 (s)', th=th)
         ax1.set_title('各空间单元停留时长', color=th['text'], fontsize=13)
 
         plt.tight_layout(pad=2)
@@ -4131,6 +4221,7 @@ def topology():
         accent_param = request.form.get('accent')
         if accent_param:
             th['accent'] = accent_param
+        region_name_map = _parse_region_name_map(request.form.get('region_name_map', ''))
         loc_file = request.files.get('loc_data')
         img_file = request.files.get('layout_img')
         if loc_file is None:
@@ -4164,10 +4255,10 @@ def topology():
         ax0 = axes[0]
         _styled_axes(ax0, th)
         im = ax0.imshow(trans, cmap='YlOrRd', aspect='auto')
-        ax0.set_xticks(range(n)); ax0.set_xticklabels(reg_ids, fontsize=8)
-        ax0.set_yticks(range(n)); ax0.set_yticklabels(reg_ids, fontsize=8)
-        ax0.set_xlabel('目标区域', color=th['subtext'], fontsize=10)
-        ax0.set_ylabel('出发区域', color=th['subtext'], fontsize=10)
+        ax0.set_xticks(range(n)); ax0.set_xticklabels(_region_labels(reg_ids, region_name_map, prefix=''), fontsize=8, rotation=30, ha='right')
+        ax0.set_yticks(range(n)); ax0.set_yticklabels(_region_labels(reg_ids, region_name_map, prefix=''), fontsize=8)
+        ax0.set_xlabel('目标空间单元', color=th['subtext'], fontsize=10)
+        ax0.set_ylabel('出发空间单元', color=th['subtext'], fontsize=10)
         ax0.set_title('区域人员转移矩阵', color=th['text'], fontsize=13, pad=10)
         cbar = fig.colorbar(im, ax=ax0, fraction=0.04, pad=0.02)
         cbar.ax.tick_params(colors=th['cbar_tick'], labelsize=8)
@@ -4181,8 +4272,8 @@ def topology():
         xs = np.arange(n)
         ax1.bar(xs - bw/2, in_deg, width=bw, color=th['accent'], alpha=0.85, label='入流')
         ax1.bar(xs + bw/2, out_deg, width=bw, color='#00c9a7', alpha=0.85, label='出流')
-        ax1.set_xticks(xs); ax1.set_xticklabels(reg_ids, fontsize=8)
-        ax1.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
+        ax1.set_xticks(xs); ax1.set_xticklabels(_region_labels(reg_ids, region_name_map, prefix=''), fontsize=8, rotation=30, ha='right')
+        ax1.set_xlabel('空间单元', color=th['subtext'], fontsize=10)
         ax1.set_ylabel('流量', color=th['subtext'], fontsize=10)
         ax1.set_title('各空间单元人员流入/流出量', color=th['text'], fontsize=13)
         _legend_upper_right(ax1, th)
@@ -4193,6 +4284,55 @@ def topology():
         img_b64 = fig_to_base64(fig)
         plt.close(fig)
 
+        fig2, ax2 = plt.subplots(figsize=(9, 8))
+        fig2.patch.set_facecolor(th['fig_bg'])
+        ax2.set_facecolor(th['fig_bg'])
+        ax2.set_aspect('equal')
+        ax2.axis('off')
+        ax2.set_title('区域拓扑网络图', color=th['text'], fontsize=13, pad=10)
+        df_tmp = df[df['Region'].astype(int).isin(reg_ids)].copy()
+        cx = np.array([df_tmp[df_tmp['Region'].astype(int) == r]['X'].astype(float).mean() for r in reg_ids])
+        cy = np.array([df_tmp[df_tmp['Region'].astype(int) == r]['Y'].astype(float).mean() for r in reg_ids])
+        def _norm01(arr):
+            lo, hi = arr.min(), arr.max()
+            return (arr - lo) / (hi - lo + 1e-9) * 0.85 + 0.05
+        nx_pos = _norm01(cx)
+        ny_pos = 1.0 - _norm01(cy)
+        max_t = trans.max() if trans.max() > 0 else 1
+        for i in range(n):
+            for j in range(n):
+                if i == j:
+                    continue
+                w = trans[i, j]
+                if w == 0:
+                    continue
+                rad = 0.15 if trans[j, i] > 0 else 0.0
+                ax2.annotate('', xy=(nx_pos[j], ny_pos[j]), xytext=(nx_pos[i], ny_pos[i]),
+                             xycoords='axes fraction', textcoords='axes fraction',
+                             arrowprops=dict(arrowstyle='-|>', color='#4facfe',
+                                             lw=0.5 + 3.5 * (w / max_t),
+                                             alpha=0.25 + 0.65 * (w / max_t),
+                                             connectionstyle=f'arc3,rad={rad}'),
+                             annotation_clip=False)
+        total_flow = in_deg + out_deg
+        max_flow = total_flow.max() if total_flow.max() > 0 else 1
+        node_r = np.clip(0.025 + 0.040 * (total_flow / max_flow), 0.02, 0.07)
+        cmap_n = _get_cmap('plasma')
+        for i in range(n):
+            color = cmap_n(0.2 + 0.7 * (total_flow[i] / max_flow))
+            circ = plt.Circle((nx_pos[i], ny_pos[i]), node_r[i], transform=ax2.transAxes,
+                              color=color, ec='white', lw=1.2, zorder=5, clip_on=False)
+            ax2.add_patch(circ)
+            ax2.text(nx_pos[i], ny_pos[i],
+                     f"{_region_label(reg_ids[i], region_name_map, prefix='')}\n{int(total_flow[i])}人",
+                     ha='center', va='center', fontsize=8, fontweight='bold',
+                     color='white', transform=ax2.transAxes, zorder=6, linespacing=1.05)
+        ax2.set_xlim(0, 1)
+        ax2.set_ylim(0, 1)
+        plt.tight_layout(pad=2)
+        img3_b64 = fig_to_base64(fig2)
+        plt.close(fig2)
+
         # 构建节点数据供前端展示
         nodes = [{'region': int(reg_ids[i]), 'in': int(in_deg[i]), 'out': int(out_deg[i])}
                  for i in range(n)]
@@ -4201,7 +4341,7 @@ def topology():
             'total_transitions': int(trans.sum()),
             'nodes': nodes,
         }
-        return jsonify({'image': img_b64, 'summary': summary})
+        return jsonify({'image': img_b64, 'image2': img3_b64, 'summary': summary})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

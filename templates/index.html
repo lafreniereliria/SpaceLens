@@ -1043,15 +1043,10 @@ function fillPanel(metricId, data) {
       if (data.image3) { img3.src = 'data:image/png;base64,' + data.image3; img3.style.display = 'block'; }
       else { img3.style.display = 'none'; }
     }
-    // 若只有1张图，改为单列（img1 占满整行）；有 image2 则双列
+    // 全部单列显示（每张图独占一行，纵向排列）
     if (grid) {
       grid.style.display = 'grid';
-      var img2El = document.getElementById('chart-img2-' + metricId);
-      if (img2El && data.image2) {
-        grid.style.gridTemplateColumns = '1fr 1fr';
-      } else {
-        grid.style.gridTemplateColumns = '1fr';
-      }
+      grid.style.gridTemplateColumns = '1fr';
     }
     if (ph)  { ph.style.display = 'none'; }
     _enableMetricBtns(metricId, true, !!data.summary);

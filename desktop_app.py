@@ -75,23 +75,16 @@ def _build_cover_html() -> str:
 
   body {
     height: 100vh;
-    display: flex;
+    display: block;
     font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-    background: #f4f7fb;
+    background: #061734 url("__COVER_IMAGE__") center center / contain no-repeat;
     color: #1a2035;
     overflow: hidden;
   }
 
   /* ── 左侧装饰区 ── */
   .cover-left {
-    width: 72%;
-    background: #061734 url("__COVER_IMAGE__") center center / cover no-repeat;
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    padding: 0;
-    overflow: hidden;
+    display: none;
   }
 
   .cover-left::before {
@@ -185,12 +178,21 @@ def _build_cover_html() -> str:
 
   /* ── 右侧操作区 ── */
   .cover-right {
-    width: 28%;
+    width: min(360px, 30vw);
+    min-width: 300px;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    padding: 48px 44px;
+    padding: 48px 34px;
+    background: rgba(248, 250, 252, 0.92);
+    border-left: 1px solid rgba(148, 163, 184, 0.35);
+    box-shadow: -16px 0 44px rgba(2, 8, 23, 0.22);
+    backdrop-filter: blur(10px);
   }
 
   .logo-icon {

@@ -9,6 +9,7 @@ import os
 import threading
 import time
 import socket
+import base64
 
 # --------------------------------------------------------------------------- #
 #  PyInstaller 打包后路径修正
@@ -53,6 +54,16 @@ def _find_free_port() -> int:
 # --------------------------------------------------------------------------- #
 #  封面 HTML（内嵌，不依赖 Flask，可立即显示）
 # --------------------------------------------------------------------------- #
+def _cover_image_data_url() -> str:
+    """Return the cover image as a data URL for the immediate desktop splash."""
+    img_path = os.path.join(_BASE_DIR, "static", "images", "cover-hero.png")
+    try:
+        with open(img_path, "rb") as f:
+            return "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
+    except Exception:
+        return ""
+
+
 def _build_cover_html() -> str:
     """生成封面 HTML 字符串，通过 setHtml() 立即渲染"""
     return r"""<!DOCTYPE html>
@@ -74,45 +85,29 @@ def _build_cover_html() -> str:
 
   /* ── 左侧装饰区 ── */
   .cover-left {
-    width: 55%;
-    background: linear-gradient(135deg, #0a1628 0%, #0e2a52 40%, #0a4a8c 80%, #0ea5e9 100%);
+    width: 72%;
+    background: #061734 url("__COVER_IMAGE__") center center / cover no-repeat;
     position: relative;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    padding: 60px 56px;
+    padding: 0;
     overflow: hidden;
   }
 
   .cover-left::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(circle at 20% 80%, rgba(14,165,233,0.25) 0%, transparent 50%),
-      radial-gradient(circle at 80% 20%, rgba(56,189,248,0.15) 0%, transparent 45%);
+    display: none;
   }
 
   .grid-deco {
-    position: absolute;
-    inset: 0;
-    opacity: 0.08;
-    background-image:
-      linear-gradient(rgba(255,255,255,0.6) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255,255,255,0.6) 1px, transparent 1px);
-    background-size: 60px 60px;
+    display: none;
   }
 
   .hex-deco {
-    position: absolute;
-    bottom: -40px;
-    right: -40px;
-    width: 320px;
-    height: 320px;
-    opacity: 0.06;
+    display: none;
   }
 
-  .cover-left-content { position: relative; z-index: 1; }
+  .cover-left-content { display: none; }
 
   .cover-badge {
     display: inline-flex;
@@ -186,52 +181,31 @@ def _build_cover_html() -> str:
   }
 
   .cover-version {
-    position: absolute;
-    bottom: 28px;
-    left: 56px;
-    font-size: 12px;
-    color: rgba(186,230,255,0.4);
-    z-index: 1;
+    display: none;
   }
 
   /* ── 右侧操作区 ── */
   .cover-right {
-    flex: 1;
+    width: 28%;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    padding: 48px 56px;
+    padding: 48px 44px;
   }
 
   .logo-icon {
-    width: 72px;
-    height: 72px;
-    background: linear-gradient(135deg, #0ea5e9, #0284c7);
-    border-radius: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 8px 24px rgba(14,165,233,0.35);
-    margin-bottom: 24px;
+    display: none;
   }
 
   .logo-icon svg { width: 38px; height: 38px; color: #ffffff; }
 
   .right-title {
-    font-size: 22px;
-    font-weight: 700;
-    color: #0f172a;
-    text-align: center;
-    margin-bottom: 8px;
-    letter-spacing: 1px;
+    display: none;
   }
 
   .right-subtitle {
-    font-size: 13px;
-    color: #64748b;
-    text-align: center;
-    margin-bottom: 40px;
+    display: none;
   }
 
   .btn-primary {
@@ -447,15 +421,6 @@ def _build_cover_html() -> str:
 </div>
 
 <div class="cover-right">
-  <div class="logo-icon">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-      <polygon points="12,2 22,8.5 22,15.5 12,22 2,15.5 2,8.5"/>
-      <circle cx="12" cy="12" r="3"/>
-    </svg>
-  </div>
-  <div class="right-title">建筑空间绩效评价平台</div>
-  <div class="right-subtitle">Building Space Performance Evaluation Platform</div>
-
   <button class="btn-primary" id="btn-start" disabled onclick="startEvaluation()">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
       <polygon points="5,3 19,12 5,21"/>
@@ -597,7 +562,7 @@ function toggleTree(el) {
 }
 </script>
 </body>
-</html>"""
+</html>""".replace("__COVER_IMAGE__", _cover_image_data_url())
 
 
 # --------------------------------------------------------------------------- #

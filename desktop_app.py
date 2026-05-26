@@ -9,8 +9,6 @@ import os
 import threading
 import time
 import socket
-import base64
-from pathlib import Path
 
 # --------------------------------------------------------------------------- #
 #  PyInstaller 打包后路径修正
@@ -56,14 +54,13 @@ def _find_free_port() -> int:
 #  封面 HTML（内嵌，不依赖 Flask，可立即显示）
 # --------------------------------------------------------------------------- #
 def _cover_image_url() -> str:
-    """Return an embedded image URL for the immediate desktop splash cover."""
-    img_path = os.path.join(_BASE_DIR, "static", "images", "cover-hero.png")
-    try:
-        with open(img_path, "rb") as f:
-            encoded = base64.b64encode(f.read()).decode("ascii")
-        return f"data:image/png;base64,{encoded}"
-    except Exception:
-        return ""
+    """Return a resource path resolved against the cover HTML base URL."""
+    return "static/images/cover-hero.png"
+
+
+def _cover_base_url() -> QUrl:
+    """Return a local base URL so the splash can load bundled assets."""
+    return QUrl.fromLocalFile(os.path.join(_BASE_DIR, ""))
 
 
 def _build_cover_html() -> str:
@@ -840,7 +837,7 @@ class MainWindow(QMainWindow):
         # 立即加载封面（不依赖 Flask）
         self.webview.setHtml(
             _build_cover_html(),
-            QUrl("about:blank")   # baseUrl 设 about:blank，封面内所有资源都内嵌
+            _cover_base_url()
         )
 
         # 阶段 → (进度目标%)

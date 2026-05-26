@@ -3251,6 +3251,9 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
     # ── 有 coverage_mask：整个区域都有数据（含0值点），固定 alpha 全量渲染 ──────────
     if coverage_mask is not None:
         fill_mask = coverage_mask.astype(bool)
+        # 同时排除墙体区域（walkable_mask=False），避免墙体被上色
+        if walkable_mask is not None:
+            fill_mask = fill_mask & walkable_mask.astype(bool)
 
         vmax = density_smooth.max()
         if vmax > 0:
@@ -3273,7 +3276,9 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
 
         return np.clip(overlay, 0, 1), density_smooth
 
-    # ── 无 coverage_mask：原有行为，仅 density>0 处做 alpha 叠加 ───────────
+    # ── 无 coverage_mask：用 walkable_mask 限定范围，固定 alpha 全量叠加 ──────
+    # walkable 区域内：0值也完全上色（补最低 colormap 颜色），无透明区域
+    # 墙体/图外区域：不上色，保留底图
     vmax = density_smooth.max()
     if vmax <= 0:
         return img_f, density
@@ -3281,13 +3286,20 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
     pos_vals = density_smooth[density_smooth > 0]
     p99 = float(np.percentile(pos_vals, 99)) if len(pos_vals) else float(vmax)
     density_norm = np.clip(density_smooth / p99, 0, 1)
-    density_soft = np.power(density_norm, 0.45)
 
     heat_rgba = cm(density_norm)
     heat_rgb  = heat_rgba[:, :, :3]
-    heat_alpha = density_soft * alpha
 
-    overlay = img_f * (1 - heat_alpha[:, :, None]) + heat_rgb * heat_alpha[:, :, None]
+    overlay = img_f.copy()
+    if walkable_mask is not None:
+        paint_mask = walkable_mask.astype(bool)
+    else:
+        # 无 walkable_mask：全图上色
+        paint_mask = np.ones(img_arr.shape[:2], dtype=bool)
+
+    overlay[paint_mask] = (
+        img_f[paint_mask] * (1 - alpha) + heat_rgb[paint_mask] * alpha
+    )
     return np.clip(overlay, 0, 1), density_smooth
 
 

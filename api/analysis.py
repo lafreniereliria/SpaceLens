@@ -1151,6 +1151,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         df=load_df(mk(beh_b,beh_n))
         if not {'X','Y','BehaviorNum','Region'}.issubset(df.columns): return None
         df = df.dropna(subset=['X','Y','BehaviorNum','Region'])
+        df = _clean_behavior_df(df, require_t=False)
         if len(df) == 0: return None
         df = _normalize_xy(df)
         img=load_img(mk(img_b,img_n))
@@ -1194,6 +1195,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         df=load_df(mk(beh_b,beh_n))
         if not {'X','Y','BehaviorNum','Region','t'}.issubset(df.columns): return None
         df = df.dropna(subset=['X','Y','BehaviorNum','Region','t'])
+        df = _clean_behavior_df(df, require_t=True)
         if len(df) == 0: return None
         df = _normalize_xy(df)
         img=load_img(mk(img_b,img_n))
@@ -1236,6 +1238,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         df=load_df(mk(beh_b,beh_n))
         if not {'BehaviorNum','Region','t'}.issubset(df.columns): return None
         df = df.dropna(subset=['BehaviorNum','Region','t'])
+        df = _clean_behavior_df(df, require_t=True)
         if len(df) == 0: return None
         beh_nums=df['BehaviorNum'].astype(int).values; regions=df['Region'].astype(int).values; t=df['t'].astype(float).values
         beh_labels_map=df.groupby('BehaviorNum')['behaviortype'].first().to_dict() if 'behaviortype' in df.columns else {b:f'行为{b}' for b in np.unique(beh_nums)}
@@ -1280,6 +1283,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         df=load_df(mk(beh_b,beh_n))
         if not {'BehaviorNum','Region','t'}.issubset(df.columns): return None
         df = df.dropna(subset=['BehaviorNum','Region','t'])
+        df = _clean_behavior_df(df, require_t=True)
         if len(df) == 0: return None
         beh_nums=df['BehaviorNum'].astype(int).values; regions=df['Region'].astype(int).values; t=df['t'].astype(float).values
         uniq_beh=np.sort(np.unique(beh_nums)); uniq_reg=np.sort(np.unique(regions))
@@ -1313,6 +1317,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         df=load_df(mk(beh_b,beh_n))
         if not {'BehaviorNum','Region','t'}.issubset(df.columns): return None
         df = df.dropna(subset=['BehaviorNum','Region','t'])
+        df = _clean_behavior_df(df, require_t=True)
         if len(df) == 0: return None
         beh_nums=df['BehaviorNum'].astype(int).values; regions=df['Region'].astype(int).values; t=df['t'].astype(float).values
         beh_labels_map=df.groupby('BehaviorNum')['behaviortype'].first().to_dict() if 'behaviortype' in df.columns else {b:f'行为{b}' for b in np.unique(beh_nums)}
@@ -1376,7 +1381,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
                    labelcolor=th.get('bar_label', th['text']), fontsize=8)
         plt.tight_layout(pad=2); img_dist_b64=fig_to_base64(fig); plt.close(fig)
         bar_data=[[str(uid),float(s)] for uid,s in zip(user_ids,scores)]
-        return {'image_dist':img_dist_b64,'bar_data':bar_data,'avg_score':round(avg_score,1),'summary':{'total_users':int(len(df)),'avg_score':round(avg_score,1),'max_score':int(scores.max()),'min_score':int(scores.min())}}
+        return {'image':img_dist_b64,'image_dist':img_dist_b64,'bar_data':bar_data,'avg_score':round(avg_score,1),'summary':{'total_users':int(len(df)),'avg_score':round(avg_score,1),'max_score':int(scores.max()),'min_score':int(scores.min())}}
     _run_metric('satisfaction', _satisfaction_fn)
 
     # ── D4 空间区域满意度 ──
@@ -3434,6 +3439,19 @@ def _make_rbf_overlay(img_arr, x, y, values, alpha=0.65, cmap='RdYlBu_r',
     return np.clip(overlay, 0, 1), field, vmin, vmax
 
 
+def _clean_behavior_df(df, require_t=True):
+    """过滤 BehaviorNum / t 列中无法转换为数字的行（如 '/'、'卫生间' 等字符串）。
+    返回清洗后的 DataFrame（原始索引重置）。"""
+    mask = pd.to_numeric(df['BehaviorNum'], errors='coerce').notna()
+    if require_t and 't' in df.columns:
+        mask = mask & pd.to_numeric(df['t'], errors='coerce').notna()
+    df = df[mask].copy()
+    df['BehaviorNum'] = pd.to_numeric(df['BehaviorNum'], errors='coerce').astype(int)
+    if require_t and 't' in df.columns:
+        df['t'] = pd.to_numeric(df['t'], errors='coerce')
+    return df.reset_index(drop=True)
+
+
 def _styled_axes(ax, th=None):
     if th is None:
         th = _theme('dark')
@@ -4267,6 +4285,9 @@ def behavior_count():
         required = {'X', 'Y', 'BehaviorNum', 'Region'}
         if not required.issubset(df.columns):
             return jsonify({'error': f'缺少列: {required - set(df.columns)}'}), 400
+        df = _clean_behavior_df(df, require_t=False)
+        if len(df) == 0:
+            return jsonify({'error': '行为数据中无有效数值行'}), 400
 
         img = load_img(img_file)
         x = df['X'].astype(float).values
@@ -4357,6 +4378,9 @@ def behavior_duration():
         required = {'X', 'Y', 'BehaviorNum', 'Region', 't'}
         if not required.issubset(df.columns):
             return jsonify({'error': f'缺少列: {required - set(df.columns)}'}), 400
+        df = _clean_behavior_df(df, require_t=True)
+        if len(df) == 0:
+            return jsonify({'error': '行为数据中无有效数值行'}), 400
 
         img = load_img(img_file)
         x = df['X'].astype(float).values
@@ -4459,6 +4483,7 @@ def behavior_rate():
         required = {'BehaviorNum', 'Region', 't'}
         if not required.issubset(df.columns):
             return jsonify({'error': f'缺少列: {required - set(df.columns)}'}), 400
+        df = _clean_behavior_df(df, require_t=True)
 
         beh_nums = df['BehaviorNum'].astype(int).values
         regions = df['Region'].astype(int).values
@@ -4550,6 +4575,7 @@ def behavior_entropy():
         required = {'BehaviorNum', 'Region', 't'}
         if not required.issubset(df.columns):
             return jsonify({'error': f'缺少列: {required - set(df.columns)}'}), 400
+        df = _clean_behavior_df(df, require_t=True)
 
         beh_nums = df['BehaviorNum'].astype(int).values
         regions = df['Region'].astype(int).values
@@ -4629,6 +4655,7 @@ def utilization():
         required = {'BehaviorNum', 'Region', 't'}
         if not required.issubset(df.columns):
             return jsonify({'error': f'缺少列: {required - set(df.columns)}'}), 400
+        df = _clean_behavior_df(df, require_t=True)
 
         beh_nums = df['BehaviorNum'].astype(int).values
         regions = df['Region'].astype(int).values

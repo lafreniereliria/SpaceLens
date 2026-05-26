@@ -443,10 +443,10 @@ def _compute_cluster_result(loc_fs, img_fs, k, th, normalize_xy_fn=None, walkabl
     ))
 
     palette = _get_cmap('tab10', k)
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-    fig.patch.set_facecolor(th['fig_bg'])
+    fig0 = plt.figure(figsize=(9, 6))
+    fig0.patch.set_facecolor(th['fig_bg'])
+    ax0 = fig0.add_subplot(111)
 
-    ax0 = axes[0]
     ax0.set_facecolor('white')
     ax0.imshow(img, alpha=0.35)
     ax0.axis('off')
@@ -463,8 +463,13 @@ def _compute_cluster_result(loc_fs, img_fs, k, th, normalize_xy_fn=None, walkabl
     ax0.set_title(f'空间聚类分析 (k={k})', color=th['text'], fontsize=13, pad=10)
     ax0.legend(loc='upper right', fontsize=8, ncol=2,
                facecolor=th['legend_bg'], edgecolor=th['legend_edge'], labelcolor=th['tick'])
+    plt.tight_layout(pad=2)
+    img_b64 = fig_to_base64(fig0)
+    plt.close(fig0)
 
-    ax1 = axes[1]
+    fig1 = plt.figure(figsize=(9, 6))
+    fig1.patch.set_facecolor(th['fig_bg'])
+    ax1 = fig1.add_subplot(111)
     _styled_axes(ax1, th)
     cluster_sizes = [int(np.sum(labels == ci)) for ci in range(k)]
     cluster_labels = [f'簇 {ci+1}' for ci in range(k)]
@@ -480,10 +485,9 @@ def _compute_cluster_result(loc_fs, img_fs, k, th, normalize_xy_fn=None, walkabl
     ax1.set_title('各聚类点位分布', color=th['text'], fontsize=13)
     ax1.yaxis.grid(True, color=th['grid'], linewidth=0.5)
     ax1.set_axisbelow(True)
-
     plt.tight_layout(pad=2)
-    img_b64 = fig_to_base64(fig)
-    plt.close(fig)
+    img2_b64 = fig_to_base64(fig1)
+    plt.close(fig1)
 
     clusters_info = []
     for ci in range(k):
@@ -502,7 +506,7 @@ def _compute_cluster_result(loc_fs, img_fs, k, th, normalize_xy_fn=None, walkabl
         'inertia': round(inertia, 2),
         'clusters': clusters_info,
     }
-    return {'image': img_b64, 'summary': summary}
+    return {'image': img_b64, 'image2': img2_b64, 'summary': summary}
 
 
 # ─────────────────────────────────────────────
@@ -1201,7 +1205,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         for i,r in enumerate(uniq_reg):
             for j,b in enumerate(uniq_beh): dur_matrix[i,j]=t[(regions==r)&(beh_nums==b)].sum()
         palette=_get_cmap('tab10',len(uniq_beh))
-        overlay,beh_grid=_make_heatmap_overlay(img,x,y,weights=t,alpha=0.65,cmap='jet')
+        overlay,beh_grid=_make_heatmap_overlay(img,x,y,weights=t,alpha=0.65,cmap='jet',
+            walkable_mask=_get_walkable(), coverage_mask=_get_coverage_mask() or extract_measurement_mask(img))
         fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
         ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off'); ax0.set_title('行为时长热力图 (s)',color=th['text'],fontsize=13,pad=10)
         sm=plt.cm.ScalarMappable(cmap='jet',norm=mcolors.Normalize(0,float(beh_grid.max()) if float(beh_grid.max()) > 0 else 1.0))
@@ -1288,16 +1293,18 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         for u in uniq_users:
             u_mask=user_ids_col==u; total_t=t[u_mask].sum()
             probs=np.array([t[u_mask&(beh_nums==b)].sum()/total_t if total_t>0 else 0 for b in uniq_beh]); user_entropy.append(entropy(probs))
-        fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
-        ax0=axes[0]; _styled_axes(ax0,th)
+        fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax0,th)
         _bar_common(ax0,uniq_reg,reg_entropy,color=th['accent'],ylabel='行为熵值 (bits)',th=th)
         ax0.set_title('各空间单元行为复合度',color=th['text'],fontsize=13,pad=10)
-        ax1=axes[1]; _styled_axes(ax1,th)
+        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
+        fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax1,th)
         _bar_common(ax1,uniq_users,user_entropy,color='#00c9a7',ylabel='行为熵值 (bits)',th=th)
         _set_sparse_xticks(ax1, uniq_users)
         ax1.set_title('各使用者行为复合度',color=th['text'],fontsize=13)
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-        return {'image':img_b64,'summary':{'region_count':int(len(uniq_reg)),'user_count':int(len(uniq_users)),'avg_reg_entropy':round(float(np.mean(reg_entropy)),2),'max_reg_entropy':round(float(np.max(reg_entropy)),2),'min_reg_entropy':round(float(np.min(reg_entropy)),2),'behavior_types':int(len(uniq_beh))}}
+        plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
+        return {'image':img_b64,'image2':img2_b64,'summary':{'region_count':int(len(uniq_reg)),'user_count':int(len(uniq_users)),'avg_reg_entropy':round(float(np.mean(reg_entropy)),2),'max_reg_entropy':round(float(np.max(reg_entropy)),2),'min_reg_entropy':round(float(np.min(reg_entropy)),2),'behavior_types':int(len(uniq_beh))}}
     _run_metric('behavior_entropy', _beh_entropy)
 
     # ── C5 功能利用率 ──
@@ -1325,23 +1332,25 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             reg_areas=np.ones(len(uniq_reg))
         util_matrix=dur_matrix/reg_areas[:,np.newaxis]
         palette=_get_cmap('tab10',len(uniq_beh))
-        fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
-        ax0=axes[0]; _styled_axes(ax0,th); bottom=np.zeros(len(uniq_reg))
+        fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax0,th); bottom=np.zeros(len(uniq_reg))
         for j,b in enumerate(uniq_beh):
             ax0.bar(uniq_reg.astype(str),util_matrix[:,j],bottom=bottom,color=palette(j),alpha=0.85,label=beh_labels[j]); bottom+=util_matrix[:,j]
         ax0.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('s/㎡',color=th['subtext'],fontsize=10)
         ax0.set_title('各空间单元功能利用率 (堆叠)',color=th['text'],fontsize=13,pad=10)
         ax0.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
-        ax1=axes[1]; _styled_axes(ax1,th)
+        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
+        fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax1,th)
         total_util=util_matrix.sum(axis=1)
         _bar_common(ax1,uniq_reg,total_util,color='#f5a623',ylabel='s/㎡',th=th)
         global_util=dur_matrix.sum()/reg_areas.sum() if reg_areas.sum()>0 else 0
         ax1.axhline(global_util,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'全局均值 {global_util:.2f}')
         ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax1.set_title('各空间单元总功能利用率',color=th['text'],fontsize=13)
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-        return {'image':img_b64,'summary':{'region_count':int(len(uniq_reg)),'behavior_types':int(len(uniq_beh)),'global_util':round(float(global_util),2),'avg_util':round(float(total_util.mean()),2),'max_util':round(float(total_util.max()),2),'min_util':round(float(total_util.min()),2),'behaviors':beh_labels}}
+        plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
+        return {'image':img_b64,'image2':img2_b64,'summary':{'region_count':int(len(uniq_reg)),'behavior_types':int(len(uniq_beh)),'global_util':round(float(global_util),2),'avg_util':round(float(total_util.mean()),2),'max_util':round(float(total_util.max()),2),'min_util':round(float(total_util.min()),2),'behaviors':beh_labels}}
     _run_metric('utilization', _util)
 
     # ── D3 整体满意度 ──
@@ -1383,8 +1392,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             try: reg_ids.append(int(str(c).replace('Satisfaction','')))
             except: reg_ids.append(str(c))
         avg_score=float(avg_vals.mean())
-        fig=plt.figure(figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
-        ax0=fig.add_subplot(121); _styled_axes(ax0,th)
+        fig0=plt.figure(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
+        ax0=fig0.add_subplot(111); _styled_axes(ax0,th)
         colors=['#7c5cfc' if v>=avg_score else '#00c9a7' for v in avg_vals]
         bars_r=ax0.bar([str(r) for r in reg_ids],avg_vals,color=colors,alpha=0.85,width=0.6)
         for bar in bars_r:
@@ -1395,7 +1404,9 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax0.set_title('各空间单元满意度',color=th['text'],fontsize=13,pad=10)
         ax0.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
-        ax1=fig.add_subplot(122,polar=True); ax1.set_facecolor(th['ax_bg2'])
+        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
+        fig1=plt.figure(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
+        ax1=fig1.add_subplot(111,polar=True); ax1.set_facecolor(th['ax_bg2'])
         theta=np.linspace(0,2*np.pi,len(reg_ids),endpoint=False)
         vals_r=np.append(avg_vals,avg_vals[0]); theta_r=np.append(theta,theta[0])
         ax1.plot(theta_r,vals_r,color=th['accent'],linewidth=2); ax1.fill(theta_r,vals_r,color=th['accent'],alpha=0.2)
@@ -1404,8 +1415,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1.set_xticks(theta); ax1.set_xticklabels([str(r) for r in reg_ids],color=th['subtext'],fontsize=8)
         ax1.tick_params(colors=th['cbar_tick']); ax1.set_title('区域满意度雷达',color=th['text'],fontsize=13,pad=15)
         ax1.spines['polar'].set_color('#2d2d3d'); ax1.grid(color=th['grid'],linewidth=0.5)
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-        return {'image':img_b64,'summary':{'region_count':int(len(reg_ids)),'avg_score':round(avg_score,2),'max_score':round(float(np.max(avg_vals)),2),'min_score':round(float(np.min(avg_vals)),2),'best_region':str(reg_ids[int(np.argmax(avg_vals))]),'worst_region':str(reg_ids[int(np.argmin(avg_vals))])}}
+        plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
+        return {'image':img_b64,'image2':img2_b64,'summary':{'region_count':int(len(reg_ids)),'avg_score':round(avg_score,2),'max_score':round(float(np.max(avg_vals)),2),'min_score':round(float(np.min(avg_vals)),2),'best_region':str(reg_ids[int(np.argmax(avg_vals))]),'worst_region':str(reg_ids[int(np.argmin(avg_vals))])}}
     _run_metric('satisfaction_region', _sat_region)
 
     # ── D5 设计要素满意度 ──
@@ -1418,8 +1429,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         avg_vals=df[design_cols].apply(pd.to_numeric, errors='coerce').mean().values
         factor_ids=[str(c).replace('设计要素', '') for c in design_cols]
         avg_score=float(avg_vals.mean())
-        fig=plt.figure(figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
-        ax0=fig.add_subplot(121); _styled_axes(ax0,th)
+        fig0=plt.figure(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
+        ax0=fig0.add_subplot(111); _styled_axes(ax0,th)
         colors=['#7c5cfc' if v>=avg_score else '#00c9a7' for v in avg_vals]
         bars_f=ax0.bar([str(r) for r in factor_ids],avg_vals,color=colors,alpha=0.85,width=0.6)
         for bar in bars_f:
@@ -1430,15 +1441,17 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax0.set_title('各设计要素满意度',color=th['text'],fontsize=13,pad=10)
         ax0.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
-        ax1=fig.add_subplot(122,polar=True); ax1.set_facecolor(th['ax_bg2'])
+        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
+        fig1=plt.figure(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
+        ax1=fig1.add_subplot(111,polar=True); ax1.set_facecolor(th['ax_bg2'])
         theta=np.linspace(0,2*np.pi,len(factor_ids),endpoint=False)
         vals_r=np.append(avg_vals,avg_vals[0]); theta_r=np.append(theta,theta[0])
         ax1.plot(theta_r,vals_r,color=th['accent'],linewidth=2); ax1.fill(theta_r,vals_r,color=th['accent'],alpha=0.2)
         ax1.set_xticks(theta); ax1.set_xticklabels([str(r) for r in factor_ids],color=th['subtext'],fontsize=8)
         ax1.tick_params(colors=th['cbar_tick']); ax1.set_title('设计要素满意度雷达',color=th['text'],fontsize=13,pad=15)
         ax1.spines['polar'].set_color('#2d2d3d'); ax1.grid(color=th['grid'],linewidth=0.5)
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-        return {'image':img_b64,'summary':{'factor_count':int(len(factor_ids)),'avg_score':round(avg_score,2),'max_score':round(float(np.max(avg_vals)),2),'min_score':round(float(np.min(avg_vals)),2),'best_factor':str(factor_ids[int(np.argmax(avg_vals))]),'worst_factor':str(factor_ids[int(np.argmin(avg_vals))])}}
+        plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
+        return {'image':img_b64,'image2':img2_b64,'summary':{'factor_count':int(len(factor_ids)),'avg_score':round(avg_score,2),'max_score':round(float(np.max(avg_vals)),2),'min_score':round(float(np.min(avg_vals)),2),'best_factor':str(factor_ids[int(np.argmax(avg_vals))]),'worst_factor':str(factor_ids[int(np.argmin(avg_vals))])}}
     _run_metric('satisfaction_design', _sat_design)
 
     # ── 全部完成，标记 status + 存入数据库 ──
@@ -3107,11 +3120,10 @@ def cluster():
         if accent_param:
             th['accent'] = accent_param
 
-        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-        fig.patch.set_facecolor(th['fig_bg'])
+        fig0, ax0 = plt.subplots(figsize=(9, 6))
+        fig0.patch.set_facecolor(th['fig_bg'])
 
         # 左：聚类散点叠加图
-        ax0 = axes[0]
         ax0.set_facecolor('white')
         ax0.imshow(img, alpha=0.35)
         ax0.axis('off')
@@ -3133,9 +3145,13 @@ def cluster():
         ax0.set_title(f'空间聚类分析 (k={k})', color=th['text'], fontsize=13, pad=10)
         ax0.legend(loc='upper right', fontsize=8, ncol=2,
                    facecolor=th['legend_bg'], edgecolor=th['legend_edge'], labelcolor=th['tick'])
+        plt.tight_layout(pad=2)
+        img_b64 = fig_to_base64(fig0)
+        plt.close(fig0)
 
         # 右：各簇人数 & 中心坐标
-        ax1 = axes[1]
+        fig1, ax1 = plt.subplots(figsize=(9, 6))
+        fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1, th)
 
         cluster_sizes = [int(np.sum(labels == ci)) for ci in range(k)]
@@ -3156,8 +3172,8 @@ def cluster():
         ax1.set_axisbelow(True)
 
         plt.tight_layout(pad=2)
-        img_b64 = fig_to_base64(fig)
-        plt.close(fig)
+        img2_b64 = fig_to_base64(fig1)
+        plt.close(fig1)
 
         # 簇信息
         clusters_info = []
@@ -3177,7 +3193,7 @@ def cluster():
             'inertia': round(inertia, 1),
             'clusters': clusters_info,
         }
-        return jsonify({'image': img_b64, 'summary': summary})
+        return jsonify({'image': img_b64, 'image2': img2_b64, 'summary': summary})
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -3252,7 +3268,7 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
     cm = _get_cmap(cmap)
     img_f = img_arr / 255.0
 
-    # ── 有 coverage_mask：整个区域都有数据（含0值点），固定 alpha 全量渲染 ──────────
+    # ── 有 coverage_mask：仅在有效区域（fill_mask=True）叠加热力色，黑色区域保留原图 ──
     if coverage_mask is not None:
         fill_mask = coverage_mask.astype(bool)
 
@@ -3267,8 +3283,11 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
             heat_rgba = cm(density_norm)  # (H, W, 4)
             heat_rgb  = heat_rgba[:, :, :3]  # (H, W, 3)
 
-            # 全图固定 alpha 叠加，结构线/墙体通过 alpha 半透明透出
-            overlay = img_f * (1 - alpha) + heat_rgb * alpha
+            # 仅对 fill_mask=True 区域做固定 alpha 叠加，黑色外围保留原图
+            overlay = img_f.copy()
+            overlay[fill_mask] = (
+                img_f[fill_mask] * (1 - alpha) + heat_rgb[fill_mask] * alpha
+            )
         else:
             overlay = img_f.copy()
 
@@ -4463,10 +4482,8 @@ def behavior_rate():
                 rate_matrix[i, j] = beh_t / total_t if total_t > 0 else 0
 
         palette = _get_cmap('tab10', len(uniq_beh))
-        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-        fig.patch.set_facecolor(th['fig_bg'])
-
-        ax0 = axes[0]
+        fig0, ax0 = plt.subplots(figsize=(9, 6))
+        fig0.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax0, th)
         bottom = np.zeros(len(uniq_reg))
         for j, b in enumerate(uniq_beh):
@@ -4479,9 +4496,12 @@ def behavior_rate():
         ax0.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
         ax0.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax0.set_axisbelow(True)
-        fig.patch.set_facecolor(th['fig_bg'])
+        plt.tight_layout(pad=2)
+        img_b64 = fig_to_base64(fig0)
+        plt.close(fig0)
 
-        ax1 = axes[1]
+        fig1, ax1 = plt.subplots(figsize=(9, 6))
+        fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1, th)
         bw = 0.7 / len(uniq_beh)
         xs = np.arange(len(uniq_reg))
@@ -4495,10 +4515,9 @@ def behavior_rate():
         ax1.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
         ax1.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax1.set_axisbelow(True)
-
         plt.tight_layout(pad=2)
-        img_b64 = fig_to_base64(fig)
-        plt.close(fig)
+        img2_b64 = fig_to_base64(fig1)
+        plt.close(fig1)
 
         summary = {
             'total_records': int(len(df)),
@@ -4506,7 +4525,7 @@ def behavior_rate():
             'behaviors': beh_labels,
             'region_count': int(len(uniq_reg)),
         }
-        return jsonify({'image': img_b64, 'summary': summary})
+        return jsonify({'image': img_b64, 'image2': img2_b64, 'summary': summary})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

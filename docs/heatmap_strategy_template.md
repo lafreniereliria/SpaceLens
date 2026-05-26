@@ -16,6 +16,8 @@
 
 ## 一句话原则
 
+到访频次用 `make_visit_frequency_overlay()`：有 `Region` 时按各区域实际记录数生成频次场和统计，峰值就是区域最大到访次数，例如示例数据里的 `839`。
+
 事件密度、停留时长、移动速率、行为时长等“点位 + 可选权重”的图，用 `_make_heatmap_overlay()`。
 
 温度、湿度、光照、风速、噪声等“稀疏测点 + 连续数值场”的图，用 `_make_rbf_overlay()`。
@@ -26,7 +28,7 @@
 
 | 类型 | 典型指标 | 数据形态 | 生成函数 | 颜色建议 |
 | --- | --- | --- | --- | --- |
-| 到访频次 | `heatmap` | `X`, `Y` 事件点 | `_make_heatmap_overlay()` | `plasma` |
+| 到访频次 | `heatmap` | `X`, `Y` + 可选 `Region` | `make_visit_frequency_overlay()` | `plasma` |
 | 使用/停留/行为时长 | `usetime`, `duration`, `behavior_duration` | `X`, `Y` + `t` 权重 | `_make_heatmap_overlay(weights=t)` | `jet` |
 | 移动速率 | `speed` | `X`, `Y` + 区域均速权重 | `_make_heatmap_overlay(weights=weights)` | `jet` |
 | 人员密度/开放程度 | `density`, `openness` | `X`, `Y` 事件点，区域统计另算 | `_make_heatmap_overlay()` | `jet` |
@@ -146,8 +148,7 @@ overlay, density = _make_heatmap_overlay(
     bandwidth=None,        # None 时自动取 max(min(h, w) * 0.025, 8)
     walkable_mask=walkable,
     coverage_mask=coverage,
-    norm_percentile=None,  # 到访频次用原始峰值做色带上限；其他密度图默认 99 分位
-    scale_to_kernel_area=True,  # 到访频次恢复到近似访问次数尺度
+    norm_percentile=99,    # 普通密度图默认 99 分位；到访频次不要用 KDE density 做统计
 )
 ```
 
@@ -161,9 +162,8 @@ overlay, density = _make_heatmap_overlay(
 3. 构建像素级 `density[h, w]`。
 4. 对 `density` 做 `gaussian_filter()`。
 5. 如果有 `walkable_mask`，平滑后乘 mask，压掉墙体区域。
-6. 默认用 99 分位数归一化，减少极端峰值压缩整体颜色；到访频次传 `norm_percentile=None`，用原始最大值生成图例并渲染。
-7. 到访频次额外传 `scale_to_kernel_area=True`，把高斯平滑后的密度乘以 `2πσ²`，恢复到近似访问次数尺度，避免图例只有极小小数。
-8. 输出 RGB overlay 和用于图例/摘要的 density。
+6. 默认用 99 分位数归一化，减少极端峰值压缩整体颜色。
+7. 输出 RGB overlay 和用于图例/摘要的 density。
 
 有 `coverage_mask` 时的叠加策略：
 
@@ -189,15 +189,20 @@ overlay, density = _make_heatmap_overlay(
     img,
     x,
     y,
-    weights=weights,       # 到访频次/人员密度可传 None
+    weights=weights,       # 人员密度可传 None；到访频次不要用 KDE density 做统计
     alpha=0.65,
     cmap='jet',
     walkable_mask=walkable,
     coverage_mask=coverage,
-    norm_percentile=None,
-    scale_to_kernel_area=True,
 )
 ```
+
+到访频次当前规则：
+
+- 有 `Region` 时，实际频次 = 每个 `Region` 的定位记录数。
+- 热力图色标范围使用 `0 -> peak_frequency`，不使用归一化后的 density。
+- 统计结果的 `peak_frequency`、`min_frequency`、`avg_frequency` 来自区域频次统计。
+- 无 `Region` 时，退化为按四舍五入后的像素坐标统计重复点位频次。
 
 使用时长当前规则：
 

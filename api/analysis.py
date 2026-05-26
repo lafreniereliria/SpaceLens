@@ -313,6 +313,99 @@ def summarize_frequency_grid(density: np.ndarray) -> dict:
     }
 
 
+def prepare_visit_frequency_values(df: pd.DataFrame):
+    """生成到访频次热力图使用的实际频次值和统计摘要。
+
+    优先按 Region 统计实际到访记录数；若没有 Region，则退化为按像素坐标统计重复点位。
+    返回：(x, y, frequency_values_per_point, summary_stats)
+    """
+    if 'Region' in df.columns:
+        counts = df.groupby('Region').size()
+        freq_values = df['Region'].map(counts).astype(float).values
+        stat_values = counts.astype(float).values
+        stats_scope = 'region'
+    else:
+        rounded_xy = list(zip(
+            np.round(df['X'].astype(float)).astype(int),
+            np.round(df['Y'].astype(float)).astype(int),
+        ))
+        counts = pd.Series(rounded_xy).value_counts()
+        freq_values = np.array([counts[p] for p in rounded_xy], dtype=float)
+        stat_values = counts.astype(float).values
+        stats_scope = 'point'
+
+    def _fmt(v):
+        v = float(v)
+        return round(v, 2) if not float(v).is_integer() else int(v)
+
+    stats = {
+        'frequency_scope': stats_scope,
+        'peak_frequency': _fmt(np.max(stat_values)) if len(stat_values) else 0,
+        'min_frequency': _fmt(np.min(stat_values)) if len(stat_values) else 0,
+        'avg_frequency': round(float(np.mean(stat_values)), 2) if len(stat_values) else 0,
+    }
+    if 'Region' in df.columns:
+        field_df = df.assign(_freq=freq_values).groupby('Region', as_index=False).agg({
+            'X': 'mean',
+            'Y': 'mean',
+            '_freq': 'first',
+        })
+        return (
+            field_df['X'].astype(float).values,
+            field_df['Y'].astype(float).values,
+            field_df['_freq'].astype(float).values,
+            stats,
+        )
+    return (
+        df['X'].astype(float).values,
+        df['Y'].astype(float).values,
+        freq_values,
+        stats,
+    )
+
+
+def make_visit_frequency_overlay(img, df, walkable_mask=None, coverage_mask=None):
+    """按实际到访频次生成热力图叠加层。
+
+    有 Region 时以各区域实际记录数为频次，并在区域点位中心之间插值；
+    无 Region 时退化为像素点重复次数。
+    """
+    fx, fy, freq_values, freq_stats = prepare_visit_frequency_values(df)
+    peak = float(freq_stats.get('peak_frequency') or 0)
+
+    overlay, field, vmin, vmax = _make_rbf_overlay(
+        img,
+        fx,
+        fy,
+        freq_values,
+        alpha=0.70,
+        cmap='plasma',
+        walkable_mask=walkable_mask,
+        coverage_mask=coverage_mask,
+        kernel='linear',
+        smoothing=max(float(np.nanstd(freq_values)) * 0.03, 1e-6),
+        neighbors=min(len(freq_values), 24) if len(freq_values) >= 3 else None,
+        vmin_override=0,
+        vmax_override=peak if peak > 0 else None,
+    )
+
+    if field is None:
+        overlay, field = _make_heatmap_overlay(
+            img,
+            fx,
+            fy,
+            weights=freq_values,
+            alpha=0.70,
+            cmap='plasma',
+            walkable_mask=walkable_mask,
+            coverage_mask=coverage_mask,
+            norm_percentile=None,
+        )
+        vmin, vmax = 0, peak if peak > 0 else float(np.nanmax(field) if field is not None else 1.0)
+
+    return overlay, field, float(vmin), float(vmax), freq_stats
+
+
 # ─────────────────────────────────────────────
 # 功能 1：到访频次热力图
 # ─────────────────────────────────────────────
@@ -336,8 +429,6 @@ def heatmap():
         if accent_param:
             th['accent'] = accent_param
 
-        x = df['X'].astype(float).values
-        y = df['Y'].astype(float).values
         img = load_img(img_file)
 
         # 提取可行走区域 mask，屏蔽黑色墙体
@@ -350,12 +441,10 @@ def heatmap():
             except Exception:
                 coverage_mask = None
 
-        # KDE 渐变热力图（无栅格），热力不渗入墙体
-        overlay, density = _make_heatmap_overlay(img, x, y, alpha=0.70, cmap='plasma',
-                                                 walkable_mask=walkable,
-                                                 coverage_mask=coverage_mask,
-                                                 norm_percentile=None,
-                                                 scale_to_kernel_area=True)
+        # 按实际到访频次绘制：有 Region 时使用区域总到访次数，而非归一化密度值
+        overlay, freq_field, vmin, vmax, freq_stats = make_visit_frequency_overlay(
+            img, df, walkable_mask=walkable, coverage_mask=coverage_mask
+        )
 
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
@@ -366,13 +455,11 @@ def heatmap():
         ax0.axis('off')
         ax0.set_title('到访频次热力图', color=th['text'], fontsize=13, pad=10)
 
-        freq_stats = summarize_frequency_grid(density)
-        vmax = float(np.nanmax(density)) if density.size and np.isfinite(np.nanmax(density)) else 0.0
-        sm = plt.cm.ScalarMappable(cmap='plasma', norm=mcolors.Normalize(0, vmax if vmax > 0 else 1.0))
+        sm = plt.cm.ScalarMappable(cmap='plasma', norm=mcolors.Normalize(vmin, vmax if vmax > vmin else vmin + 1.0))
         sm.set_array([])
         cbar = fig.colorbar(sm, ax=ax0, fraction=0.03, pad=0.02)
         cbar.ax.tick_params(colors=th['cbar_tick'], labelsize=8)
-        cbar.set_label('到访密度', color=th['subtext'], fontsize=9)
+        cbar.set_label('到访频次', color=th['subtext'], fontsize=9)
 
         ax1 = axes[1]
         _styled_axes(ax1, th)
@@ -648,24 +735,18 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not {'X', 'Y'}.issubset(df.columns):
             return None
         df = _normalize_xy(df)
-        x = df['X'].astype(float).values
-        y = df['Y'].astype(float).values
         img = load_img(mk(img_b, img_n))
         walkable = _get_walkable()
-        overlay, density = _make_heatmap_overlay(img, x, y, alpha=0.70, cmap='plasma',
-                                                  walkable_mask=walkable,
-                                                  coverage_mask=_get_coverage_mask(),
-                                                  norm_percentile=None,
-                                                  scale_to_kernel_area=True)
+        overlay, freq_field, vmin, vmax, freq_stats = make_visit_frequency_overlay(
+            img, df, walkable_mask=walkable, coverage_mask=_get_coverage_mask()
+        )
         fig0, ax0 = plt.subplots(figsize=(9, 6)); fig0.patch.set_facecolor(th['fig_bg'])
         ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('到访频次热力图', color=th['text'], fontsize=13, pad=10)
-        freq_stats = summarize_frequency_grid(density)
-        vmax = float(np.nanmax(density)) if density.size and np.isfinite(np.nanmax(density)) else 0.0
-        sm = plt.cm.ScalarMappable(cmap='plasma', norm=mcolors.Normalize(0, vmax if vmax > 0 else 1.0))
+        sm = plt.cm.ScalarMappable(cmap='plasma', norm=mcolors.Normalize(vmin, vmax if vmax > vmin else vmin + 1.0))
         sm.set_array([]); cbar = fig0.colorbar(sm, ax=ax0, fraction=0.03, pad=0.02)
         cbar.ax.tick_params(colors=th['cbar_tick'], labelsize=8)
-        cbar.set_label('到访密度', color=th['subtext'], fontsize=9)
+        cbar.set_label('到访频次', color=th['subtext'], fontsize=9)
         plt.tight_layout(pad=2); img_b64 = fig_to_base64(fig0); plt.close(fig0)
         img2_b64 = None
         if 'Region' in df.columns:
@@ -3369,7 +3450,7 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
 
 def _make_rbf_overlay(img_arr, x, y, values, alpha=0.65, cmap='RdYlBu_r',
                       walkable_mask=None, coverage_mask=None, kernel='linear', smoothing=None,
-                      neighbors=None, epsilon=None):
+                      neighbors=None, epsilon=None, vmin_override=None, vmax_override=None):
     """使用 RBFInterpolator 对稀疏测点生成连续标量场热力图。
 
     适用于环境温湿度/光照/CO2/PM 等连续测点数据；
@@ -3448,8 +3529,8 @@ def _make_rbf_overlay(img_arr, x, y, values, alpha=0.65, cmap='RdYlBu_r',
     if finite_vals.size == 0:
         return img_arr / 255.0, None, None, None
 
-    vmin = float(np.nanpercentile(finite_vals, 2))
-    vmax = float(np.nanpercentile(finite_vals, 98))
+    vmin = float(vmin_override) if vmin_override is not None else float(np.nanpercentile(finite_vals, 2))
+    vmax = float(vmax_override) if vmax_override is not None else float(np.nanpercentile(finite_vals, 98))
     if not np.isfinite(vmin) or not np.isfinite(vmax) or np.isclose(vmin, vmax):
         vmin = float(np.nanmin(finite_vals))
         vmax = float(np.nanmax(finite_vals))

@@ -16,7 +16,7 @@
 
 ## 一句话原则
 
-到访频次用 `make_visit_frequency_overlay()`：有 `Region` 时按各区域实际记录数生成频次场和统计，峰值就是区域最大到访次数，例如示例数据里的 `839`。
+到访频次用 `make_visit_frequency_overlay()`：有 `Region` 时按各区域实际记录数生成统计，峰值就是区域最大到访次数，例如示例数据里的 `839`；渲染仍使用真实定位点生成局部频次热力图，避免把区域总数压到区域均值点造成虚假热点。
 
 事件密度、停留时长、移动速率、行为时长等“点位 + 可选权重”的图，用 `_make_heatmap_overlay()`。
 
@@ -199,8 +199,8 @@ overlay, density = _make_heatmap_overlay(
 
 到访频次当前规则：
 
-- 有 `Region` 时，实际频次 = 每个 `Region` 的定位记录数。
-- 热力图色标范围使用 `0 -> peak_frequency`，不使用归一化后的 density。
+- 有 `Region` 时，统计实际频次 = 每个 `Region` 的定位记录数。
+- 热力图渲染使用所有真实定位点的局部实际频次，不使用归一化后的 density，也不使用区域 centroid 插值。
 - 统计结果的 `peak_frequency`、`min_frequency`、`avg_frequency` 来自区域频次统计。
 - 无 `Region` 时，退化为按四舍五入后的像素坐标统计重复点位频次。
 

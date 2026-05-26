@@ -367,43 +367,26 @@ def prepare_visit_frequency_values(df: pd.DataFrame):
 def make_visit_frequency_overlay(img, df, walkable_mask=None, coverage_mask=None):
     """按实际到访频次生成热力图叠加层。
 
-    有 Region 时以各区域实际记录数为频次，并在区域点位中心之间插值；
-    无 Region 时退化为像素点重复次数。
+    统计口径优先使用 Region 实际记录数；渲染口径始终使用真实定位点的
+    局部频次，避免把区域总数压到区域均值点后产生虚假热点。
     """
-    fx, fy, freq_values, freq_stats = prepare_visit_frequency_values(df)
-    peak = float(freq_stats.get('peak_frequency') or 0)
-
-    overlay, field, vmin, vmax = _make_rbf_overlay(
+    _, _, _, freq_stats = prepare_visit_frequency_values(df)
+    x = df['X'].astype(float).values
+    y = df['Y'].astype(float).values
+    overlay, field = _make_heatmap_overlay(
         img,
-        fx,
-        fy,
-        freq_values,
+        x,
+        y,
         alpha=0.70,
         cmap='plasma',
         walkable_mask=walkable_mask,
         coverage_mask=coverage_mask,
-        kernel='linear',
-        smoothing=max(float(np.nanstd(freq_values)) * 0.03, 1e-6),
-        neighbors=min(len(freq_values), 24) if len(freq_values) >= 3 else None,
-        vmin_override=0,
-        vmax_override=peak if peak > 0 else None,
+        norm_percentile=None,
+        scale_to_kernel_area=True,
     )
+    vmax = float(np.nanmax(field)) if field is not None and np.isfinite(np.nanmax(field)) else 1.0
 
-    if field is None:
-        overlay, field = _make_heatmap_overlay(
-            img,
-            fx,
-            fy,
-            weights=freq_values,
-            alpha=0.70,
-            cmap='plasma',
-            walkable_mask=walkable_mask,
-            coverage_mask=coverage_mask,
-            norm_percentile=None,
-        )
-        vmin, vmax = 0, peak if peak > 0 else float(np.nanmax(field) if field is not None else 1.0)
-
-    return overlay, field, float(vmin), float(vmax), freq_stats
+    return overlay, field, 0.0, max(vmax, 1.0), freq_stats
 
 
 # ─────────────────────────────────────────────

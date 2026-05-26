@@ -1114,14 +1114,18 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             )
             if interp is None:
                 return {'no_data': True, 'label': label}
-            fig,axes=plt.subplots(1,2,figsize=(14,6)); fig.patch.set_facecolor(th['fig_bg'])
-            ax0=axes[0]; ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
+            # 图1：热力图
+            fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
+            ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
             ax0.scatter(ex, ey, c='white', s=24, zorder=5, edgecolors='#ffcc00', linewidths=0.8)
             ax0.set_title(f'{label} 空间分布',color=th['text'],fontsize=13,pad=10)
             sm=plt.cm.ScalarMappable(cmap='RdYlBu_r',norm=mcolors.Normalize(vmin,vmax))
-            sm.set_array([]); cbar=fig.colorbar(sm,ax=ax0,fraction=0.03,pad=0.02)
+            sm.set_array([]); cbar=fig0.colorbar(sm,ax=ax0,fraction=0.03,pad=0.02)
             cbar.ax.tick_params(colors=th['cbar_tick'],labelsize=8); cbar.set_label(label,color=th['subtext'],fontsize=9)
-            ax1=axes[1]; _styled_axes(ax1,th)
+            plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
+            # 图2：测点散点图
+            fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
+            _styled_axes(ax1,th)
             ax1.scatter(range(len(vals)),vals,color=th['accent'],s=40,alpha=0.85,zorder=3)
             for xi,vi in enumerate(vals):
                 ax1.annotate(f'{vi:.2f}',(xi,vi),xytext=(0,6),textcoords='offset points',ha='center',va='bottom',color=th['bar_label'],fontsize=7)
@@ -1130,8 +1134,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             ax1.set_title(f'各测点{label}值',color=th['text'],fontsize=13)
             ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
             ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
-            plt.tight_layout(pad=2); img_b64=fig_to_base64(fig); plt.close(fig)
-            return {'image':img_b64,'summary':{'param':label,'num_points':int(len(vals)),'mean':round(float(vals.mean()),2),'max':round(float(vals.max()),2),'min':round(float(vals.min()),2)}}
+            plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
+            return {'image':img_b64,'image2':img2_b64,'summary':{'param':label,'num_points':int(len(vals)),'mean':round(float(vals.mean()),2),'max':round(float(vals.max()),2),'min':round(float(vals.min()),2)}}
         return _inner
 
     for pn in range(1, 6):
@@ -3550,9 +3554,11 @@ def usetime():
         reg_durations = np.array([t[regions == r].sum() for r in reg_ids])
 
         # 热力叠加（以 t 为权重）
+        _bg_file = request.files.get('background_img')
+        _coverage = extract_measurement_mask(load_img(_bg_file)) if _bg_file is not None else extract_measurement_mask(img)
         overlay, freq_grid = _make_heatmap_overlay(img, x, y, weights=t, alpha=0.65, cmap='jet',
                                                     walkable_mask=extract_walkable_mask(img),
-                                                    coverage_mask=extract_measurement_mask(load_img(request.files.get('background_img'))) if request.files.get('background_img') is not None else None)
+                                                    coverage_mask=_coverage)
 
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
@@ -3647,9 +3653,11 @@ def speed():
         # 热力叠加（以速率为权重）
         weights = np.array([mean_speed[np.where(reg_ids == r)[0][0]] if r in reg_ids else 0
                             for r in regions_all])
+        _bg_file = request.files.get('background_img')
+        _coverage = extract_measurement_mask(load_img(_bg_file)) if _bg_file is not None else extract_measurement_mask(img)
         overlay, speed_grid = _make_heatmap_overlay(img, x_all, y_all, weights=weights, alpha=0.65, cmap='jet',
                                                      walkable_mask=extract_walkable_mask(img),
-                                                     coverage_mask=extract_measurement_mask(load_img(request.files.get('background_img'))) if request.files.get('background_img') is not None else None)
+                                                     coverage_mask=_coverage)
 
         global_speed = reg_length.sum() / reg_dwell.sum() if reg_dwell.sum() > 0 else 0
 
@@ -3718,9 +3726,11 @@ def duration():
         reg_ids = np.sort(np.unique(regions))
         reg_dwell = np.array([t[regions == r].sum() for r in reg_ids])
 
+        _bg_file = request.files.get('background_img')
+        _coverage = extract_measurement_mask(load_img(_bg_file)) if _bg_file is not None else extract_measurement_mask(img)
         overlay, freq_grid = _make_heatmap_overlay(img, x, y, weights=t, alpha=0.65, cmap='jet',
                                                     walkable_mask=extract_walkable_mask(img),
-                                                    coverage_mask=extract_measurement_mask(load_img(request.files.get('background_img'))) if request.files.get('background_img') is not None else None)
+                                                    coverage_mask=_coverage)
 
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
@@ -3788,9 +3798,11 @@ def density():
         # 每区域独立人员数
         reg_unique_users = np.array([df[df['Region'] == r]['UserID'].nunique() for r in reg_ids])
 
+        _bg_file = request.files.get('background_img')
+        _coverage = extract_measurement_mask(load_img(_bg_file)) if _bg_file is not None else extract_measurement_mask(img)
         overlay, density_grid = _make_heatmap_overlay(img, x, y, alpha=0.65, cmap='jet',
                                                        walkable_mask=extract_walkable_mask(img),
-                                                       coverage_mask=extract_measurement_mask(load_img(request.files.get('background_img'))) if request.files.get('background_img') is not None else None)
+                                                       coverage_mask=_coverage)
 
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
@@ -3877,9 +3889,11 @@ def openness():
 
         global_open = df['UserID'].nunique() / reg_areas.sum() if reg_areas.sum() > 0 else 0
 
+        _bg_file = request.files.get('background_img')
+        _coverage = extract_measurement_mask(load_img(_bg_file)) if _bg_file is not None else extract_measurement_mask(img)
         overlay, open_grid = _make_heatmap_overlay(img, x, y, alpha=0.65, cmap='jet',
                                                     walkable_mask=extract_walkable_mask(img),
-                                                    coverage_mask=extract_measurement_mask(load_img(request.files.get('background_img'))) if request.files.get('background_img') is not None else None)
+                                                    coverage_mask=_coverage)
 
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
@@ -4349,12 +4363,12 @@ def behavior_duration():
         palette = _get_cmap('tab10', len(uniq_beh))
 
         # 热力叠加（以 t 为权重，加入 walkable_mask 和 coverage_mask）
+        _bg_file = request.files.get('background_img')
+        _coverage = extract_measurement_mask(load_img(_bg_file)) if _bg_file is not None else extract_measurement_mask(img)
         overlay, beh_grid = _make_heatmap_overlay(
             img, x, y, weights=t, alpha=0.65, cmap='jet',
             walkable_mask=extract_walkable_mask(img),
-            coverage_mask=extract_measurement_mask(
-                load_img(request.files.get('background_img'))
-            ) if request.files.get('background_img') is not None else None
+            coverage_mask=_coverage
         )
 
         # 图1：行为时长热力图（独立图）
@@ -4546,22 +4560,23 @@ def behavior_entropy():
                               for b in uniq_beh])
             user_entropy.append(entropy(probs))
 
-        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-        fig.patch.set_facecolor(th['fig_bg'])
-
-        ax0 = axes[0]
+        fig0, ax0 = plt.subplots(figsize=(9, 6))
+        fig0.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax0, th)
         _bar_common(ax0, uniq_reg, reg_entropy, color=th['accent'], ylabel='行为熵值 (bits)')
         ax0.set_title('各空间单元行为复合度', color=th['text'], fontsize=13, pad=10)
+        plt.tight_layout(pad=2)
+        img_b64 = fig_to_base64(fig0)
+        plt.close(fig0)
 
-        ax1 = axes[1]
+        fig1, ax1 = plt.subplots(figsize=(9, 6))
+        fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1, th)
         _bar_common(ax1, uniq_users, user_entropy, color='#00c9a7', ylabel='行为熵值 (bits)')
         ax1.set_title('各使用者行为复合度', color=th['text'], fontsize=13)
-
         plt.tight_layout(pad=2)
-        img_b64 = fig_to_base64(fig)
-        plt.close(fig)
+        img2_b64 = fig_to_base64(fig1)
+        plt.close(fig1)
 
         summary = {
             'region_count': int(len(uniq_reg)),
@@ -4569,7 +4584,7 @@ def behavior_entropy():
             'avg_reg_entropy': round(float(np.mean(reg_entropy)), 3),
             'behavior_types': int(len(uniq_beh)),
         }
-        return jsonify({'image': img_b64, 'summary': summary})
+        return jsonify({'image': img_b64, 'image2': img2_b64, 'summary': summary})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -4632,10 +4647,8 @@ def utilization():
         util_matrix = dur_matrix / reg_areas[:, np.newaxis]
 
         palette = _get_cmap('tab10', len(uniq_beh))
-        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-        fig.patch.set_facecolor(th['fig_bg'])
-
-        ax0 = axes[0]
+        fig0, ax0 = plt.subplots(figsize=(9, 6))
+        fig0.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax0, th)
         bottom = np.zeros(len(uniq_reg))
         for j, b in enumerate(uniq_beh):
@@ -4648,9 +4661,13 @@ def utilization():
         ax0.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
         ax0.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax0.set_axisbelow(True)
-        fig.patch.set_facecolor(th['fig_bg'])
+        fig0.patch.set_facecolor(th['fig_bg'])
+        plt.tight_layout(pad=2)
+        img_b64 = fig_to_base64(fig0)
+        plt.close(fig0)
 
-        ax1 = axes[1]
+        fig1, ax1 = plt.subplots(figsize=(9, 6))
+        fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1, th)
         total_util = util_matrix.sum(axis=1)
         _bar_common(ax1, uniq_reg, total_util, color='#f5a623', ylabel='s/㎡')
@@ -4659,10 +4676,9 @@ def utilization():
                     label=f'全局均值 {global_util:.1f}')
         ax1.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
         ax1.set_title('各空间单元总功能利用率', color=th['text'], fontsize=13)
-
         plt.tight_layout(pad=2)
-        img_b64 = fig_to_base64(fig)
-        plt.close(fig)
+        img2_b64 = fig_to_base64(fig1)
+        plt.close(fig1)
 
         summary = {
             'region_count': int(len(uniq_reg)),
@@ -4670,7 +4686,7 @@ def utilization():
             'global_util': round(float(global_util), 2),
             'behaviors': beh_labels,
         }
-        return jsonify({'image': img_b64, 'summary': summary})
+        return jsonify({'image': img_b64, 'image2': img2_b64, 'summary': summary})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -4773,10 +4789,8 @@ def satisfaction_region():
                 reg_ids.append(str(c))
         avg_score = float(avg_vals.mean())
 
-        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-        fig.patch.set_facecolor(th['fig_bg'])
-
-        ax0 = axes[0]
+        fig0, ax0 = plt.subplots(figsize=(9, 6))
+        fig0.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax0, th)
         colors = ['#7c5cfc' if v >= avg_score else '#00c9a7' for v in avg_vals]
         ax0.bar([str(r) for r in reg_ids], avg_vals, color=colors, alpha=0.85, width=0.6)
@@ -4788,9 +4802,13 @@ def satisfaction_region():
         ax0.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
         ax0.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax0.set_axisbelow(True)
-        fig.patch.set_facecolor(th['fig_bg'])
+        plt.tight_layout(pad=2)
+        img_b64 = fig_to_base64(fig0)
+        plt.close(fig0)
 
-        ax1 = fig.add_subplot(122, polar=True)
+        fig1 = plt.figure(figsize=(9, 6))
+        fig1.patch.set_facecolor(th['fig_bg'])
+        ax1 = fig1.add_subplot(111, polar=True)
         ax1.set_facecolor(th['ax_bg2'])
         theta = np.linspace(0, 2 * np.pi, len(reg_ids), endpoint=False)
         vals_r = np.append(avg_vals, avg_vals[0])
@@ -4803,10 +4821,9 @@ def satisfaction_region():
         ax1.set_title('区域满意度雷达', color=th['text'], fontsize=13, pad=15)
         ax1.spines['polar'].set_color('#2d2d3d')
         ax1.grid(color=th['grid'], linewidth=0.5)
-
         plt.tight_layout(pad=2)
-        img_b64 = fig_to_base64(fig)
-        plt.close(fig)
+        img2_b64 = fig_to_base64(fig1)
+        plt.close(fig1)
 
         region_details = [{'region': str(r), 'avg_score': round(float(v), 1)}
                           for r, v in zip(reg_ids, avg_vals)]
@@ -4817,7 +4834,7 @@ def satisfaction_region():
             'worst_region': str(reg_ids[int(np.argmin(avg_vals))]),
             'regions': region_details,
         }
-        return jsonify({'image': img_b64, 'summary': summary})
+        return jsonify({'image': img_b64, 'image2': img2_b64, 'summary': summary})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -4850,10 +4867,8 @@ def satisfaction_design():
         factor_ids = [str(c).replace('设计要素', '') for c in design_cols]
         avg_score = float(avg_vals.mean())
 
-        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-        fig.patch.set_facecolor(th['fig_bg'])
-
-        ax0 = axes[0]
+        fig0, ax0 = plt.subplots(figsize=(9, 6))
+        fig0.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax0, th)
         colors = ['#7c5cfc' if v >= avg_score else '#00c9a7' for v in avg_vals]
         ax0.bar([str(r) for r in factor_ids], avg_vals, color=colors, alpha=0.85, width=0.6)
@@ -4865,9 +4880,13 @@ def satisfaction_design():
         ax0.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
         ax0.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax0.set_axisbelow(True)
-        fig.patch.set_facecolor(th['fig_bg'])
+        plt.tight_layout(pad=2)
+        img_b64 = fig_to_base64(fig0)
+        plt.close(fig0)
 
-        ax1 = fig.add_subplot(122, polar=True)
+        fig1 = plt.figure(figsize=(9, 6))
+        fig1.patch.set_facecolor(th['fig_bg'])
+        ax1 = fig1.add_subplot(111, polar=True)
         ax1.set_facecolor(th['ax_bg2'])
         theta = np.linspace(0, 2 * np.pi, len(factor_ids), endpoint=False)
         vals_r = np.append(avg_vals, avg_vals[0])
@@ -4880,10 +4899,9 @@ def satisfaction_design():
         ax1.set_title('设计要素满意度雷达', color=th['text'], fontsize=13, pad=15)
         ax1.spines['polar'].set_color('#2d2d3d')
         ax1.grid(color=th['grid'], linewidth=0.5)
-
         plt.tight_layout(pad=2)
-        img_b64 = fig_to_base64(fig)
-        plt.close(fig)
+        img2_b64 = fig_to_base64(fig1)
+        plt.close(fig1)
 
         factor_details = [{'factor': str(r), 'avg_score': round(float(v), 1)}
                           for r, v in zip(factor_ids, avg_vals)]
@@ -4894,6 +4912,6 @@ def satisfaction_design():
             'worst_factor': str(factor_ids[int(np.argmin(avg_vals))]),
             'factors': factor_details,
         }
-        return jsonify({'image': img_b64, 'summary': summary})
+        return jsonify({'image': img_b64, 'image2': img2_b64, 'summary': summary})
     except Exception as e:
         return jsonify({'error': str(e)}), 500

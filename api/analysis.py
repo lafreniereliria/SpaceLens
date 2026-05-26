@@ -112,6 +112,7 @@ from PIL import Image
 analysis_bp = Blueprint('analysis', __name__)
 
 SCALE = 18.06  # px / meter
+USAGE_SECONDS_PER_RECORD = 10  # 使用时长：每条定位记录代表该人员在该坐标停留 10 秒
 
 
 # ─────────────────────────────────────────────
@@ -283,6 +284,35 @@ def filter_points_in_mask(x: np.ndarray, y: np.ndarray,
     return x[valid], y[valid]
 
 
+def summarize_frequency_grid(density: np.ndarray) -> dict:
+    """基于热力图原始平滑密度值生成到访频次摘要。"""
+    peak = float(np.nanmax(density)) if density.size else 0.0
+    if not np.isfinite(peak) or peak <= 0:
+        return {
+            'peak_frequency': 0,
+            'min_frequency': 0,
+            'avg_frequency': 0,
+            'covered_area_pct': 0,
+        }
+
+    active = density[np.isfinite(density) & (density > peak * 0.05)]
+    if active.size == 0:
+        active = density[np.isfinite(density) & (density > 0)]
+    if active.size == 0:
+        active = np.array([0.0])
+
+    def _fmt(v):
+        v = float(v)
+        return round(v, 2) if v < 10 else int(round(v))
+
+    return {
+        'peak_frequency': _fmt(peak),
+        'min_frequency': _fmt(float(np.nanmin(active))),
+        'avg_frequency': _fmt(float(np.nanmean(active))),
+        'covered_area_pct': round(float(active.size) / float(density.size) * 100, 1),
+    }
+
+
 # ─────────────────────────────────────────────
 # 功能 1：到访频次热力图
 # ─────────────────────────────────────────────
@@ -323,7 +353,9 @@ def heatmap():
         # KDE 渐变热力图（无栅格），热力不渗入墙体
         overlay, density = _make_heatmap_overlay(img, x, y, alpha=0.70, cmap='plasma',
                                                  walkable_mask=walkable,
-                                                 coverage_mask=coverage_mask)
+                                                 coverage_mask=coverage_mask,
+                                                 norm_percentile=None,
+                                                 scale_to_kernel_area=True)
 
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
@@ -334,7 +366,9 @@ def heatmap():
         ax0.axis('off')
         ax0.set_title('到访频次热力图', color=th['text'], fontsize=13, pad=10)
 
-        sm = plt.cm.ScalarMappable(cmap='plasma', norm=mcolors.Normalize(0, 1))
+        freq_stats = summarize_frequency_grid(density)
+        vmax = float(np.nanmax(density)) if density.size and np.isfinite(np.nanmax(density)) else 0.0
+        sm = plt.cm.ScalarMappable(cmap='plasma', norm=mcolors.Normalize(0, vmax if vmax > 0 else 1.0))
         sm.set_array([])
         cbar = fig.colorbar(sm, ax=ax0, fraction=0.03, pad=0.02)
         cbar.ax.tick_params(colors=th['cbar_tick'], labelsize=8)
@@ -357,13 +391,10 @@ def heatmap():
         img_b64 = fig_to_base64(fig)
         plt.close(fig)
 
-        n_nonzero = int((density > density.max() * 0.05).sum())
-        peak_raw = float(density.max())
         summary = {
             'total_records': int(len(df)),
             'unique_users': int(df['UserID'].nunique()) if 'UserID' in df.columns else '-',
-            'peak_frequency': round(peak_raw, 2) if peak_raw < 10 else int(round(peak_raw)),
-            'covered_area_pct': round(n_nonzero / density.size * 100, 1),
+            **freq_stats,
         }
         return jsonify({'image': img_b64, 'summary': summary})
 
@@ -623,11 +654,15 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         walkable = _get_walkable()
         overlay, density = _make_heatmap_overlay(img, x, y, alpha=0.70, cmap='plasma',
                                                   walkable_mask=walkable,
-                                                  coverage_mask=_get_coverage_mask())
+                                                  coverage_mask=_get_coverage_mask(),
+                                                  norm_percentile=None,
+                                                  scale_to_kernel_area=True)
         fig0, ax0 = plt.subplots(figsize=(9, 6)); fig0.patch.set_facecolor(th['fig_bg'])
         ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('到访频次热力图', color=th['text'], fontsize=13, pad=10)
-        sm = plt.cm.ScalarMappable(cmap='plasma', norm=mcolors.Normalize(0, 1))
+        freq_stats = summarize_frequency_grid(density)
+        vmax = float(np.nanmax(density)) if density.size and np.isfinite(np.nanmax(density)) else 0.0
+        sm = plt.cm.ScalarMappable(cmap='plasma', norm=mcolors.Normalize(0, vmax if vmax > 0 else 1.0))
         sm.set_array([]); cbar = fig0.colorbar(sm, ax=ax0, fraction=0.03, pad=0.02)
         cbar.ax.tick_params(colors=th['cbar_tick'], labelsize=8)
         cbar.set_label('到访密度', color=th['subtext'], fontsize=9)
@@ -640,12 +675,10 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             _bar_common(ax1, rc['Region'], rc['count'], color=th['accent'], ylabel='到访人次', th=th)
             ax1.set_title('各空间单元到访频次', color=th['text'], fontsize=13)
             plt.tight_layout(pad=2); img2_b64 = fig_to_base64(fig1); plt.close(fig1)
-        n_nz = int((density > density.max() * 0.05).sum())
         return {'image': img_b64, 'image2': img2_b64, 'summary': {
             'total_records': int(len(df)),
             'unique_users': int(df['UserID'].nunique()) if 'UserID' in df.columns else '-',
-            'peak_frequency': round(float(density.max()), 2),
-            'covered_area_pct': round(n_nz / density.size * 100, 1),
+            **freq_stats,
         }}
     _run_metric('heatmap', _heatmap)
 
@@ -653,16 +686,17 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
     def _usetime():
         if not loc_b or not img_b: return None
         df = load_df(mk(loc_b, loc_n))
-        if not {'X','Y','Region','t'}.issubset(df.columns): return None
-        df = df.dropna(subset=['X','Y','Region','t'])
+        if not {'X','Y','Region'}.issubset(df.columns): return None
+        df = df.dropna(subset=['X','Y','Region'])
         if len(df) == 0: return None
         df = _normalize_xy(df)
         x=df['X'].astype(float).values; y=df['Y'].astype(float).values
-        t=df['t'].astype(float).values; regions=df['Region'].astype(int).values
+        weights=np.full(len(df), USAGE_SECONDS_PER_RECORD, dtype=float)
+        regions=df['Region'].astype(int).values
         img=load_img(mk(img_b, img_n))
         reg_ids=np.sort(np.unique(regions))
-        reg_dur=np.array([t[regions==r].sum() for r in reg_ids])
-        overlay,fg=_make_heatmap_overlay(img,x,y,weights=t,alpha=0.65,cmap='jet',
+        reg_dur=np.array([weights[regions==r].sum() for r in reg_ids])
+        overlay,fg=_make_heatmap_overlay(img,x,y,weights=weights,alpha=0.65,cmap='jet',
                                           walkable_mask=_get_walkable(),
                                           coverage_mask=_get_coverage_mask())
         fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
@@ -678,7 +712,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         _bar_common(ax1,reg_ids,reg_dur,color='#00c9a7',ylabel='时长 (s)',th=th)
         ax1.set_title('各空间单元使用时长',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'total_duration_s':round(float(t.sum()),2),'avg_duration_s':round(float(reg_dur.mean()),2),'max_duration_s':round(float(reg_dur.max()),2),'min_duration_s':round(float(reg_dur.min()),2),'region_count':int(len(reg_ids)),'peak_region':int(reg_ids[np.argmax(reg_dur)])}}
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'seconds_per_record':USAGE_SECONDS_PER_RECORD,'total_duration_s':round(float(weights.sum()),2),'avg_duration_s':round(float(reg_dur.mean()),2),'max_duration_s':round(float(reg_dur.max()),2),'min_duration_s':round(float(reg_dur.min()),2),'region_count':int(len(reg_ids)),'peak_region':int(reg_ids[np.argmax(reg_dur)])}}
     _run_metric('usetime', _usetime)
 
     # ── A3 移动速率 ──
@@ -3210,7 +3244,8 @@ def cluster():
 # ─────────────────────────────────────────────
 
 def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
-                          bandwidth=None, theme='dark', walkable_mask=None, coverage_mask=None):
+                          bandwidth=None, theme='dark', walkable_mask=None, coverage_mask=None,
+                          norm_percentile=99, scale_to_kernel_area=False):
     """KDE 像素级高斯密度热力图叠加，返回 (overlay RGB float[0,1], density_2d)
 
     walkable_mask : bool 数组 (H,W)，False = 平面图自动识别的墙体，
@@ -3219,6 +3254,10 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
                    提供后采用"填充0值点"策略：
                    在 coverage_mask=True 区域均匀撒0值点，确保整个区域都有数据，
                    高斯平滑后实现完整热力场，无明显边界。
+    norm_percentile : 默认用正值区 99 分位数压制极端峰值；传 None 时用原始最大值，
+                   适合到访频次这类需要图例和渲染都对应原始数值的图。
+    scale_to_kernel_area : 将高斯平滑后的密度乘以 2πσ²，恢复到近似原始计数/权重尺度。
+                   到访频次使用 True，避免图例出现很小的小数密度值。
     未提供 coverage_mask 时：仅 density>0 处做 alpha 叠加（原有行为）。
     """
     h, w = img_arr.shape[:2]
@@ -3271,6 +3310,10 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
     if walkable_mask is not None:
         density_smooth = density_smooth * walkable_mask.astype(float)
 
+    density_render = density_smooth
+    if scale_to_kernel_area:
+        density_render = density_smooth * (2 * np.pi * (float(bandwidth) ** 2))
+
     cm = _get_cmap(cmap)
     img_f = img_arr / 255.0
 
@@ -3278,13 +3321,17 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
     if coverage_mask is not None:
         fill_mask = coverage_mask.astype(bool)
 
-        vmax = density_smooth.max()
+        vmax = density_render.max()
         if vmax > 0:
-            pos_vals = density_smooth[fill_mask & (density_smooth > 0)]
+            pos_vals = density_render[fill_mask & (density_render > 0)]
             if len(pos_vals) == 0:
-                pos_vals = density_smooth[density_smooth > 0]
-            p99 = float(np.percentile(pos_vals, 99)) if len(pos_vals) else float(vmax)
-            density_norm = np.clip(density_smooth / p99, 0, 1)
+                pos_vals = density_render[density_render > 0]
+            norm_max = float(vmax) if norm_percentile is None else (
+                float(np.percentile(pos_vals, norm_percentile)) if len(pos_vals) else float(vmax)
+            )
+            if norm_max <= 0 or not np.isfinite(norm_max):
+                norm_max = float(vmax)
+            density_norm = np.clip(density_render / norm_max, 0, 1)
 
             heat_rgba = cm(density_norm)  # (H, W, 4)
             heat_rgb  = heat_rgba[:, :, :3]  # (H, W, 3)
@@ -3297,23 +3344,27 @@ def _make_heatmap_overlay(img_arr, x, y, weights=None, alpha=0.70, cmap='jet',
         else:
             overlay = img_f.copy()
 
-        return np.clip(overlay, 0, 1), density_smooth
+        return np.clip(overlay, 0, 1), density_render
 
     # ── 无 coverage_mask：全图固定 alpha 叠加，0值区显示最低颜色，结构线透过来 ──
-    vmax = density_smooth.max()
+    vmax = density_render.max()
     if vmax <= 0:
         return img_f, density
 
-    pos_vals = density_smooth[density_smooth > 0]
-    p99 = float(np.percentile(pos_vals, 99)) if len(pos_vals) else float(vmax)
-    density_norm = np.clip(density_smooth / p99, 0, 1)
+    pos_vals = density_render[density_render > 0]
+    norm_max = float(vmax) if norm_percentile is None else (
+        float(np.percentile(pos_vals, norm_percentile)) if len(pos_vals) else float(vmax)
+    )
+    if norm_max <= 0 or not np.isfinite(norm_max):
+        norm_max = float(vmax)
+    density_norm = np.clip(density_render / norm_max, 0, 1)
 
     heat_rgba = cm(density_norm)
     heat_rgb  = heat_rgba[:, :, :3]
 
     # 全图固定 alpha 叠加：0密度区显示最低颜色，结构线通过半透明可见
     overlay = img_f * (1 - alpha) + heat_rgb * alpha
-    return np.clip(overlay, 0, 1), density_smooth
+    return np.clip(overlay, 0, 1), density_render
 
 
 def _make_rbf_overlay(img_arr, x, y, values, alpha=0.65, cmap='RdYlBu_r',
@@ -3569,17 +3620,20 @@ def usetime():
             return jsonify({'error': '请上传定位数据和平面图'}), 400
 
         df = load_df(loc_file)
-        required = {'X', 'Y', 'Region', 't'}
+        required = {'X', 'Y', 'Region'}
         if not required.issubset(df.columns):
             return jsonify({'error': f'缺少列: {required - set(df.columns)}'}), 400
 
+        df = df.dropna(subset=['X', 'Y', 'Region'])
+        if len(df) == 0:
+            return jsonify({'error': '没有有效的 X/Y/Region 数据'}), 400
+
         x = df['X'].astype(float).values
         y = df['Y'].astype(float).values
-        t = df['t'].astype(float).values
+        weights = np.full(len(df), USAGE_SECONDS_PER_RECORD, dtype=float)
         regions = df['Region'].astype(int).values
 
         img = load_img(img_file)
-        h_img, w_img = img.shape[:2]
 
         theme_name = request.form.get('theme', 'dark')
         th = _theme(theme_name)
@@ -3589,12 +3643,12 @@ def usetime():
 
         # 按区域累计时长
         reg_ids = np.sort(np.unique(regions))
-        reg_durations = np.array([t[regions == r].sum() for r in reg_ids])
+        reg_durations = np.array([weights[regions == r].sum() for r in reg_ids])
 
-        # 热力叠加（以 t 为权重）
+        # 热力叠加：每条定位记录代表 10 秒停留时长
         _bg_file = request.files.get('background_img')
         _coverage = extract_measurement_mask(load_img(_bg_file)) if _bg_file is not None else extract_measurement_mask(img)
-        overlay, freq_grid = _make_heatmap_overlay(img, x, y, weights=t, alpha=0.65, cmap='jet',
+        overlay, freq_grid = _make_heatmap_overlay(img, x, y, weights=weights, alpha=0.65, cmap='jet',
                                                     walkable_mask=extract_walkable_mask(img),
                                                     coverage_mask=_coverage)
 
@@ -3624,7 +3678,11 @@ def usetime():
 
         summary = {
             'total_records': int(len(df)),
-            'total_duration_s': int(t.sum()),
+            'seconds_per_record': USAGE_SECONDS_PER_RECORD,
+            'total_duration_s': int(weights.sum()),
+            'avg_duration_s': round(float(reg_durations.mean()), 2),
+            'max_duration_s': round(float(reg_durations.max()), 2),
+            'min_duration_s': round(float(reg_durations.min()), 2),
             'region_count': int(len(reg_ids)),
             'peak_region': int(reg_ids[np.argmax(reg_durations)]),
         }

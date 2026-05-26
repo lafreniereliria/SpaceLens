@@ -146,6 +146,8 @@ overlay, density = _make_heatmap_overlay(
     bandwidth=None,        # None 时自动取 max(min(h, w) * 0.025, 8)
     walkable_mask=walkable,
     coverage_mask=coverage,
+    norm_percentile=None,  # 到访频次用原始峰值做色带上限；其他密度图默认 99 分位
+    scale_to_kernel_area=True,  # 到访频次恢复到近似访问次数尺度
 )
 ```
 
@@ -159,8 +161,9 @@ overlay, density = _make_heatmap_overlay(
 3. 构建像素级 `density[h, w]`。
 4. 对 `density` 做 `gaussian_filter()`。
 5. 如果有 `walkable_mask`，平滑后乘 mask，压掉墙体区域。
-6. 用 99 分位数归一化，减少极端峰值压缩整体颜色。
-7. 输出 RGB overlay 和平滑后的 density。
+6. 默认用 99 分位数归一化，减少极端峰值压缩整体颜色；到访频次传 `norm_percentile=None`，用原始最大值生成图例并渲染。
+7. 到访频次额外传 `scale_to_kernel_area=True`，把高斯平滑后的密度乘以 `2πσ²`，恢复到近似访问次数尺度，避免图例只有极小小数。
+8. 输出 RGB overlay 和用于图例/摘要的 density。
 
 有 `coverage_mask` 时的叠加策略：
 
@@ -191,8 +194,16 @@ overlay, density = _make_heatmap_overlay(
     cmap='jet',
     walkable_mask=walkable,
     coverage_mask=coverage,
+    norm_percentile=None,
+    scale_to_kernel_area=True,
 )
 ```
+
+使用时长当前规则：
+
+- 每条定位记录代表该人员在该坐标停留 `10s`。
+- 区域总使用时长 = 该区域有效定位记录数 `* 10s`。
+- `t` 列不再用于使用时长累计；若要分析真实停留秒数，需要新增专门的时长字段并调整规则。
 
 ## `_make_rbf_overlay()` 策略
 

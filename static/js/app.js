@@ -11,8 +11,10 @@ const VIEWS = {
     dataTypes: ['img', 'loc'],
     stats: [
       { key: 'total_records', label: '总记录数', unit: '条', cls: '' },
-      { key: 'unique_users', label: '唯一用户数', unit: '人', cls: 'teal' },
+      { key: 'unique_users', label: '独立人员数', unit: '人', cls: 'teal' },
       { key: 'peak_frequency', label: '峰值频次', unit: '次', cls: 'accent' },
+      { key: 'avg_frequency', label: '平均频次', unit: '次', cls: '' },
+      { key: 'min_frequency', label: '最小频次', unit: '次', cls: 'amber' },
       { key: 'covered_area_pct', label: '覆盖栅格', unit: '%', cls: 'amber' },
     ]
   },

@@ -9,7 +9,7 @@ import os
 import threading
 import time
 import socket
-import base64
+from pathlib import Path
 
 # --------------------------------------------------------------------------- #
 #  PyInstaller 打包后路径修正
@@ -54,12 +54,11 @@ def _find_free_port() -> int:
 # --------------------------------------------------------------------------- #
 #  封面 HTML（内嵌，不依赖 Flask，可立即显示）
 # --------------------------------------------------------------------------- #
-def _cover_image_data_url() -> str:
-    """Return the cover image as a data URL for the immediate desktop splash."""
+def _cover_image_url() -> str:
+    """Return a local file URL for the immediate desktop splash cover image."""
     img_path = os.path.join(_BASE_DIR, "static", "images", "cover-hero.png")
     try:
-        with open(img_path, "rb") as f:
-            return "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
+        return Path(img_path).resolve().as_uri()
     except Exception:
         return ""
 
@@ -562,7 +561,7 @@ function toggleTree(el) {
 }
 </script>
 </body>
-</html>""".replace("__COVER_IMAGE__", _cover_image_data_url())
+</html>""".replace("__COVER_IMAGE__", _cover_image_url())
 
 
 # --------------------------------------------------------------------------- #

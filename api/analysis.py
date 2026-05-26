@@ -1710,7 +1710,7 @@ def _save_project_to_db(sid, sess):
         from api.db import save_project as _db_save
         floorplan_b64  = _make_thumbnail(sess)
         result_folder  = _persist_results_to_disk(sid, sess)
-        _db_save(
+        project_id = _db_save(
             name          = sess.get('project_name') or sess.get('folder') or '未命名项目',
             building_type = sess.get('type', ''),
             input_folder  = sess.get('folder_abs') or sess.get('folder', ''),  # 优先绝对路径
@@ -1724,6 +1724,7 @@ def _save_project_to_db(sid, sess):
             floor_info    = sess.get('floor_info', '0'),
             collection_date = sess.get('collection_date', ''),
         )
+        sess['project_id'] = project_id
     except Exception:
         pass  # 数据库写失败不影响主流程
 
@@ -2113,6 +2114,7 @@ def get_session(sid):
         'building_type': sess['type'],
         'folder_name':   sess.get('folder', ''),
         'project_name':  sess.get('project_name', ''),
+        'project_id':    sess.get('project_id'),
         'floor_info':    sess.get('floor_info', '0'),
         'collection_date': sess.get('collection_date', ''),
         'computed':      sess.get('computed', []),
@@ -3082,6 +3084,8 @@ def api_view_project(pid):
         # ── 1. session 仍在内存 ──
         with _sess_lock:
             sess = _sessions.get(sid)
+            if sess is not None:
+                sess['project_id'] = pid
 
         if sess is not None and sess.get('status') == 'done':
             return jsonify({
@@ -3089,6 +3093,7 @@ def api_view_project(pid):
                 'building_type': sess.get('type', ''),
                 'folder_name':   sess.get('folder', ''),
                 'project_name':  sess.get('project_name', proj['name']),
+                'project_id':    pid,
                 'floor_info':    sess.get('floor_info', proj.get('floor_info', '0')),
                 'collection_date': sess.get('collection_date', proj.get('collection_date', '')),
                 'computed':      sess.get('computed', []),
@@ -3107,6 +3112,7 @@ def api_view_project(pid):
         if disk_folder:
             restored = _restore_session_from_disk(sid, disk_folder)
             if restored:
+                restored['project_id'] = pid
                 # 写回内存 session
                 with _sess_lock:
                     _sessions[sid] = restored
@@ -3133,6 +3139,7 @@ def api_view_project(pid):
                     'building_type': restored.get('type', ''),
                     'folder_name':   restored.get('folder', ''),
                     'project_name':  restored.get('project_name', proj['name']),
+                    'project_id':    pid,
                     'floor_info':    restored.get('floor_info', proj.get('floor_info', '0')),
                     'collection_date': restored.get('collection_date', proj.get('collection_date', '')),
                     'computed':      restored.get('computed', []),
@@ -3151,6 +3158,7 @@ def api_view_project(pid):
             'building_type': proj['building_type'],
             'folder_name':   proj['input_folder'],
             'project_name':  proj['name'],
+            'project_id':    pid,
             'floor_info':    proj.get('floor_info', '0'),
             'collection_date': proj.get('collection_date', ''),
             'computed':      proj['computed'],

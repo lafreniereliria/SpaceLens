@@ -852,6 +852,19 @@ function getSessionId() {
   return m ? m[1] : null;
 }
 
+function updateImportDataLink(sessData) {
+  var btn = document.getElementById('topnav-mgr-btn');
+  if (!btn) return;
+  var projectId = sessData && sessData.project_id;
+  if (projectId !== undefined && projectId !== null && String(projectId) !== '') {
+    btn.href = '/new_project?project_id=' + encodeURIComponent(projectId);
+    btn.title = '查看当前已加载文件，并可替换单个文件后重新计算';
+  } else {
+    btn.href = '/new_project';
+    btn.title = '返回数据导入';
+  }
+}
+
 // ── 构建所有面板（空壳） ──
 function buildPanels() {
   var container = document.getElementById('panels-container');
@@ -1474,6 +1487,7 @@ function startPolling(sid) {
 
         // 缓存最新会话数据（switchEnvParam 需要）
         _sessionData = data;
+        updateImportDataLink(data);
 
         // ── 更新数据来源芯片（只需执行一次，文件名不会变） ──
         if (!_sourceBarsUpdated && data.source_files) {
@@ -1578,6 +1592,7 @@ function stopPolling() {
 // ── 渲染所有已计算指标（兼容旧的一次性加载调用） ──
 function renderSession(sessData) {
   _sessionData = sessData;
+  updateImportDataLink(sessData);
 }
 
 // ── 更新所有面板的数据来源芯片（文件名 + 点击打开） ──

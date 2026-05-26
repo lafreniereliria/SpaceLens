@@ -3891,11 +3891,17 @@ def _make_rbf_overlay(img_arr, x, y, values, alpha=0.65, cmap='RdYlBu_r',
 
 
 def _clean_behavior_df(df, require_t=True):
-    """过滤 BehaviorNum / t 列中无法转换为数字的行（如 '/'、'卫生间' 等字符串）。
+    """过滤行为数据中占位符或非数值行。
+    - BehaviorNum / t 无法转换为数字的行（如 '/'、'卫生间' 等字符串）
+    - behaviortype 等行为名称列为 '/' 的占位行
     返回清洗后的 DataFrame（原始索引重置）。"""
     mask = pd.to_numeric(df['BehaviorNum'], errors='coerce').notna()
     if require_t and 't' in df.columns:
         mask = mask & pd.to_numeric(df['t'], errors='coerce').notna()
+    for col in ('behaviortype', 'BehaviorType', 'Behavior', '行为'):
+        if col in df.columns:
+            labels = df[col].astype(str).str.strip()
+            mask = mask & labels.ne('/') & labels.ne('')
     df = df[mask].copy()
     df['BehaviorNum'] = pd.to_numeric(df['BehaviorNum'], errors='coerce').astype(int)
     if require_t and 't' in df.columns:
@@ -5011,6 +5017,8 @@ def behavior_rate():
         if not required.issubset(df.columns):
             return jsonify({'error': f'缺少列: {required - set(df.columns)}'}), 400
         df = _clean_behavior_df(df, require_t=True)
+        if len(df) == 0:
+            return jsonify({'error': '行为数据中无有效数值行'}), 400
 
         beh_nums = df['BehaviorNum'].astype(int).values
         regions = df['Region'].astype(int).values
@@ -5103,6 +5111,8 @@ def behavior_entropy():
         if not required.issubset(df.columns):
             return jsonify({'error': f'缺少列: {required - set(df.columns)}'}), 400
         df = _clean_behavior_df(df, require_t=True)
+        if len(df) == 0:
+            return jsonify({'error': '行为数据中无有效数值行'}), 400
 
         beh_nums = df['BehaviorNum'].astype(int).values
         regions = df['Region'].astype(int).values
@@ -5183,6 +5193,8 @@ def utilization():
         if not required.issubset(df.columns):
             return jsonify({'error': f'缺少列: {required - set(df.columns)}'}), 400
         df = _clean_behavior_df(df, require_t=True)
+        if len(df) == 0:
+            return jsonify({'error': '行为数据中无有效数值行'}), 400
 
         beh_nums = df['BehaviorNum'].astype(int).values
         regions = df['Region'].astype(int).values

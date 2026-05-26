@@ -1174,25 +1174,33 @@ function _drawSatBarChart(barData) {
   var lineH = 16;
   ctx.textAlign = 'right';
   ctx.font = '10px sans-serif';
+  var legendGap = 8;
+  var legendMarkerW = 14;
+  var avgLabel = '均值 ' + avg.toFixed(2);
+  var hiLabel = '高于均值';
+  var loLabel = '低于均值';
   // 均值线图例
   ctx.save();
   ctx.setLineDash([5, 4]);
   ctx.strokeStyle = C.avgLine;
   ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(LX - 80, LY); ctx.lineTo(LX - 62, LY); ctx.stroke();
+  var avgMarkerX = LX - ctx.measureText(avgLabel).width - legendGap - legendMarkerW;
+  ctx.beginPath(); ctx.moveTo(avgMarkerX, LY); ctx.lineTo(avgMarkerX + legendMarkerW, LY); ctx.stroke();
   ctx.restore();
   ctx.fillStyle = C.text;
-  ctx.fillText('均值 ' + avg.toFixed(2), LX, LY + 4);
+  ctx.fillText(avgLabel, LX, LY + 4);
   // 高于均值色块
   ctx.fillStyle = C.barHi;
-  ctx.fillRect(LX - 80, LY + lineH, 16, 10);
+  var hiMarkerX = LX - ctx.measureText(hiLabel).width - legendGap - legendMarkerW;
+  ctx.fillRect(hiMarkerX, LY + lineH, legendMarkerW, 10);
   ctx.fillStyle = C.text;
-  ctx.fillText('高于均值', LX, LY + lineH + 9);
+  ctx.fillText(hiLabel, LX, LY + lineH + 9);
   // 低于均值色块
   ctx.fillStyle = C.barLo;
-  ctx.fillRect(LX - 80, LY + lineH * 2, 16, 10);
+  var loMarkerX = LX - ctx.measureText(loLabel).width - legendGap - legendMarkerW;
+  ctx.fillRect(loMarkerX, LY + lineH * 2, legendMarkerW, 10);
   ctx.fillStyle = C.text;
-  ctx.fillText('低于均值', LX, LY + lineH * 2 + 9);
+  ctx.fillText(loLabel, LX, LY + lineH * 2 + 9);
 
   // 柱子
   var barW = Math.max(2, Math.min(24, (chartW / n) * 0.7));

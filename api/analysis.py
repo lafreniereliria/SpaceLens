@@ -72,6 +72,11 @@ def _get_cmap(name, n=None):
         cmap = cmap.resampled(n)
     return cmap
 
+def _trajectory_line_width(track_count):
+    """Scale trajectory stroke width down as more user paths are drawn."""
+    n = max(int(track_count or 1), 1)
+    return max(0.65, min(2.2, 4.8 / np.sqrt(n)))
+
 # ─── 主题配色 ───
 def _theme(t='dark'):
     if t == 'light':
@@ -1255,6 +1260,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         img=load_img(mk(img_b,img_n))
         walkable=_get_walkable()
         user_ids=df['UserID'].unique(); palette=_get_cmap('tab20',len(user_ids)); total_lengths={}
+        line_width = _trajectory_line_width(len(user_ids))
         _ih, _iw = img.shape[:2]
         fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
         ax0.set_facecolor('white'); ax0.imshow(img,alpha=0.4); ax0.axis('off')
@@ -1273,14 +1279,9 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
                     x_s=sx(t_new); y_s=sy(t_new)
                 except: x_s,y_s=x_arr,y_arr
             else: x_s,y_s=x_arr,y_arr
-            ax0.plot(x_s,y_s,color=color,lw=1.2,alpha=0.85)
-            ax0.scatter(x_arr[0],y_arr[0],c=[color],s=40,marker='o',zorder=5,edgecolors='white',linewidths=0.5)
-            ax0.scatter(x_arr[-1],y_arr[-1],c=[color],s=40,marker='D',zorder=5,edgecolors='white',linewidths=0.5)
+            ax0.plot(x_s,y_s,color=color,lw=line_width,alpha=0.85)
             dx=np.diff(x_arr); dy=np.diff(y_arr); total_lengths[uid]=float(np.sum(np.sqrt(dx**2+dy**2))/SCALE)
         ax0.set_title('人员移动轨迹',color=th['text'],fontsize=13,pad=10)
-        leg_n=min(12,len(user_ids))
-        handles=[plt.Line2D([0],[0],color=palette(i),lw=2) for i in range(leg_n)]
-        ax0.legend(handles,[f'用户{uid}' for uid in user_ids[:leg_n]],loc='upper right',fontsize=7,ncol=2,facecolor=th['legend_bg'],edgecolor=th['legend_edge'],labelcolor=th['tick'])
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         if not total_lengths:
             return None
@@ -3369,6 +3370,7 @@ def trajectory():
 
         user_ids = df['UserID'].unique()
         palette = _get_cmap('tab20', len(user_ids))
+        line_width = _trajectory_line_width(len(user_ids))
         total_lengths = {}
 
         for idx, uid in enumerate(user_ids):
@@ -3397,27 +3399,13 @@ def trajectory():
             else:
                 x_s, y_s = x_arr, y_arr
 
-            ax0.plot(x_s, y_s, color=color, lw=1.2, alpha=0.85)
-            ax0.scatter(x_arr[0], y_arr[0], c=[color], s=40,
-                        marker='o', zorder=5, edgecolors='white', linewidths=0.5)
-            ax0.scatter(x_arr[-1], y_arr[-1], c=[color], s=40,
-                        marker='D', zorder=5, edgecolors='white', linewidths=0.5)
+            ax0.plot(x_s, y_s, color=color, lw=line_width, alpha=0.85)
 
             # 轨迹长度（米）
             dx = np.diff(x_arr); dy = np.diff(y_arr)
             total_lengths[uid] = float(np.sum(np.sqrt(dx**2 + dy**2)) / SCALE)
 
         ax0.set_title('人员移动轨迹', color=th['text'], fontsize=13, pad=10)
-
-        # 图例（最多显示 12 人）
-        legend_n = min(12, len(user_ids))
-        handles = [plt.Line2D([0], [0], color=palette(i), lw=2)
-                   for i in range(legend_n)]
-        labels_leg = [f'用户{uid}' for uid in user_ids[:legend_n]]
-        ax0.legend(handles, labels_leg, loc='upper right',
-                   fontsize=7, ncol=2,
-                   facecolor=th['legend_bg'], edgecolor=th['legend_edge'],
-                   labelcolor=th['tick'])
 
         # 右：轨迹长度分桶分布（10 桶）
         ax1 = axes[1]

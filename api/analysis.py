@@ -935,7 +935,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         _styled_axes(ax1,th)
         _bar_common(ax1,reg_ids,openness_val,color='#f5a623',ylabel='人/㎡',th=th)
         ax1.axhline(global_open,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'整体 {global_open:.2f}')
-        ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
+        _legend_upper_right(ax1, th)
         ax1.set_title('各空间单元开放程度 (人/㎡)',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
         return {'image':img_b64,'image2':img2_b64,'summary':{'unique_users':int(df['UserID'].nunique()),'global_openness':round(float(global_open),2),'avg_openness':round(float(openness_val.mean()),2),'max_openness':round(float(openness_val.max()),2),'min_openness':round(float(openness_val.min()),2),'peak_region':int(reg_ids[np.argmax(openness_val)]),'region_count':int(len(reg_ids))}}
@@ -1006,7 +1006,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1.set_xticks(xs); ax1.set_xticklabels(reg_ids,fontsize=8)
         ax1.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax1.set_ylabel('流量',color=th['subtext'],fontsize=10)
         ax1.set_title('各空间单元人员流入/流出量',color=th['text'],fontsize=13)
-        ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
+        _legend_upper_right(ax1, th)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
 
@@ -1100,7 +1100,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax0.axhline(1.0,color='#ff5e5e',linestyle='--',linewidth=1.5,label='基准线(=1)')
         ax0.set_xlabel('人员编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('差异系数',color=th['subtext'],fontsize=10)
         ax0.set_title('人员轨迹长度差异系数',color=th['text'],fontsize=13,pad=10)
-        ax0.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
+        _legend_upper_right(ax0, th)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
         _set_sparse_xticks(ax0, per_ids)
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
@@ -1115,7 +1115,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1.axhline(1.0,color='#ff5e5e',linestyle='--',linewidth=1.5,label='基准线(=1)')
         ax1.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax1.set_ylabel('差异系数',color=th['subtext'],fontsize=10)
         ax1.set_title('区域流线长度差异系数',color=th['text'],fontsize=13)
-        ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
+        _legend_upper_right(ax1, th)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
         return {'image':img_b64,'image2':img2_b64,'summary':{'total_users':int(len(per_ids)),'avg_length_m':round(float(avg_len),1),'max_diff_user':str(per_ids[np.argmax(diff_coeff_per)]),'region_count':int(len(reg_ids))}}
@@ -1235,7 +1235,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             ax1.axhline(float(vals.mean()),color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'均值 {vals.mean():.2f}')
             ax1.set_xlabel('测点编号',color=th['subtext'],fontsize=10); ax1.set_ylabel(label,color=th['subtext'],fontsize=10)
             ax1.set_title(f'各测点{label}值',color=th['text'],fontsize=13)
-            ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
+            _legend_upper_right(ax1, th)
             ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
             plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
             return {'image':img_b64,'image2':img2_b64,'summary':{'param':label,'num_points':int(len(vals)),'mean':round(float(vals.mean()),2),'max':round(float(vals.max()),2),'min':round(float(vals.min()),2)}}
@@ -1283,7 +1283,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1.set_xticks(xs); ax1.set_xticklabels(uniq_reg,fontsize=8)
         ax1.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax1.set_ylabel('人次',color=th['subtext'],fontsize=10)
         ax1.set_title('各空间单元行为发生人次',color=th['text'],fontsize=13)
-        ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
+        _legend_upper_right(ax1, th)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
         return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'behavior_types':len(uniq_beh),'region_count':int(len(uniq_reg)),'behaviors':beh_labels}}
@@ -1327,7 +1327,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1.set_xticks(xs); ax1.set_xticklabels(uniq_reg,fontsize=8)
         ax1.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax1.set_ylabel('时长 (s)',color=th['subtext'],fontsize=10)
         ax1.set_title('各空间单元行为时长',color=th['text'],fontsize=13)
-        ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
+        _legend_upper_right(ax1, th)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
         return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'total_duration_s':int(t.sum()),'behavior_types':len(uniq_beh),'behaviors':beh_labels}}
@@ -1358,7 +1358,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             bottom+=rate_matrix[:,j]
         ax0.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('发生率',color=th['subtext'],fontsize=10)
         ax0.set_title('各空间单元行为发生率 (堆叠)',color=th['text'],fontsize=13,pad=10)
-        ax0.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
+        _legend_upper_right(ax0, th)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
@@ -1372,7 +1372,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1.set_xticks(xs); ax1.set_xticklabels(uniq_reg,fontsize=8)
         ax1.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax1.set_ylabel('发生率',color=th['subtext'],fontsize=10)
         ax1.set_title('各空间单元行为发生率 (分组)',color=th['text'],fontsize=13)
-        ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
+        _legend_upper_right(ax1, th)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
         return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'behavior_types':len(uniq_beh),'behaviors':beh_labels,'region_count':int(len(uniq_reg))}}
@@ -1455,7 +1455,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             bottom+=util_share_matrix[:,j]
         ax0.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('占比',color=th['subtext'],fontsize=10)
         ax0.set_title('各空间单元功能利用率占比 (堆叠)',color=th['text'],fontsize=13,pad=10)
-        ax0.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
+        _legend_upper_right(ax0, th)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
@@ -1463,7 +1463,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         _bar_common(ax1,uniq_reg,total_util,color='#f5a623',ylabel='s/㎡',th=th)
         global_util=dur_matrix.sum()/reg_areas.sum() if reg_areas.sum()>0 else 0
         ax1.axhline(global_util,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'全局均值 {global_util:.2f}')
-        ax1.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
+        _legend_upper_right(ax1, th)
         ax1.set_title('各空间单元总功能利用率',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
         return {'image':img_b64,'image2':img2_b64,'summary':{'region_count':int(len(uniq_reg)),'behavior_types':int(len(uniq_beh)),'global_util':round(float(global_util),2),'avg_util':round(float(total_util.mean()),2),'max_util':round(float(total_util.max()),2),'min_util':round(float(total_util.min()),2),'behaviors':beh_labels}}
@@ -1488,8 +1488,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1.set_title('满意度分布',color=th['text'],fontsize=13)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
         ax1.axhline(avg_score, color='#ff5e5e', linestyle='--', linewidth=1.5, label=f'均值 {avg_score:.2f}')
-        ax1.legend(loc='upper right', facecolor=th['legend_bg'], edgecolor=th.get('spine', th['legend_bg']),
-                   labelcolor=th.get('bar_label', th['text']), fontsize=8)
+        _legend_upper_right(ax1, th)
         plt.tight_layout(pad=2); img_dist_b64=fig_to_base64(fig); plt.close(fig)
         bar_data=[[str(uid),float(s)] for uid,s in zip(user_ids,scores)]
         return {'image':img_dist_b64,'image_dist':img_dist_b64,'bar_data':bar_data,'avg_score':round(avg_score,1),'summary':{'total_users':int(len(df)),'avg_score':round(avg_score,1),'max_score':int(scores.max()),'min_score':int(scores.min())}}
@@ -1518,7 +1517,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax0.axhline(avg_score,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'均值 {avg_score:.2f}')
         ax0.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('满意度均值',color=th['subtext'],fontsize=10)
         ax0.set_title('各空间单元满意度',color=th['text'],fontsize=13,pad=10)
-        ax0.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
+        _legend_upper_right(ax0, th)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1=plt.figure(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
@@ -1555,7 +1554,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax0.axhline(avg_score,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'均值 {avg_score:.2f}')
         ax0.set_xlabel('设计要素编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('满意度均值',color=th['subtext'],fontsize=10)
         ax0.set_title('各设计要素满意度',color=th['text'],fontsize=13,pad=10)
-        ax0.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
+        _legend_upper_right(ax0, th)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1=plt.figure(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
@@ -3589,6 +3588,23 @@ def _styled_axes(ax, th=None):
     ax.tick_params(colors=th['tick'], labelsize=9)
 
 
+def _legend_upper_right(ax, th=None, **kwargs):
+    """Place legends at the upper-right outside the plotting area."""
+    if th is None:
+        th = _theme('dark')
+    defaults = {
+        'loc': 'upper left',
+        'bbox_to_anchor': (1.01, 1.0),
+        'borderaxespad': 0,
+        'facecolor': th['legend_bg'],
+        'edgecolor': th.get('spine', th.get('legend_edge', th['legend_bg'])),
+        'labelcolor': th.get('bar_label', th.get('tick', th['text'])),
+        'fontsize': 8,
+    }
+    defaults.update(kwargs)
+    return ax.legend(**defaults)
+
+
 def _bar_common(ax, x_vals, y_vals, color=None, xlabel='区域编号', ylabel='', th=None,
                 show_mean=True, color_above=None, color_below=None):
     """绘制通用柱状图，自动显示均值线并用不同颜色区分均值上下的柱子。
@@ -3638,8 +3654,7 @@ def _bar_common(ax, x_vals, y_vals, color=None, xlabel='区域编号', ylabel=''
             Patch(facecolor=color_below, alpha=0.85, label='低于均值'),
             plt.Line2D([0], [0], color=mean_color, linestyle='--', linewidth=1.5, label=f'均值 {mean_val:.2f}'),
         ]
-        ax.legend(handles=handles, facecolor=th['legend_bg'], edgecolor=th.get('spine', th['legend_bg']),
-                  labelcolor=th.get('bar_label', th['text']), fontsize=8)
+        _legend_upper_right(ax, th, handles=handles)
 
 
 def _set_sparse_xticks(ax, labels):
@@ -4086,7 +4101,7 @@ def openness():
         _bar_common(ax1, reg_ids, openness_val, color='#f5a623', ylabel='人/㎡')
         ax1.axhline(global_open, color='#ff5e5e', linestyle='--', linewidth=1.5,
                     label=f'整体 {global_open:.3f}')
-        ax1.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
+        _legend_upper_right(ax1, th)
         ax1.set_title('各空间单元开放程度 (人/㎡)', color=th['text'], fontsize=13)
 
         plt.tight_layout(pad=2)
@@ -4170,7 +4185,7 @@ def topology():
         ax1.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
         ax1.set_ylabel('流量', color=th['subtext'], fontsize=10)
         ax1.set_title('各空间单元人员流入/流出量', color=th['text'], fontsize=13)
-        ax1.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
+        _legend_upper_right(ax1, th)
         ax1.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax1.set_axisbelow(True)
 
@@ -4261,7 +4276,7 @@ def difference():
         ax0.set_xlabel('人员编号', color=th['subtext'], fontsize=10)
         ax0.set_ylabel('差异系数', color=th['subtext'], fontsize=10)
         ax0.set_title('人员轨迹长度差异系数', color=th['text'], fontsize=13, pad=10)
-        ax0.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
+        _legend_upper_right(ax0, th)
         ax0.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax0.set_axisbelow(True)
         _set_sparse_xticks(ax0, per_ids)
@@ -4276,7 +4291,7 @@ def difference():
         ax1.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
         ax1.set_ylabel('差异系数', color=th['subtext'], fontsize=10)
         ax1.set_title('区域流线长度差异系数', color=th['text'], fontsize=13)
-        ax1.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
+        _legend_upper_right(ax1, th)
         ax1.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax1.set_axisbelow(True)
 
@@ -4380,7 +4395,7 @@ def environment():
         ax1.set_xlabel('测点编号', color=th['subtext'], fontsize=10)
         ax1.set_ylabel(label, color=th['subtext'], fontsize=10)
         ax1.set_title(f'各测点{label}值', color=th['text'], fontsize=13)
-        ax1.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
+        _legend_upper_right(ax1, th)
         ax1.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax1.set_axisbelow(True)
 
@@ -4474,7 +4489,7 @@ def behavior_count():
         ax1.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
         ax1.set_ylabel('人次', color=th['subtext'], fontsize=10)
         ax1.set_title('各空间单元行为发生人次', color=th['text'], fontsize=13)
-        ax1.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
+        _legend_upper_right(ax1, th)
         ax1.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax1.set_axisbelow(True)
 
@@ -4581,7 +4596,7 @@ def behavior_duration():
         ax1.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
         ax1.set_ylabel('时长 (s)', color=th['subtext'], fontsize=10)
         ax1.set_title('各空间单元行为时长', color=th['text'], fontsize=13)
-        ax1.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
+        _legend_upper_right(ax1, th)
         ax1.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax1.set_axisbelow(True)
         plt.tight_layout(pad=2)
@@ -4654,7 +4669,7 @@ def behavior_rate():
         ax0.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
         ax0.set_ylabel('发生率', color=th['subtext'], fontsize=10)
         ax0.set_title('各空间单元行为发生率 (堆叠)', color=th['text'], fontsize=13, pad=10)
-        ax0.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
+        _legend_upper_right(ax0, th)
         ax0.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax0.set_axisbelow(True)
         plt.tight_layout(pad=2)
@@ -4673,7 +4688,7 @@ def behavior_rate():
         ax1.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
         ax1.set_ylabel('发生率', color=th['subtext'], fontsize=10)
         ax1.set_title('各空间单元行为发生率 (分组)', color=th['text'], fontsize=13)
-        ax1.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
+        _legend_upper_right(ax1, th)
         ax1.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax1.set_axisbelow(True)
         plt.tight_layout(pad=2)
@@ -4853,7 +4868,7 @@ def utilization():
         ax0.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
         ax0.set_ylabel('占比', color=th['subtext'], fontsize=10)
         ax0.set_title('各空间单元功能利用率占比 (堆叠)', color=th['text'], fontsize=13, pad=10)
-        ax0.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
+        _legend_upper_right(ax0, th)
         ax0.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax0.set_axisbelow(True)
         fig0.patch.set_facecolor(th['fig_bg'])
@@ -4868,7 +4883,7 @@ def utilization():
         global_util = dur_matrix.sum() / reg_areas.sum() if reg_areas.sum() > 0 else 0
         ax1.axhline(global_util, color='#ff5e5e', linestyle='--', linewidth=1.5,
                     label=f'全局均值 {global_util:.1f}')
-        ax1.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
+        _legend_upper_right(ax1, th)
         ax1.set_title('各空间单元总功能利用率', color=th['text'], fontsize=13)
         plt.tight_layout(pad=2)
         img2_b64 = fig_to_base64(fig1)
@@ -4930,8 +4945,7 @@ def satisfaction():
         ax1.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax1.set_axisbelow(True)
         ax1.axhline(avg_score, color='#ff5e5e', linestyle='--', linewidth=1.5, label=f'均值 {avg_score:.2f}')
-        ax1.legend(loc='upper right', facecolor=th['legend_bg'], edgecolor=th.get('spine', th['legend_bg']),
-                   labelcolor=th.get('bar_label', th['text']), fontsize=8)
+        _legend_upper_right(ax1, th)
 
         plt.tight_layout(pad=2)
         img_dist_b64 = fig_to_base64(fig)
@@ -4993,7 +5007,7 @@ def satisfaction_region():
         ax0.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
         ax0.set_ylabel('满意度均值', color=th['subtext'], fontsize=10)
         ax0.set_title('各空间单元满意度', color=th['text'], fontsize=13, pad=10)
-        ax0.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
+        _legend_upper_right(ax0, th)
         ax0.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax0.set_axisbelow(True)
         plt.tight_layout(pad=2)
@@ -5071,7 +5085,7 @@ def satisfaction_design():
         ax0.set_xlabel('设计要素编号', color=th['subtext'], fontsize=10)
         ax0.set_ylabel('满意度均值', color=th['subtext'], fontsize=10)
         ax0.set_title('各设计要素满意度', color=th['text'], fontsize=13, pad=10)
-        ax0.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
+        _legend_upper_right(ax0, th)
         ax0.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax0.set_axisbelow(True)
         plt.tight_layout(pad=2)

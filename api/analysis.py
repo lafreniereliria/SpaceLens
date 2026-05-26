@@ -6,6 +6,7 @@
 import io
 import json
 import base64
+import re
 import numpy as np
 import pandas as pd
 from flask import Blueprint, request, jsonify
@@ -484,6 +485,33 @@ _sessions: dict = {}          # sid → {'results': {...}, 'ts': float, 'type': 
 _sess_lock = _threading.Lock()
 _SESSION_TTL = 3600           # 1 小时 TTL
 
+_INPUT_SLOTS = {
+    'img':      ('_raw_img_b', '_img_n', 'layout_img_path'),
+    'loc':      ('_loc_b', '_loc_n', 'loc_data_path'),
+    'beh':      ('_beh_b', '_beh_n', 'behavior_data_path'),
+    'env':      ('_env_b', '_env_n', 'env_data_path'),
+    'ques1':    ('_ques1_b', '_ques1_n', 'ques_data_overall_path'),
+    'ques2':    ('_ques2_b', '_ques2_n', 'ques_data_region_path'),
+    'ques3':    ('_ques3_b', '_ques3_n', 'ques_data_design_path'),
+    'region':   ('_region_b', '_region_n', 'region_data_path'),
+    'bgmask':   ('_bgmask_b', '_bgmask_n', 'background_img_path'),
+}
+
+_METRICS_BY_INPUT_SLOT = {
+    'img': {'heatmap', 'usetime', 'speed', 'duration', 'cluster', 'density',
+            'openness', 'difference', 'trajectory', 'behavior_count', 'behavior_duration',
+            'environment_p1', 'environment_p2', 'environment_p3', 'environment_p4', 'environment_p5'},
+    'loc': {'heatmap', 'usetime', 'speed', 'duration', 'cluster', 'density',
+            'openness', 'topology', 'difference', 'trajectory'},
+    'beh': {'behavior_count', 'behavior_duration', 'behavior_rate', 'behavior_entropy', 'utilization'},
+    'env': {'environment_p1', 'environment_p2', 'environment_p3', 'environment_p4', 'environment_p5'},
+    'ques1': {'satisfaction'},
+    'ques2': {'satisfaction_region'},
+    'ques3': {'satisfaction_design'},
+    'region': {'openness', 'utilization'},
+    'bgmask': {'heatmap', 'usetime', 'speed', 'duration', 'density', 'openness', 'behavior_duration'},
+}
+
 def _prune_sessions():
     """清理超时会话（每次写入前调用）"""
     now = _time.time()
@@ -505,12 +533,41 @@ def _read_source_path(path):
         return None
     try:
         import os as _os
-        if not _os.path.isabs(path) or not _os.path.isfile(path):
+        candidates = [path]
+        if not _os.path.isabs(path):
+            candidates.append(_os.path.join(_BASE_DIR if '_BASE_DIR' in globals() else _os.getcwd(), path))
+            candidates.append(_os.path.join(_os.getcwd(), path))
+        real_path = next((p for p in candidates if p and _os.path.isfile(p)), None)
+        if not real_path:
             return None
-        with open(path, 'rb') as f:
+        with open(real_path, 'rb') as f:
             return f.read()
     except Exception:
         return None
+
+
+def _safe_input_filename(slot, filename):
+    name = filename or f'{slot}.bin'
+    name = str(name).replace('\\', '/').split('/')[-1]
+    name = re.sub(r'[^A-Za-z0-9._\-\u4e00-\u9fff]+', '_', name).strip('._')
+    return f'{slot}__{name or "input.bin"}'
+
+
+def _metrics_for_changed_slots(changed_slots):
+    metrics = set()
+    for slot in changed_slots or []:
+        metrics.update(_METRICS_BY_INPUT_SLOT.get(slot, set()))
+    return metrics
+
+
+def _parse_json_list(raw):
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
 
 
 def _make_fs(data: bytes, filename: str) -> FileStorage:
@@ -674,9 +731,10 @@ def _compute_cluster_result(loc_fs, img_fs, k, th, normalize_xy_fn=None, walkabl
 
 def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
                 env_b, env_n, ques1_b, ques1_n, ques2_b, ques2_n, ques3_b, ques3_n,
-                region_b, region_n, bgmask_b, bgmask_n, th, region_name_map=None):
+                region_b, region_n, bgmask_b, bgmask_n, th, region_name_map=None, only_metrics=None):
     """后台线程：逐个计算指标，每算完一个就更新会话缓存"""
     region_name_map = region_name_map or {}
+    only_metrics = set(only_metrics or [])
 
     def mk(b, n):
         return _make_fs(b, n) if b else None
@@ -753,6 +811,10 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             if sess is None:
                 return
             sess['results'][name] = result
+            if name in sess.get('computed', []):
+                sess['computed'].remove(name)
+            if name in sess.get('skipped', []):
+                sess['skipped'].remove(name)
             if result is not None and not result.get('error'):
                 sess['computed'].append(name)
             else:
@@ -762,6 +824,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
                 sess['skipped'].append(name)
 
     def _run_metric(name, fn):
+        if only_metrics and name not in only_metrics:
+            return
         try:
             r = fn()
             _update(name, r)
@@ -1681,9 +1745,23 @@ def _persist_results_to_disk(sid, sess):
         base_dir = _os.environ.get('SPACELENS_DATA_DIR', '') or str(_Path.home() / '.spacelens')
         result_dir = _os.path.join(base_dir, 'results', sid)
         _os.makedirs(_os.path.join(result_dir, 'images'), exist_ok=True)
+        _os.makedirs(_os.path.join(result_dir, 'inputs'), exist_ok=True)
 
         results  = sess.get('results',  {})
         computed = sess.get('computed', [])
+        source_file_copies = {}
+        for slot, (bytes_key, name_key, _path_field) in _INPUT_SLOTS.items():
+            data = sess.get(bytes_key)
+            if not data:
+                continue
+            copy_name = _safe_input_filename(slot, sess.get(name_key))
+            copy_path = _os.path.join(result_dir, 'inputs', copy_name)
+            try:
+                with open(copy_path, 'wb') as f:
+                    f.write(data)
+                source_file_copies[slot] = copy_path
+            except Exception:
+                pass
 
         all_summary = {}
         for metric_id in computed:
@@ -1717,6 +1795,7 @@ def _persist_results_to_disk(sid, sess):
             'theme':         sess.get('theme', 'light'),
             'accent':        sess.get('accent', '#0ea5e9'),
             'source_files':  sess.get('source_files', {}),  # 绝对路径，用于"数据来源"点击打开
+            'source_file_copies': source_file_copies,
             'region_name_map': sess.get('region_name_map', {}),
         }
         with open(_os.path.join(result_dir, 'meta.json'), 'w', encoding='utf-8') as f:
@@ -1770,6 +1849,25 @@ def run_all():
         ques3_b, ques3_n   = _read('ques_data_design')
         region_b, region_n = _read('region_data')
         bgmask_b, bgmask_n = _read('background_img')
+        source_project_id = request.form.get('source_project_id', '').strip()
+        changed_slots = [str(s) for s in _parse_json_list(request.form.get('changed_slots', '[]')) if str(s) in _INPUT_SLOTS]
+        only_metrics = _metrics_for_changed_slots(changed_slots) if changed_slots else set()
+        previous_sess = None
+        if source_project_id:
+            try:
+                from api.db import get_project as _get_project
+                proj_prev = _get_project(int(source_project_id))
+                if proj_prev:
+                    prev_sid = proj_prev.get('session_id')
+                    with _sess_lock:
+                        previous_sess = _sessions.get(prev_sid)
+                    if previous_sess is None and proj_prev.get('result_folder'):
+                        previous_sess = _restore_session_from_disk(prev_sid, proj_prev.get('result_folder'))
+                        if previous_sess:
+                            with _sess_lock:
+                                _sessions[prev_sid] = previous_sess
+            except Exception:
+                previous_sess = None
 
         # 读取前端传来的源文件路径（用于结果页「数据来源」点击打开）
         img_path    = request.form.get('layout_img_path',    img_n    or '')
@@ -1797,24 +1895,34 @@ def run_all():
         region_path = _best_path(region_path, region_n)
         bgmask_path = _best_path(bgmask_path, bgmask_n)
 
-        def _fill_from_source(data, name, path):
+        def _fill_from_source(data, name, path, slot):
             if data:
                 return data, name
             restored = _read_source_path(path)
             if not restored:
+                if previous_sess:
+                    bytes_key, name_key, _path_field = _INPUT_SLOTS[slot]
+                    restored = previous_sess.get(bytes_key)
+                    if restored:
+                        return restored, name or previous_sess.get(name_key)
+                    copy_path = previous_sess.get('source_file_copies', {}).get(slot)
+                    restored = _read_source_path(copy_path)
+                    if restored:
+                        import os as _os_copy
+                        return restored, name or _os_copy.path.basename(copy_path)
                 return data, name
             import os as _os_src
             return restored, name or _os_src.path.basename(path)
 
-        img_b, img_n       = _fill_from_source(img_b, img_n, img_path)
-        loc_b, loc_n       = _fill_from_source(loc_b, loc_n, loc_path)
-        beh_b, beh_n       = _fill_from_source(beh_b, beh_n, beh_path)
-        env_b, env_n       = _fill_from_source(env_b, env_n, env_path)
-        ques1_b, ques1_n   = _fill_from_source(ques1_b, ques1_n, ques1_path)
-        ques2_b, ques2_n   = _fill_from_source(ques2_b, ques2_n, ques2_path)
-        ques3_b, ques3_n   = _fill_from_source(ques3_b, ques3_n, ques3_path)
-        region_b, region_n = _fill_from_source(region_b, region_n, region_path)
-        bgmask_b, bgmask_n = _fill_from_source(bgmask_b, bgmask_n, bgmask_path)
+        img_b, img_n       = _fill_from_source(img_b, img_n, img_path, 'img')
+        loc_b, loc_n       = _fill_from_source(loc_b, loc_n, loc_path, 'loc')
+        beh_b, beh_n       = _fill_from_source(beh_b, beh_n, beh_path, 'beh')
+        env_b, env_n       = _fill_from_source(env_b, env_n, env_path, 'env')
+        ques1_b, ques1_n   = _fill_from_source(ques1_b, ques1_n, ques1_path, 'ques1')
+        ques2_b, ques2_n   = _fill_from_source(ques2_b, ques2_n, ques2_path, 'ques2')
+        ques3_b, ques3_n   = _fill_from_source(ques3_b, ques3_n, ques3_path, 'ques3')
+        region_b, region_n = _fill_from_source(region_b, region_n, region_path, 'region')
+        bgmask_b, bgmask_n = _fill_from_source(bgmask_b, bgmask_n, bgmask_path, 'bgmask')
 
         # 从已解析的绝对路径推导文件夹绝对路径
         # 先直接查路径表里是否有文件夹名的记录（文件夹选择时注入的）
@@ -1866,12 +1974,28 @@ def run_all():
 
         # 立即创建会话（status = 'running'）
         sid = str(uuid.uuid4())
+        initial_results = {}
+        initial_computed = []
+        initial_skipped = []
+        if previous_sess and only_metrics:
+            initial_results = {
+                k: v for k, v in previous_sess.get('results', {}).items()
+                if k not in only_metrics
+            }
+            initial_computed = [
+                k for k in previous_sess.get('computed', [])
+                if k not in only_metrics
+            ]
+            initial_skipped = [
+                k for k in previous_sess.get('skipped', [])
+                if k not in only_metrics
+            ]
         with _sess_lock:
             _prune_sessions()
             _sessions[sid] = {
-                'results':  {},
-                'computed': [],
-                'skipped':  [],
+                'results':  initial_results,
+                'computed': initial_computed,
+                'skipped':  initial_skipped,
                 'type':     building_type,
                 'folder':   folder_name,
                 'folder_abs': _abs_folder or '',   # 绝对路径（用于数据库展示）
@@ -1885,6 +2009,18 @@ def run_all():
                 '_img_n': img_n,
                 '_loc_b': loc_b,
                 '_loc_n': loc_n,
+                '_beh_b': beh_b,
+                '_beh_n': beh_n,
+                '_env_b': env_b,
+                '_env_n': env_n,
+                '_ques1_b': ques1_b,
+                '_ques1_n': ques1_n,
+                '_ques2_b': ques2_b,
+                '_ques2_n': ques2_n,
+                '_ques3_b': ques3_b,
+                '_ques3_n': ques3_n,
+                '_region_b': region_b,
+                '_region_n': region_n,
                 '_bgmask_b': bgmask_b,
                 '_bgmask_n': bgmask_n,
                 '_files_md5': files_md5, # 各文件 MD5，用于去重
@@ -1925,7 +2061,7 @@ def run_all():
             target=_bg_compute,
             args=(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
                   env_b, env_n, ques1_b, ques1_n, ques2_b, ques2_n, ques3_b, ques3_n,
-                  region_b, region_n, bgmask_b, bgmask_n, th, region_name_map),
+                  region_b, region_n, bgmask_b, bgmask_n, th, region_name_map, only_metrics),
             daemon=True,
         )
         t.start()
@@ -3071,16 +3207,27 @@ def _restore_session_from_disk(sid, result_folder):
             }
 
         source_files_meta = meta.get('source_files', {})
+        source_file_copies = meta.get('source_file_copies', {})
 
         # 把历史绝对路径重新注入路径表，确保 open_source 可以查到
-        if source_files_meta:
+        if source_files_meta or source_file_copies:
             import os as _os_r
             with _file_paths_lock:
-                for _p in source_files_meta.values():
+                for _p in list(source_files_meta.values()) + list(source_file_copies.values()):
                     if _p and _os_r.path.isabs(_p):
                         _file_abs_paths[_os_r.path.basename(_p)] = _p
 
-        return {
+        restored_inputs = {}
+        for slot, copy_path in source_file_copies.items():
+            if not copy_path:
+                continue
+            try:
+                with open(copy_path, 'rb') as f:
+                    restored_inputs[slot] = f.read()
+            except Exception:
+                pass
+
+        sess = {
             'status':        'done',
             'ts':            _time.time(),
             'project_name':  meta.get('project_name', ''),
@@ -3095,8 +3242,16 @@ def _restore_session_from_disk(sid, result_folder):
             'accent':        meta.get('accent', '#0ea5e9'),
             'results':       results,
             'source_files':  source_files_meta,  # 恢复绝对路径，供"数据来源"点击打开
+            'source_file_copies': source_file_copies,
             'region_name_map': meta.get('region_name_map', {}),
         }
+        for slot, (bytes_key, name_key, _path_field) in _INPUT_SLOTS.items():
+            if slot in restored_inputs:
+                sess[bytes_key] = restored_inputs[slot]
+                sess[name_key] = _safe_input_filename(slot, source_file_copies.get(slot, '')).split('__', 1)[-1]
+        if sess.get('_raw_img_b') and not sess.get('_img_b'):
+            sess['_img_b'] = sess.get('_raw_img_b')
+        return sess
     except Exception:
         return None
 

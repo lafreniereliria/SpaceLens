@@ -825,6 +825,38 @@ function _restoreSeparateFiles(sourceFiles){
   }
 }
 
+function _changedRestoredSlots(){
+  if(!_restoredProjectId) return [];
+  var changed = [];
+  Object.keys(_slotFieldMap).forEach(function(slot){
+    var row = document.getElementById('row-' + slot);
+    if(row && row.dataset.changed === '1') changed.push(_sourceKeyMap[slot]);
+  });
+  return changed;
+}
+
+function _openRestoredProjectResult(){
+  var overlay=document.getElementById('computing-overlay');
+  var sub=document.getElementById('computing-sub');
+  overlay.classList.add('active');
+  if(sub) sub.textContent='未修改导入文件，正在打开历史结果…';
+  fetch('/api/projects/' + encodeURIComponent(_restoredProjectId) + '/view')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if(data.error){ overlay.classList.remove('active'); alert('打开历史结果失败：'+data.error); return; }
+      if(data.status === 'done'){
+        window.location.href='/results?sid='+data.session_id;
+        return;
+      }
+      overlay.classList.remove('active');
+      alert('历史结果不可用，请至少替换一个数据文件后重新计算');
+    })
+    .catch(function(e){
+      overlay.classList.remove('active');
+      alert('打开历史结果失败：'+e.message);
+    });
+}
+
 function addRegionMapRow(regionId, roomName){
   var list = document.getElementById('region-map-list');
   var row = document.createElement('div');
@@ -998,6 +1030,11 @@ function startCalc(){
   }
 
   var mode=document.getElementById('tab-folder').classList.contains('active')?'folder':'separate';
+  var changedRestoredSlots = mode === 'separate' ? _changedRestoredSlots() : [];
+  if(_restoredProjectId && mode === 'separate' && changedRestoredSlots.length === 0){
+    _openRestoredProjectResult();
+    return;
+  }
   var fd=new FormData();
   fd.append('building_type', selectedType);
   fd.append('folder_name', _folderName);
@@ -1013,6 +1050,10 @@ function startCalc(){
     projectName = parts.join(' - ') || '未命名项目';
   }
   fd.append('project_name', projectName);
+  if(_restoredProjectId && mode === 'separate'){
+    fd.append('source_project_id', _restoredProjectId);
+    fd.append('changed_slots', JSON.stringify(changedRestoredSlots));
+  }
 
   if(mode==='folder'){
     if(folderFiles.img)      fd.append('layout_img',     folderFiles.img);

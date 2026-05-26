@@ -1436,19 +1436,30 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         else:
             reg_areas=np.ones(len(uniq_reg))
         util_matrix=dur_matrix/reg_areas[:,np.newaxis]
+        total_util=util_matrix.sum(axis=1)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            util_share_matrix=np.divide(
+                util_matrix,
+                total_util[:,np.newaxis],
+                out=np.zeros_like(util_matrix),
+                where=total_util[:,np.newaxis]>0,
+            )
         palette=_get_cmap('tab10',len(uniq_beh))
         fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax0,th); bottom=np.zeros(len(uniq_reg))
         for j,b in enumerate(uniq_beh):
-            ax0.bar(uniq_reg.astype(str),util_matrix[:,j],bottom=bottom,color=palette(j),alpha=0.85,label=beh_labels[j]); bottom+=util_matrix[:,j]
-        ax0.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('s/㎡',color=th['subtext'],fontsize=10)
-        ax0.set_title('各空间单元功能利用率 (堆叠)',color=th['text'],fontsize=13,pad=10)
+            seg_bars=ax0.bar(uniq_reg.astype(str),util_share_matrix[:,j],bottom=bottom,color=palette(j),alpha=0.85,label=beh_labels[j])
+            for bi,bar in enumerate(seg_bars):
+                h=util_share_matrix[bi,j]
+                if h>0.02: ax0.text(bar.get_x()+bar.get_width()/2,bottom[bi]+h/2,f'{h:.1%}',ha='center',va='center',color='white',fontsize=7,fontweight='bold')
+            bottom+=util_share_matrix[:,j]
+        ax0.set_xlabel('区域编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('占比',color=th['subtext'],fontsize=10)
+        ax0.set_title('各空间单元功能利用率占比 (堆叠)',color=th['text'],fontsize=13,pad=10)
         ax0.legend(facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'],fontsize=8)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
-        total_util=util_matrix.sum(axis=1)
         _bar_common(ax1,uniq_reg,total_util,color='#f5a623',ylabel='s/㎡',th=th)
         global_util=dur_matrix.sum()/reg_areas.sum() if reg_areas.sum()>0 else 0
         ax1.axhline(global_util,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'全局均值 {global_util:.2f}')
@@ -2086,7 +2097,7 @@ _METRIC_CHART_TITLES = {
     'behavior_duration':   ['行为时长热力图', '各空间单元行为时长'],
     'behavior_rate':       ['各空间单元行为发生率_堆叠', '各空间单元行为发生率_分组'],
     'behavior_entropy':    ['各空间单元行为复合度', '各使用者行为复合度'],
-    'utilization':         ['各空间单元功能利用率_堆叠', '各空间单元总功能利用率'],
+    'utilization':         ['各空间单元功能利用率占比_堆叠', '各空间单元总功能利用率'],
     'satisfaction':        ['整体满意度'],
     'satisfaction_region': ['各空间单元满意度'],
     'satisfaction_design': ['各设计要素满意度'],
@@ -4816,6 +4827,14 @@ def utilization():
             reg_areas = np.ones(len(uniq_reg))
 
         util_matrix = dur_matrix / reg_areas[:, np.newaxis]
+        total_util = util_matrix.sum(axis=1)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            util_share_matrix = np.divide(
+                util_matrix,
+                total_util[:, np.newaxis],
+                out=np.zeros_like(util_matrix),
+                where=total_util[:, np.newaxis] > 0,
+            )
 
         palette = _get_cmap('tab10', len(uniq_beh))
         fig0, ax0 = plt.subplots(figsize=(9, 6))
@@ -4823,12 +4842,17 @@ def utilization():
         _styled_axes(ax0, th)
         bottom = np.zeros(len(uniq_reg))
         for j, b in enumerate(uniq_beh):
-            ax0.bar(uniq_reg.astype(str), util_matrix[:, j], bottom=bottom,
-                    color=palette(j), alpha=0.85, label=beh_labels[j])
-            bottom += util_matrix[:, j]
+            seg_bars = ax0.bar(uniq_reg.astype(str), util_share_matrix[:, j], bottom=bottom,
+                                color=palette(j), alpha=0.85, label=beh_labels[j])
+            for bi, bar in enumerate(seg_bars):
+                h = util_share_matrix[bi, j]
+                if h > 0.02:
+                    ax0.text(bar.get_x() + bar.get_width()/2, bottom[bi] + h/2, f'{h:.1%}',
+                             ha='center', va='center', color='white', fontsize=7, fontweight='bold')
+            bottom += util_share_matrix[:, j]
         ax0.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
-        ax0.set_ylabel('s/㎡', color=th['subtext'], fontsize=10)
-        ax0.set_title('各空间单元功能利用率 (堆叠)', color=th['text'], fontsize=13, pad=10)
+        ax0.set_ylabel('占比', color=th['subtext'], fontsize=10)
+        ax0.set_title('各空间单元功能利用率占比 (堆叠)', color=th['text'], fontsize=13, pad=10)
         ax0.legend(facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'], fontsize=8)
         ax0.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax0.set_axisbelow(True)
@@ -4840,7 +4864,6 @@ def utilization():
         fig1, ax1 = plt.subplots(figsize=(9, 6))
         fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1, th)
-        total_util = util_matrix.sum(axis=1)
         _bar_common(ax1, uniq_reg, total_util, color='#f5a623', ylabel='s/㎡')
         global_util = dur_matrix.sum() / reg_areas.sum() if reg_areas.sum() > 0 else 0
         ax1.axhline(global_util, color='#ff5e5e', linestyle='--', linewidth=1.5,

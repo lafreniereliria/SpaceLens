@@ -1114,17 +1114,18 @@ function _drawSatBarChart(barData) {
     label:    isDark ? '#c0c0d0' : '#444444',
   };
 
+  var rect0 = canvas.getBoundingClientRect();
   var dpr = window.devicePixelRatio || 1;
-  var W   = canvas.clientWidth  || canvas.offsetWidth  || 600;
-  var H   = 320; // CSS height
+  var W   = rect0.width || canvas.clientWidth || canvas.offsetWidth || 600;
+  var H   = rect0.height || canvas.clientHeight || 380;
   canvas.width  = W * dpr;
   canvas.height = H * dpr;
-  canvas.style.height = H + 'px';
 
   var ctx = canvas.getContext('2d');
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.scale(dpr, dpr);
 
-  var PAD = { top: 24, right: 20, bottom: 36, left: 48 };
+  var PAD = { top: 48, right: 140, bottom: 42, left: 52 };
   var chartW = W - PAD.left - PAD.right;
   var chartH = H - PAD.top  - PAD.bottom;
 
@@ -1167,9 +1168,9 @@ function _drawSatBarChart(barData) {
   ctx.font = '10px sans-serif';
   ctx.fillText('均值 ' + avg.toFixed(2), PAD.left + chartW - 6, Math.max(PAD.top + 12, avgY - 6));
 
-  // 图例（右上角）
-  var LX = PAD.left + chartW - 4;
-  var LY = PAD.top + 14;
+  // 图例（整个图表右上角）
+  var LX = W - 24;
+  var LY = 18;
   var lineH = 16;
   ctx.textAlign = 'right';
   ctx.font = '10px sans-serif';
@@ -1206,7 +1207,11 @@ function _drawSatBarChart(barData) {
     var bY    = PAD.top  + chartH - bH;
     ctx.fillStyle = s >= avg ? C.barHi : C.barLo;
     ctx.fillRect(bX, bY, barW, bH);
-    _bars.push({ x: bX, y: bY, w: barW, h: bH, id: barData[j][0], score: s });
+    _bars.push({
+      x: bX, y: bY, w: barW, h: bH,
+      hitX: PAD.left + j * gap, hitW: gap,
+      id: barData[j][0], score: s
+    });
   }
 
   // 保存 bars 到 canvas 元素，方便鼠标事件访问
@@ -1220,15 +1225,15 @@ function _drawSatBarChart(barData) {
 
     canvas.addEventListener('mousemove', function(e) {
       var rect = canvas.getBoundingClientRect();
-      var mx   = e.clientX - rect.left;
-      var my   = e.clientY - rect.top;
+      var mx   = (e.clientX - rect.left) * (W / rect.width);
+      var my   = (e.clientY - rect.top) * (H / rect.height);
       var hit  = null;
       var bs   = canvas._satBars || [];
       for (var k = 0; k < bs.length; k++) {
         var b = bs[k];
-        // 扩大命中区域：宽度方向宽松一点
-        if (mx >= b.x - 2 && mx <= b.x + b.w + 2 &&
-            my >= b.y      && my <= b.y + b.h) {
+        // 命中按每个柱子的横向槽位计算，避免细柱子只在少量像素上可触发。
+        if (mx >= b.hitX && mx <= b.hitX + b.hitW &&
+            my >= Math.min(b.y, PAD.top + chartH) && my <= PAD.top + chartH) {
           hit = b; break;
         }
       }
@@ -1666,7 +1671,7 @@ function loadSession(sid) {
 }
 
 // ── 初始化 ──
-document.addEventListener('DOMContentLoaded', function() {
+function initResultsPage() {
   buildPanels();
   bindClusterK();
   bindNav();
@@ -1686,7 +1691,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // 引擎就绪轮询
   pollEngineReady();
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initResultsPage);
+} else {
+  initResultsPage();
+}
 
 function pollEngineReady() {
   fetch('/api/ready')

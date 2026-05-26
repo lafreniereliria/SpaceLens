@@ -132,6 +132,25 @@ def fig_to_base64(fig, dpi=150):
     buf.seek(0)
     return base64.b64encode(buf.read()).decode()
 
+def _bar_fig_width(item_count, base=9.0, per_item=0.42, max_w=18.0):
+    """Choose a wider figure for dense categorical bar charts."""
+    n = max(int(item_count or 1), 1)
+    return min(max_w, max(base, n * per_item))
+
+def _style_categorical_xaxis(ax, label_count, rotation=30):
+    """Keep category labels readable on dense bar charts."""
+    if label_count > 10:
+        ax.tick_params(axis='x', labelrotation=rotation, labelsize=8)
+        for label in ax.get_xticklabels():
+            label.set_ha('right')
+    elif label_count > 6:
+        ax.tick_params(axis='x', labelrotation=20, labelsize=8)
+        for label in ax.get_xticklabels():
+            label.set_ha('right')
+    else:
+        ax.tick_params(axis='x', labelrotation=0, labelsize=9)
+    ax.margins(x=0.03)
+
 
 def _make_fig(th, ncols=2, w=14, h=6):
     """Create themed figure with ncols subplots."""
@@ -1603,7 +1622,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         if not {'UserNum', score_col}.issubset(df.columns): return None
         user_ids=df['UserNum'].values; scores=df[score_col].astype(float).values; avg_score=float(scores.mean())
         # 仅生成右侧分布直方图（左侧个人评分改为前端Canvas交互图）
-        fig,ax1=plt.subplots(1,1,figsize=(7,6)); fig.patch.set_facecolor(th['fig_bg'])
+        fig,ax1=plt.subplots(1,1,figsize=(8.5,6)); fig.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
         bins=[0,60,70,80,90,100]; counts,_=np.histogram(scores,bins=bins)
         bars_h=ax1.bar(['<60','60-70','70-80','80-90','90-100'],counts,color='#a78bfa',alpha=0.85,width=0.6)
@@ -1634,7 +1653,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             except: reg_ids.append(str(c))
         avg_score=float(avg_vals.mean())
         reg_labels = _region_labels(reg_ids, region_name_map, prefix='')
-        fig0=plt.figure(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
+        fig0=plt.figure(figsize=(_bar_fig_width(len(reg_labels)),6)); fig0.patch.set_facecolor(th['fig_bg'])
         ax0=fig0.add_subplot(111); _styled_axes(ax0,th)
         colors=['#7c5cfc' if v>=avg_score else '#00c9a7' for v in avg_vals]
         bars_r=ax0.bar(reg_labels,avg_vals,color=colors,alpha=0.85,width=0.6)
@@ -1644,9 +1663,10 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax0.axhline(avg_score,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'均值 {avg_score:.2f}')
         ax0.set_xlabel('空间单元',color=th['subtext'],fontsize=10); ax0.set_ylabel('满意度均值',color=th['subtext'],fontsize=10)
         ax0.set_title('各空间单元满意度',color=th['text'],fontsize=13,pad=10)
+        _style_categorical_xaxis(ax0, len(reg_labels))
         _legend_upper_right(ax0, th)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
+        plt.tight_layout(pad=2.4); img_b64=fig_to_base64(fig0, dpi=180); plt.close(fig0)
         fig1=plt.figure(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         ax1=fig1.add_subplot(111,polar=True); ax1.set_facecolor(th['ax_bg2'])
         theta=np.linspace(0,2*np.pi,len(reg_ids),endpoint=False)
@@ -1671,7 +1691,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         avg_vals=df[design_cols].apply(pd.to_numeric, errors='coerce').mean().values
         factor_ids=[str(c).replace('设计要素', '') for c in design_cols]
         avg_score=float(avg_vals.mean())
-        fig0=plt.figure(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
+        fig0=plt.figure(figsize=(_bar_fig_width(len(factor_ids), per_item=0.5),6)); fig0.patch.set_facecolor(th['fig_bg'])
         ax0=fig0.add_subplot(111); _styled_axes(ax0,th)
         colors=['#7c5cfc' if v>=avg_score else '#00c9a7' for v in avg_vals]
         bars_f=ax0.bar([str(r) for r in factor_ids],avg_vals,color=colors,alpha=0.85,width=0.6)
@@ -1681,9 +1701,10 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax0.axhline(avg_score,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'均值 {avg_score:.2f}')
         ax0.set_xlabel('设计要素编号',color=th['subtext'],fontsize=10); ax0.set_ylabel('满意度均值',color=th['subtext'],fontsize=10)
         ax0.set_title('各设计要素满意度',color=th['text'],fontsize=13,pad=10)
+        _style_categorical_xaxis(ax0, len(factor_ids))
         _legend_upper_right(ax0, th)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
+        plt.tight_layout(pad=2.4); img_b64=fig_to_base64(fig0, dpi=180); plt.close(fig0)
         fig1=plt.figure(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         ax1=fig1.add_subplot(111,polar=True); ax1.set_facecolor(th['ax_bg2'])
         theta=np.linspace(0,2*np.pi,len(factor_ids),endpoint=False)
@@ -1766,22 +1787,38 @@ def _persist_results_to_disk(sid, sess):
                 pass
 
         all_summary = {}
+        result_meta = {}
         for metric_id in computed:
             data = results.get(metric_id)
             if not data:
                 continue
-            # 保存图片
-            if data.get('image'):
-                img_path = _os.path.join(result_dir, 'images', f'{metric_id}.png')
-                with open(img_path, 'wb') as f:
-                    f.write(base64.b64decode(data['image']))
+            # 保存图片。多图指标会带 image2/image3；整体满意度还会带 image_dist。
+            image_fields = {
+                'image': f'{metric_id}.png',
+                'image2': f'{metric_id}_2.png',
+                'image3': f'{metric_id}_3.png',
+                'image_dist': f'{metric_id}_dist.png',
+            }
+            for field, filename in image_fields.items():
+                if data.get(field):
+                    img_path = _os.path.join(result_dir, 'images', filename)
+                    with open(img_path, 'wb') as f:
+                        f.write(base64.b64decode(data[field]))
             # 收集摘要
             if data.get('summary'):
                 all_summary[metric_id] = data['summary']
+            extras = {
+                k: v for k, v in data.items()
+                if k not in ('image', 'image2', 'image3', 'image_dist', 'summary')
+            }
+            if extras:
+                result_meta[metric_id] = extras
 
         # 写 summary.json
         with open(_os.path.join(result_dir, 'summary.json'), 'w', encoding='utf-8') as f:
             _json.dump(all_summary, f, ensure_ascii=False, indent=2)
+        with open(_os.path.join(result_dir, 'results_meta.json'), 'w', encoding='utf-8') as f:
+            _json.dump(result_meta, f, ensure_ascii=False, indent=2)
 
         # 写 meta.json（存储 session 元信息，恢复时用）
         meta = {
@@ -3189,6 +3226,7 @@ def _restore_session_from_disk(sid, result_folder):
         import os as _os
         meta_path    = _os.path.join(result_folder, 'meta.json')
         summary_path = _os.path.join(result_folder, 'summary.json')
+        result_meta_path = _os.path.join(result_folder, 'results_meta.json')
         images_dir   = _os.path.join(result_folder, 'images')
 
         if not _os.path.isfile(meta_path):
@@ -3201,19 +3239,37 @@ def _restore_session_from_disk(sid, result_folder):
         if _os.path.isfile(summary_path):
             with open(summary_path, encoding='utf-8') as f:
                 summary_all = _json.load(f)
+        result_meta = {}
+        if _os.path.isfile(result_meta_path):
+            with open(result_meta_path, encoding='utf-8') as f:
+                result_meta = _json.load(f)
 
         computed = meta.get('computed', [])
         results  = {}
         for metric_id in computed:
-            img_path = _os.path.join(images_dir, f'{metric_id}.png')
-            img_b64  = None
-            if _os.path.isfile(img_path):
-                with open(img_path, 'rb') as f:
-                    img_b64 = base64.b64encode(f.read()).decode()   # 纯 base64，不带 data: 前缀
-            results[metric_id] = {
-                'image':   img_b64,
-                'summary': summary_all.get(metric_id, {}),
+            restored_result = dict(result_meta.get(metric_id, {}))
+            image_fields = {
+                'image': f'{metric_id}.png',
+                'image2': f'{metric_id}_2.png',
+                'image3': f'{metric_id}_3.png',
+                'image_dist': f'{metric_id}_dist.png',
             }
+            # 兼容旧版本：整体满意度曾只把分布图存在 satisfaction.png。
+            if metric_id == 'satisfaction':
+                image_fields['image_dist_legacy'] = f'{metric_id}.png'
+            for field, filename in image_fields.items():
+                img_path = _os.path.join(images_dir, filename)
+                if not _os.path.isfile(img_path):
+                    continue
+                with open(img_path, 'rb') as f:
+                    img_b64 = base64.b64encode(f.read()).decode()
+                if field == 'image_dist_legacy':
+                    restored_result.setdefault('image_dist', img_b64)
+                    restored_result.setdefault('image', img_b64)
+                else:
+                    restored_result[field] = img_b64
+            restored_result['summary'] = summary_all.get(metric_id, {})
+            results[metric_id] = restored_result
 
         source_files_meta = meta.get('source_files', {})
         source_file_copies = meta.get('source_file_copies', {})
@@ -5247,7 +5303,7 @@ def satisfaction():
         avg_score = float(scores.mean())
 
         # 仅生成右侧分布直方图（左侧个人评分改为前端Canvas交互图）
-        fig, ax1 = plt.subplots(1, 1, figsize=(7, 6))
+        fig, ax1 = plt.subplots(1, 1, figsize=(8.5, 6))
         fig.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1, th)
         bins = [0, 60, 70, 80, 90, 100]
@@ -5268,7 +5324,7 @@ def satisfaction():
         _legend_upper_right(ax1, th)
 
         plt.tight_layout(pad=2)
-        img_dist_b64 = fig_to_base64(fig)
+        img_dist_b64 = fig_to_base64(fig, dpi=180)
         plt.close(fig)
 
         bar_data = [[str(uid), float(s)] for uid, s in zip(user_ids, scores)]
@@ -5327,11 +5383,12 @@ def satisfaction_region():
         ax0.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
         ax0.set_ylabel('满意度均值', color=th['subtext'], fontsize=10)
         ax0.set_title('各空间单元满意度', color=th['text'], fontsize=13, pad=10)
+        _style_categorical_xaxis(ax0, len(reg_ids))
         _legend_upper_right(ax0, th)
         ax0.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax0.set_axisbelow(True)
-        plt.tight_layout(pad=2)
-        img_b64 = fig_to_base64(fig0)
+        plt.tight_layout(pad=2.4)
+        img_b64 = fig_to_base64(fig0, dpi=180)
         plt.close(fig0)
 
         fig1 = plt.figure(figsize=(9, 6))
@@ -5395,7 +5452,7 @@ def satisfaction_design():
         factor_ids = [str(c).replace('设计要素', '') for c in design_cols]
         avg_score = float(avg_vals.mean())
 
-        fig0, ax0 = plt.subplots(figsize=(9, 6))
+        fig0, ax0 = plt.subplots(figsize=(_bar_fig_width(len(factor_ids), per_item=0.5), 6))
         fig0.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax0, th)
         colors = ['#7c5cfc' if v >= avg_score else '#00c9a7' for v in avg_vals]
@@ -5405,11 +5462,12 @@ def satisfaction_design():
         ax0.set_xlabel('设计要素编号', color=th['subtext'], fontsize=10)
         ax0.set_ylabel('满意度均值', color=th['subtext'], fontsize=10)
         ax0.set_title('各设计要素满意度', color=th['text'], fontsize=13, pad=10)
+        _style_categorical_xaxis(ax0, len(factor_ids))
         _legend_upper_right(ax0, th)
         ax0.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax0.set_axisbelow(True)
-        plt.tight_layout(pad=2)
-        img_b64 = fig_to_base64(fig0)
+        plt.tight_layout(pad=2.4)
+        img_b64 = fig_to_base64(fig0, dpi=180)
         plt.close(fig0)
 
         fig1 = plt.figure(figsize=(9, 6))

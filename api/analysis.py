@@ -557,6 +557,10 @@ def _region_labels(region_ids, region_name_map=None, prefix='区域 '):
     return [_region_label(r, region_name_map, prefix=prefix) for r in region_ids]
 
 
+def _default_collection_date():
+    return _time.strftime('%Y-%m-%d', _time.localtime())
+
+
 def _compute_cluster_result(loc_fs, img_fs, k, th, normalize_xy_fn=None, walkable_mask=None):
     """公共聚类计算逻辑，供 run_all 与 session 内重算复用。"""
     if loc_fs is None or img_fs is None:
@@ -1653,6 +1657,8 @@ def _save_project_to_db(sid, sess):
             files_md5     = sess.get('_files_md5'),
             result_folder = result_folder,
             source_files  = sess.get('source_files'),  # 绝对路径表，供历史项目点击打开
+            floor_info    = sess.get('floor_info', '0'),
+            collection_date = sess.get('collection_date', ''),
         )
     except Exception:
         pass  # 数据库写失败不影响主流程
@@ -1704,6 +1710,8 @@ def _persist_results_to_disk(sid, sess):
             'building_type': sess.get('type', ''),
             'folder_name':   sess.get('folder', ''),
             'folder_abs':    sess.get('folder_abs', ''),   # 绝对路径
+            'floor_info':    sess.get('floor_info', '0'),
+            'collection_date': sess.get('collection_date', ''),
             'computed':      computed,
             'skipped':       sess.get('skipped', []),
             'theme':         sess.get('theme', 'light'),
@@ -1846,6 +1854,8 @@ def run_all():
         building_type = request.form.get('building_type', 'unknown')
         folder_name   = request.form.get('folder_name',   '')
         project_name  = request.form.get('project_name',  '')
+        floor_info    = (request.form.get('floor_info', '0') or '0').strip() or '0'
+        collection_date = (request.form.get('collection_date', '') or '').strip() or _default_collection_date()
         theme_name    = request.form.get('theme', 'dark')
         accent_param  = request.form.get('accent', '')
         region_name_map = _parse_region_name_map(request.form.get('region_name_map', ''))
@@ -1866,6 +1876,8 @@ def run_all():
                 'folder':   folder_name,
                 'folder_abs': _abs_folder or '',   # 绝对路径（用于数据库展示）
                 'project_name': project_name or folder_name or '未命名项目',
+                'floor_info': floor_info,
+                'collection_date': collection_date,
                 'ts':       _time.time(),
                 'status':   'running',
                 '_raw_img_b': img_b,     # 保留原图用于生成缩略图
@@ -1965,6 +1977,8 @@ def get_session(sid):
         'building_type': sess['type'],
         'folder_name':   sess.get('folder', ''),
         'project_name':  sess.get('project_name', ''),
+        'floor_info':    sess.get('floor_info', '0'),
+        'collection_date': sess.get('collection_date', ''),
         'computed':      sess.get('computed', []),
         'skipped':       sess.get('skipped',  []),
         'results':       sess.get('results',  {}),
@@ -2711,6 +2725,8 @@ def api_check_duplicate():
         from api.db import _dedup_key, DB_PATH, _lock
 
         building_type = request.form.get('building_type', '').strip()
+        floor_info = (request.form.get('floor_info', '0') or '0').strip() or '0'
+        collection_date = (request.form.get('collection_date', '') or '').strip() or _default_collection_date()
         if not building_type:
             return jsonify({'duplicate': False})
 
@@ -2734,7 +2750,7 @@ def api_check_duplicate():
         # 过滤掉 None 值后再计算 dedup_key
         files_md5_nonempty = {k: v for k, v in files_md5.items() if v}
 
-        dedup_key = _dedup_key(files_md5_nonempty, building_type)
+        dedup_key = _dedup_key(files_md5_nonempty, building_type, floor_info, collection_date)
         if not dedup_key:
             return jsonify({'duplicate': False})
 
@@ -2744,8 +2760,8 @@ def api_check_duplicate():
             conn.row_factory = _sqlite3.Row
             try:
                 rows = conn.execute(
-                    'SELECT * FROM projects WHERE building_type = ? AND files_md5 IS NOT NULL',
-                    (building_type,)
+                    'SELECT * FROM projects WHERE building_type = ? AND floor_info = ? AND collection_date = ? AND files_md5 IS NOT NULL',
+                    (building_type, floor_info, collection_date)
                 ).fetchall()
                 for row in rows:
                     try:
@@ -2755,7 +2771,7 @@ def api_check_duplicate():
                     # 只取核心键参与比对（忽略 region）
                     stored_md5_core = {k: v for k, v in stored_md5_full.items()
                                        if k in ('img', 'loc', 'beh', 'env', 'ques1', 'ques2', 'ques3') and v}
-                    if _dedup_key(stored_md5_core, row['building_type']) == dedup_key:
+                    if _dedup_key(stored_md5_core, row['building_type'], row['floor_info'], row['collection_date']) == dedup_key:
                         p = dict(row)
                         p['computed'] = _j.loads(p.get('computed') or '[]')
                         p['skipped']  = _j.loads(p.get('skipped')  or '[]')
@@ -2782,6 +2798,8 @@ def api_list_projects():
                 'name':          p['name'],
                 'building_type': p['building_type'],
                 'input_folder':  p['input_folder'],
+                'floor_info':    p.get('floor_info', '0'),
+                'collection_date': p.get('collection_date', ''),
                 'session_id':    p['session_id'],
                 'computed':      p['computed'],
                 'skipped':       p['skipped'],
@@ -2935,6 +2953,8 @@ def api_view_project(pid):
                 'building_type': sess.get('type', ''),
                 'folder_name':   sess.get('folder', ''),
                 'project_name':  sess.get('project_name', proj['name']),
+                'floor_info':    sess.get('floor_info', proj.get('floor_info', '0')),
+                'collection_date': sess.get('collection_date', proj.get('collection_date', '')),
                 'computed':      sess.get('computed', []),
                 'skipped':       sess.get('skipped',  []),
                 'results':       sess.get('results',  {}),
@@ -2966,6 +2986,9 @@ def api_view_project(pid):
                             skipped       = restored.get('skipped',  []),
                             files_md5     = proj.get('files_md5'),
                             result_folder = manual_folder,
+                            source_files  = proj.get('source_files'),
+                            floor_info    = proj.get('floor_info', '0'),
+                            collection_date = proj.get('collection_date', ''),
                         )
                     except Exception:
                         pass
@@ -2974,6 +2997,8 @@ def api_view_project(pid):
                     'building_type': restored.get('type', ''),
                     'folder_name':   restored.get('folder', ''),
                     'project_name':  restored.get('project_name', proj['name']),
+                    'floor_info':    restored.get('floor_info', proj.get('floor_info', '0')),
+                    'collection_date': restored.get('collection_date', proj.get('collection_date', '')),
                     'computed':      restored.get('computed', []),
                     'skipped':       restored.get('skipped',  []),
                     'results':       restored.get('results',  {}),
@@ -2990,6 +3015,8 @@ def api_view_project(pid):
             'building_type': proj['building_type'],
             'folder_name':   proj['input_folder'],
             'project_name':  proj['name'],
+            'floor_info':    proj.get('floor_info', '0'),
+            'collection_date': proj.get('collection_date', ''),
             'computed':      proj['computed'],
             'skipped':       proj['skipped'],
             'results':       {},
@@ -3060,6 +3087,8 @@ def _restore_session_from_disk(sid, result_folder):
             'type':          meta.get('building_type', ''),
             'folder':        meta.get('folder_name', ''),
             'folder_abs':    meta.get('folder_abs', ''),   # 恢复绝对路径
+            'floor_info':    meta.get('floor_info', '0'),
+            'collection_date': meta.get('collection_date', ''),
             'computed':      computed,
             'skipped':       meta.get('skipped', []),
             'theme':         meta.get('theme', 'light'),

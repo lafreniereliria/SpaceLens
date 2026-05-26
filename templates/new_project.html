@@ -157,6 +157,11 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
 .project-name-input { width:100%; padding:12px 16px; border:1.5px solid var(--border); border-radius:10px; background:var(--bg); color:var(--text-primary); font-size:14px; font-family:inherit; transition:border-color 0.15s, box-shadow 0.15s; outline:none; }
 .project-name-input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(var(--accent-rgb),0.12); }
 .project-name-hint { font-size:12px; color:var(--text-dim); }
+.project-tags { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:4px; }
+.project-tag-field { display:flex; flex-direction:column; gap:6px; }
+.project-tag-field label { font-size:12px; font-weight:600; color:var(--text-secondary); }
+.project-tag-input { width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:9px; background:var(--bg); color:var(--text-primary); font-size:13px; font-family:inherit; outline:none; }
+.project-tag-input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(var(--accent-rgb),0.1); }
 
 /* check duplicate button & banner */
 .dup-check-row { display:none; align-items:center; gap:10px; margin-top:14px; }
@@ -321,6 +326,16 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
              maxlength="60" />
       <div class="project-name-hint" id="project-name-hint">
         选择文件夹后将自动生成默认名称
+      </div>
+      <div class="project-tags">
+        <div class="project-tag-field">
+          <label for="floor-info-input">楼层信息</label>
+          <input type="text" id="floor-info-input" class="project-tag-input" value="0" maxlength="30">
+        </div>
+        <div class="project-tag-field">
+          <label for="collection-date-input">数据采集日期</label>
+          <input type="date" id="collection-date-input" class="project-tag-input">
+        </div>
       </div>
     </div>
   </div>
@@ -607,6 +622,18 @@ document.getElementById('project-name-input').addEventListener('input', function
   this.dataset.userEdited = this.value ? '1' : '0';
 });
 
+function _todayStr(){
+  var d = new Date();
+  var m = String(d.getMonth() + 1).padStart(2, '0');
+  var day = String(d.getDate()).padStart(2, '0');
+  return d.getFullYear() + '-' + m + '-' + day;
+}
+
+document.getElementById('collection-date-input').value = _todayStr();
+['floor-info-input','collection-date-input'].forEach(function(id){
+  document.getElementById(id).addEventListener('input', _resetDupState);
+});
+
 // ── 导入方式 ──
 function switchImport(mode){
   document.getElementById('mode-folder').classList.toggle('active',mode==='folder');
@@ -838,6 +865,8 @@ function loadRestoredProjectIfNeeded(){
         inp.value = data.project_name;
         inp.dataset.userEdited = '1';
       }
+      document.getElementById('floor-info-input').value = data.floor_info || '0';
+      document.getElementById('collection-date-input').value = data.collection_date || _todayStr();
       _folderName = data.folder_name || '';
       _restoreSeparateFiles(data.source_files || {});
       var mapping = data.region_name_map || {};
@@ -889,6 +918,8 @@ async function checkDuplicate(files) {
     // 只发核心输入文件（img/loc/behavior/env/ques1/ques2/ques3），region 可选不参与去重
     var fd = new FormData();
     fd.append('building_type', selectedType || '');
+    fd.append('floor_info', (document.getElementById('floor-info-input').value || '0').trim() || '0');
+    fd.append('collection_date', document.getElementById('collection-date-input').value || _todayStr());
     if(files.img)      fd.append('img',      files.img);
     if(files.loc)      fd.append('loc',      files.loc);
     if(files.behavior) fd.append('beh',      files.behavior);
@@ -970,6 +1001,8 @@ function startCalc(){
   var fd=new FormData();
   fd.append('building_type', selectedType);
   fd.append('folder_name', _folderName);
+  fd.append('floor_info', (document.getElementById('floor-info-input').value || '0').trim() || '0');
+  fd.append('collection_date', document.getElementById('collection-date-input').value || _todayStr());
 
   // 项目名称
   var projectName = (document.getElementById('project-name-input').value||'').trim();

@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS projects (
     skipped       TEXT    NOT NULL DEFAULT '[]',
     floorplan_b64 TEXT    DEFAULT NULL,
     files_md5     TEXT    DEFAULT NULL,  -- JSON dict {slot: md5}，去重用
+    floor_info    TEXT    NOT NULL DEFAULT '0',
+    collection_date TEXT  NOT NULL DEFAULT '',
     created_at    REAL    NOT NULL
 );
 """
@@ -44,6 +46,8 @@ _MIGRATIONS = [
     ('files_md5',     'ALTER TABLE projects ADD COLUMN files_md5     TEXT DEFAULT NULL;'),
     ('result_folder', 'ALTER TABLE projects ADD COLUMN result_folder TEXT DEFAULT NULL;'),
     ('source_files',  'ALTER TABLE projects ADD COLUMN source_files  TEXT DEFAULT NULL;'),
+    ('floor_info',    "ALTER TABLE projects ADD COLUMN floor_info    TEXT NOT NULL DEFAULT '0';"),
+    ('collection_date', "ALTER TABLE projects ADD COLUMN collection_date TEXT NOT NULL DEFAULT '';"),
 ]
 
 
@@ -69,8 +73,8 @@ def init_db():
 
 
 # ── 去重 key 计算 ───────────────────────────────────────────
-def _dedup_key(files_md5, building_type):
-    # type: (object, str) -> object
+def _dedup_key(files_md5, building_type, floor_info='', collection_date=''):
+    # type: (object, str, str, str) -> object
     """
     用各文件 MD5（排序后）+ 建筑类型 拼成去重字符串。
     files_md5 格式：{'img': 'abc...', 'loc': 'def...', ...}
@@ -81,7 +85,9 @@ def _dedup_key(files_md5, building_type):
     sorted_md5 = '|'.join(f'{k}:{v}' for k, v in sorted(files_md5.items()) if v)
     if not sorted_md5:
         return None
-    return f'{building_type}::{sorted_md5}'
+    floor_part = str(floor_info if floor_info not in (None, '') else '0').strip() or '0'
+    date_part = str(collection_date or '').strip()
+    return f'{building_type}::{floor_part}::{date_part}::{sorted_md5}'
 
 
 # ── CRUD ──────────────────────────────────────────────────
@@ -91,8 +97,10 @@ def save_project(name, building_type, input_folder,
                  floorplan_b64=None,
                  files_md5=None,
                  result_folder=None,
-                 source_files=None):
-    # type: (str, str, str, str, list, list, object, object, object, object) -> int
+                 source_files=None,
+                 floor_info='0',
+                 collection_date=''):
+    # type: (str, str, str, str, list, list, object, object, object, object, str, str) -> int
     """
     保存项目记录，返回记录 id。
 
@@ -108,15 +116,17 @@ def save_project(name, building_type, input_folder,
             skipped_j  = json.dumps(skipped,  ensure_ascii=False)
             files_md5_j = json.dumps(files_md5, ensure_ascii=False) if files_md5 else None
             source_files_j = json.dumps(source_files, ensure_ascii=False) if source_files else None
+            floor_info = str(floor_info if floor_info not in (None, '') else '0').strip() or '0'
+            collection_date = str(collection_date or '').strip()
 
-            dedup_key = _dedup_key(files_md5, building_type)
+            dedup_key = _dedup_key(files_md5, building_type, floor_info, collection_date)
 
             # 优先按 files_md5+building_type 去重
             existing = None
             if dedup_key:
                 # 查找所有有 files_md5 的同类型记录，逐一比对 key
                 rows = conn.execute(
-                    'SELECT id, files_md5, building_type FROM projects WHERE building_type = ?',
+                    'SELECT id, files_md5, building_type, floor_info, collection_date FROM projects WHERE building_type = ?',
                     (building_type,)
                 ).fetchall()
                 for row in rows:
@@ -125,7 +135,7 @@ def save_project(name, building_type, input_folder,
                             stored_md5 = json.loads(row['files_md5'])
                         except Exception:
                             stored_md5 = {}
-                        if _dedup_key(stored_md5, row['building_type']) == dedup_key:
+                        if _dedup_key(stored_md5, row['building_type'], row['floor_info'], row['collection_date']) == dedup_key:
                             existing = row
                             break
 
@@ -140,11 +150,12 @@ def save_project(name, building_type, input_folder,
                     '''UPDATE projects SET
                         name=?, building_type=?, input_folder=?, session_id=?,
                         computed=?, skipped=?, floorplan_b64=?, files_md5=?,
-                        result_folder=?, source_files=?
+                        result_folder=?, source_files=?, floor_info=?, collection_date=?
                        WHERE id=?''',
                     (name, building_type, input_folder, session_id,
                      computed_j, skipped_j, floorplan_b64,
-                     files_md5_j, result_folder, source_files_j, existing['id'])
+                     files_md5_j, result_folder, source_files_j,
+                     floor_info, collection_date, existing['id'])
                 )
                 conn.commit()
                 return existing['id']
@@ -153,11 +164,12 @@ def save_project(name, building_type, input_folder,
                     '''INSERT INTO projects
                        (name, building_type, input_folder, session_id,
                         computed, skipped, floorplan_b64, files_md5, result_folder,
-                        source_files, created_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
+                        source_files, floor_info, collection_date, created_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                     (name, building_type, input_folder, session_id,
                      computed_j, skipped_j, floorplan_b64,
-                     files_md5_j, result_folder, source_files_j, time.time())
+                     files_md5_j, result_folder, source_files_j,
+                     floor_info, collection_date, time.time())
                 )
                 conn.commit()
                 return cur.lastrowid

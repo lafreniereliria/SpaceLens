@@ -463,6 +463,10 @@ function renderCard(p) {
   var folderTag = p.input_folder
     ? '<span class="card-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 2h9a2 2 0 012 2z"/></svg>'+_escHtml(p.input_folder)+'</span>'
     : '';
+  var floorTag = '<span class="card-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>楼层 '+_escHtml(p.floor_info || '0')+'</span>';
+  var dateTag = p.collection_date
+    ? '<span class="card-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>'+_escHtml(p.collection_date)+'</span>'
+    : '';
 
   var card = document.createElement('div');
   card.className = 'project-card';
@@ -482,6 +486,8 @@ function renderCard(p) {
       '<div class="card-name" title="'+_escHtml(p.name)+'">'+_escHtml(p.name)+'</div>',
       '<div class="card-meta">',
         folderTag,
+        floorTag,
+        dateTag,
         '<span class="card-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'+formatDate(p.created_at)+'</span>',
       '</div>',
       '<div class="card-stats">',

@@ -1207,8 +1207,9 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         for i,r in enumerate(uniq_reg):
             for j,b in enumerate(uniq_beh): dur_matrix[i,j]=t[(regions==r)&(beh_nums==b)].sum()
         palette=_get_cmap('tab10',len(uniq_beh))
+        _cov = _get_coverage_mask()
         overlay,beh_grid=_make_heatmap_overlay(img,x,y,weights=t,alpha=0.65,cmap='jet',
-            walkable_mask=_get_walkable(), coverage_mask=_get_coverage_mask() or extract_measurement_mask(img))
+            walkable_mask=_get_walkable(), coverage_mask=_cov if _cov is not None else extract_measurement_mask(img))
         fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
         ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off'); ax0.set_title('行为时长热力图 (s)',color=th['text'],fontsize=13,pad=10)
         sm=plt.cm.ScalarMappable(cmap='jet',norm=mcolors.Normalize(0,float(beh_grid.max()) if float(beh_grid.max()) > 0 else 1.0))

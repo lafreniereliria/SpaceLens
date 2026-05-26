@@ -9,6 +9,7 @@ import os
 import threading
 import time
 import socket
+import base64
 from pathlib import Path
 
 # --------------------------------------------------------------------------- #
@@ -55,10 +56,12 @@ def _find_free_port() -> int:
 #  封面 HTML（内嵌，不依赖 Flask，可立即显示）
 # --------------------------------------------------------------------------- #
 def _cover_image_url() -> str:
-    """Return a local file URL for the immediate desktop splash cover image."""
+    """Return an embedded image URL for the immediate desktop splash cover."""
     img_path = os.path.join(_BASE_DIR, "static", "images", "cover-hero.png")
     try:
-        return Path(img_path).resolve().as_uri()
+        with open(img_path, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode("ascii")
+        return f"data:image/png;base64,{encoded}"
     except Exception:
         return ""
 

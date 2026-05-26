@@ -762,11 +762,12 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         reg_dur=np.array([weights[regions==r].sum() for r in reg_ids])
         overlay,fg=_make_heatmap_overlay(img,x,y,weights=weights,alpha=0.65,cmap='jet',
                                           walkable_mask=_get_walkable(),
-                                          coverage_mask=_get_coverage_mask())
+                                          coverage_mask=_get_coverage_mask(),
+                                          scale_to_kernel_area=True)
         fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
         ax0.set_facecolor('white'); ax0.imshow(overlay); ax0.axis('off')
         ax0.set_title('空间使用时长热力图',color=th['text'],fontsize=13,pad=10)
-        sm=plt.cm.ScalarMappable(cmap='jet',norm=mcolors.Normalize(0,float(fg.max())))
+        sm=plt.cm.ScalarMappable(cmap='jet',norm=mcolors.Normalize(0,float(fg.max()) if float(fg.max()) > 0 else 1.0))
         sm.set_array([]); cbar=fig0.colorbar(sm,ax=ax0,fraction=0.03,pad=0.02)
         cbar.ax.tick_params(colors=th['cbar_tick'],labelsize=8)
         cbar.set_label('停留时长 (s)',color=th['subtext'],fontsize=9)
@@ -3714,7 +3715,8 @@ def usetime():
         _coverage = extract_measurement_mask(load_img(_bg_file)) if _bg_file is not None else extract_measurement_mask(img)
         overlay, freq_grid = _make_heatmap_overlay(img, x, y, weights=weights, alpha=0.65, cmap='jet',
                                                     walkable_mask=extract_walkable_mask(img),
-                                                    coverage_mask=_coverage)
+                                                    coverage_mask=_coverage,
+                                                    scale_to_kernel_area=True)
 
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         fig.patch.set_facecolor(th['fig_bg'])
@@ -3725,7 +3727,7 @@ def usetime():
         ax0.axis('off')
         ax0.set_title('空间使用时长热力图', color=th['text'], fontsize=13, pad=10)
 
-        sm = plt.cm.ScalarMappable(cmap='jet', norm=mcolors.Normalize(0, float(freq_grid.max())))
+        sm = plt.cm.ScalarMappable(cmap='jet', norm=mcolors.Normalize(0, float(freq_grid.max()) if float(freq_grid.max()) > 0 else 1.0))
         sm.set_array([])
         cbar = fig.colorbar(sm, ax=ax0, fraction=0.03, pad=0.02)
         cbar.ax.tick_params(colors=th['cbar_tick'], labelsize=8)

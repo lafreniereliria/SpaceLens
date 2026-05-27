@@ -82,6 +82,11 @@ def _cluster_marker_size(point_count):
     n = max(int(point_count or 1), 1)
     return float(np.clip(90.0 / np.sqrt(n), 2.5, 8.0))
 
+def _behavior_marker_size(point_count):
+    """Scale behavior occurrence points for dense floor-plan overlays."""
+    n = max(int(point_count or 1), 1)
+    return float(np.clip(130.0 / np.sqrt(n), 1.8, 14.0))
+
 def _relaxed_topology_positions(cx, cy, node_r):
     """Normalize centroid positions and separate overlapping topology nodes."""
     cx = np.asarray(cx, dtype=float)
@@ -1543,8 +1548,9 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         fig0,ax0=plt.subplots(figsize=(9,6)); fig0.patch.set_facecolor(th['fig_bg'])
         ax0.set_facecolor('white'); ax0.imshow(img,alpha=0.5)
         ax0.set_xlim(0, _iw); ax0.set_ylim(_ih, 0)
+        point_size = _behavior_marker_size(len(x))
         for j,b in enumerate(uniq_beh):
-            mask=beh_nums==b; ax0.scatter(x[mask],y[mask],s=18,color=palette(j),alpha=0.75,label=beh_labels[j],zorder=3)
+            mask=beh_nums==b; ax0.scatter(x[mask],y[mask],s=point_size,color=palette(j),alpha=0.75,label=beh_labels[j],zorder=3)
         ax0.axis('off'); ax0.set_title('各行为发生人次分布图',color=th['text'],fontsize=13,pad=10)
         ax0.legend(loc='upper right',fontsize=7,ncol=2,facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'])
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
@@ -5052,9 +5058,10 @@ def behavior_count():
         ax0 = axes[0]
         ax0.set_facecolor('white')
         ax0.imshow(img, alpha=0.5)
+        point_size = _behavior_marker_size(len(x))
         for j, b in enumerate(uniq_beh):
             mask = beh_nums == b
-            ax0.scatter(x[mask], y[mask], s=18, color=palette(j), alpha=0.75,
+            ax0.scatter(x[mask], y[mask], s=point_size, color=palette(j), alpha=0.75,
                         label=beh_labels[j], zorder=3)
         ax0.axis('off')
         ax0.set_title('各行为发生人次分布图', color=th['text'], fontsize=13, pad=10)

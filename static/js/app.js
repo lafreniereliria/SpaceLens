@@ -6,8 +6,8 @@
 const VIEWS = {
   // ── A: 定位分析 ──
   heatmap: {
-    title: '到访频次热力图', subtitle: '统计各区域人员到访密度，生成热力分布图',
-    chartTitle: '热力图 & 区域频次', endpoint: '/api/heatmap',
+    title: '到访频次', subtitle: '识别高频与低频使用区域，反映空间单元的绝对吸引力与使用热度分布',
+    chartTitle: '到访频次热力图 & 各空间单元到访频次', endpoint: '/api/heatmap',
     dataTypes: ['img', 'loc'],
     stats: [
       { key: 'total_records', label: '总记录数', unit: '条', cls: '' },
@@ -19,44 +19,44 @@ const VIEWS = {
     ]
   },
   usetime: {
-    title: '使用时长分析', subtitle: '统计各区域人员累计使用时长分布',
-    chartTitle: '使用时长热力图 & 区域统计', endpoint: '/api/usetime',
+    title: '空间使用时长', subtitle: '反映空间的绝对活跃周期，用于优化建筑开放时间与能耗管理',
+    chartTitle: '空间使用时长热力图 & 各空间单元统计', endpoint: '/api/usetime',
     dataTypes: ['img', 'loc'],
     stats: [
       { key: 'total_records', label: '总记录数', unit: '条', cls: '' },
       { key: 'total_duration_s', label: '总使用时长', unit: 's', cls: 'teal' },
-      { key: 'avg_duration_s', label: '平均时长', unit: 's', cls: 'accent' },
+      { key: 'avg_duration_s', label: '平均空间使用时长', unit: '秒', cls: 'accent' },
       { key: 'max_duration_s', label: '最大时长', unit: 's', cls: '' },
       { key: 'min_duration_s', label: '最小时长', unit: 's', cls: 'amber' },
     ]
   },
   speed: {
-    title: '移动速率分析', subtitle: '计算各区域人员平均移动速率热力图',
-    chartTitle: '移动速率热力图 & 区域统计', endpoint: '/api/speed',
+    title: '移动速率', subtitle: '评价流线通行效率，辅助识别物理障碍或拥堵瓶颈区域',
+    chartTitle: '移动速率热力图 & 各空间单元统计', endpoint: '/api/speed',
     dataTypes: ['img', 'loc'],
     stats: [
       { key: 'total_records', label: '总记录数', unit: '条', cls: '' },
       { key: 'global_speed_ms', label: '全局均速', unit: 'm/s', cls: 'teal' },
-      { key: 'avg_speed_ms', label: '区域均速', unit: 'm/s', cls: 'accent' },
+      { key: 'avg_speed_ms', label: '空间单元均速', unit: '米/秒', cls: 'accent' },
       { key: 'max_speed_ms', label: '最高速率', unit: 'm/s', cls: '' },
       { key: 'min_speed_ms', label: '最低速率', unit: 'm/s', cls: 'amber' },
     ]
   },
   duration: {
-    title: '停留时长分析', subtitle: '统计各区域人员停留时长热力分布',
-    chartTitle: '停留时长热力图 & 区域统计', endpoint: '/api/duration',
+    title: '空间停留时长', subtitle: '反映特定空间单元支持长期驻留活动的客观能力与使用时间强度',
+    chartTitle: '空间停留时长热力图 & 各空间单元统计', endpoint: '/api/duration',
     dataTypes: ['img', 'loc'],
     stats: [
       { key: 'total_records', label: '总记录数', unit: '条', cls: '' },
-      { key: 'total_dwell_s', label: '总停留时长', unit: 's', cls: 'teal' },
+      { key: 'total_dwell_s', label: '总使用时长', unit: '秒', cls: 'teal' },
       { key: 'avg_dwell_s', label: '平均停留', unit: 's', cls: 'accent' },
       { key: 'max_dwell_s', label: '最长停留', unit: 's', cls: '' },
       { key: 'min_dwell_s', label: '最短停留', unit: 's', cls: 'amber' },
     ]
   },
   cluster: {
-    title: '空间聚类分析', subtitle: 'K-means 算法识别空间使用热点区域',
-    chartTitle: '聚类分布图 & 各簇点位数', endpoint: '/api/cluster',
+    title: '空间聚类程度', subtitle: '摒弃网格计数，精准提取空间中自发形成的人群聚集特征与非正式社交/滞留节点',
+    chartTitle: '空间聚类程度分布图 & 空间聚类程度值', endpoint: '/api/cluster',
     dataTypes: ['img', 'loc', 'cluster_k'],
     stats: [
       { key: 'k', label: '聚类数', unit: '簇', cls: 'accent' },
@@ -65,8 +65,8 @@ const VIEWS = {
     ]
   },
   density: {
-    title: '人员密度分析', subtitle: '统计各区域独立到访人员数量分布',
-    chartTitle: '人员分布热力图 & 区域统计', endpoint: '/api/density',
+    title: '空间人员密度', subtitle: '量化空间拥挤程度，评估空间容量是否过载',
+    chartTitle: '到访频次热力图 & 各空间单元人员密度', endpoint: '/api/density',
     dataTypes: ['img', 'loc'],
     stats: [
       { key: 'total_records', label: '总记录数', unit: '条', cls: '' },
@@ -77,23 +77,23 @@ const VIEWS = {
     ]
   },
   openness: {
-    title: '空间开放程度', subtitle: '计算各区域人均面积利用率（人/㎡）',
-    chartTitle: '开放程度热力图 & 区域统计', endpoint: '/api/openness',
+    title: '空间开放程度', subtitle: '量化人均瞬时空间占有率，数值越大表征个体感受到的空间压迫感越小、物理空间越开敞',
+    chartTitle: '到访频次热力图 & 各空间单元开放程度', endpoint: '/api/openness',
     dataTypes: ['img', 'loc', 'region'],
     stats: [
       { key: 'unique_users', label: '独立人员数', unit: '人', cls: '' },
-      { key: 'global_openness', label: '全局开放度', unit: '人/㎡', cls: 'teal' },
+      { key: 'global_openness', label: '平均开放程度', unit: '人/平方米', cls: 'teal' },
       { key: 'avg_openness', label: '平均开放度', unit: '人/㎡', cls: 'accent' },
       { key: 'max_openness', label: '最大开放度', unit: '人/㎡', cls: '' },
       { key: 'min_openness', label: '最小开放度', unit: '人/㎡', cls: 'amber' },
     ]
   },
   topology: {
-    title: '拓扑连接关系', subtitle: '分析区域间人员流转关系与连接强度',
-    chartTitle: '转移矩阵 & 流入/流出量', endpoint: '/api/topology',
+    title: '轨迹拓扑连接度', subtitle: '客观测度不同建筑功能分区之间的实际流线关联强度',
+    chartTitle: '空间单元转移矩阵 & 流入/流出量', endpoint: '/api/topology',
     dataTypes: ['loc'],
     stats: [
-      { key: 'region_count', label: '区域数', unit: '个', cls: '' },
+      { key: 'region_count', label: '空间单元数', unit: '个', cls: '' },
       { key: 'total_transitions', label: '总转移次数', unit: '次', cls: 'teal' },
       { key: 'avg_in_flow', label: '平均流入量', unit: '次', cls: 'accent' },
       { key: 'max_in_flow', label: '最大流入量', unit: '次', cls: '' },
@@ -101,17 +101,17 @@ const VIEWS = {
     ]
   },
   difference: {
-    title: '轨迹差异系数', subtitle: '比较人员与区域轨迹长度离散程度',
-    chartTitle: '人员差异系数 & 区域差异系数', endpoint: '/api/difference',
+    title: '轨迹长度差异系数', subtitle: '系数接近1表明导向明确；显著大于1表明存在迂回迷失，用于诊断交通导视合理性或展览流线吸引力',
+    chartTitle: '轨迹长度差异系数 & 空间单元平均轨迹长度差异系数', endpoint: '/api/difference',
     dataTypes: ['img', 'loc'],
     stats: [
       { key: 'total_users', label: '人员数', unit: '人', cls: '' },
       { key: 'avg_length_m', label: '平均轨迹长', unit: 'm', cls: 'teal' },
-      { key: 'region_count', label: '区域数', unit: '个', cls: 'accent' },
+      { key: 'region_count', label: '空间单元数', unit: '个', cls: 'accent' },
     ]
   },
   trajectory: {
-    title: '轨迹长度分析', subtitle: '可视化每位人员的移动路径与轨迹长度',
+    title: '轨迹长度', subtitle: '刻画个体在空间内的客观活动步行范围',
     chartTitle: '轨迹图 & 长度排行', endpoint: '/api/trajectory',
     dataTypes: ['img', 'loc'],
     stats: [
@@ -135,18 +135,18 @@ const VIEWS = {
   },
   // ── C: 行为分析 ──
   behavior_count: {
-    title: '行为发生人次', subtitle: '统计各区域不同行为类型的发生人次',
-    chartTitle: '行为分布散点 & 各区域人次', endpoint: '/api/behavior_count',
+    title: '行为发生人次', subtitle: '描述特定行为在空间内出现的绝对频率',
+    chartTitle: '各行为发生人次分布图 & 各空间单元行为发生人次', endpoint: '/api/behavior_count',
     dataTypes: ['img', 'behavior'],
     stats: [
       { key: 'total_records', label: '总记录数', unit: '条', cls: '' },
       { key: 'behavior_types', label: '行为类型数', unit: '种', cls: 'teal' },
-      { key: 'region_count', label: '区域数', unit: '个', cls: 'accent' },
+      { key: 'region_count', label: '空间单元数', unit: '个', cls: 'accent' },
     ]
   },
   behavior_duration: {
-    title: '行为时长分析', subtitle: '统计各区域不同行为的累计时长',
-    chartTitle: '行为时长热力图 & 区域统计', endpoint: '/api/behavior_duration',
+    title: '行为持续时长', subtitle: '反映空间支持特定活动开展的客观稳定性与强度',
+    chartTitle: '行为发生时长热力图 & 各空间单元行为发生时长', endpoint: '/api/behavior_duration',
     dataTypes: ['img', 'behavior'],
     stats: [
       { key: 'total_records', label: '总记录数', unit: '条', cls: '' },
@@ -155,37 +155,37 @@ const VIEWS = {
     ]
   },
   behavior_rate: {
-    title: '行为发生率', subtitle: '各区域不同行为的时间占比',
-    chartTitle: '行为发生率 (堆叠 & 分组)', endpoint: '/api/behavior_rate',
+    title: '行为平均发生率', subtitle: '揭示特定空间单元内在时间维度上的核心主导行为分布规律',
+    chartTitle: '各空间单元行为平均发生率', endpoint: '/api/behavior_rate',
     dataTypes: ['behavior'],
     stats: [
       { key: 'total_records', label: '总记录数', unit: '条', cls: '' },
       { key: 'behavior_types', label: '行为类型数', unit: '种', cls: 'teal' },
-      { key: 'region_count', label: '区域数', unit: '个', cls: 'accent' },
+      { key: 'region_count', label: '空间单元数', unit: '个', cls: 'accent' },
     ]
   },
   behavior_entropy: {
-    title: '行为复合度', subtitle: '用信息熵衡量区域/人员行为多样性',
-    chartTitle: '区域 & 使用者行为复合度', endpoint: '/api/behavior_entropy',
+    title: '行为复合程度', subtitle: '熵值越高表明行为种类越多、分布越均匀，量化表征空间的复合使用活力',
+    chartTitle: '空间单元 & 人员行为复合程度', endpoint: '/api/behavior_entropy',
     dataTypes: ['behavior'],
     stats: [
-      { key: 'region_count', label: '区域数', unit: '个', cls: '' },
+      { key: 'region_count', label: '空间单元数', unit: '个', cls: '' },
       { key: 'user_count', label: '人员数', unit: '人', cls: 'teal' },
-      { key: 'avg_reg_entropy', label: '区域平均熵', unit: 'bits', cls: 'accent' },
+      { key: 'avg_reg_entropy', label: '空间单元平均复合程度', unit: '比特', cls: 'accent' },
       { key: 'max_reg_entropy', label: '最大熵', unit: 'bits', cls: '' },
       { key: 'min_reg_entropy', label: '最小熵', unit: 'bits', cls: 'amber' },
     ]
   },
   utilization: {
-    title: '功能利用率', subtitle: '各区域单位面积行为时长（s/㎡）',
-    chartTitle: '功能利用率堆叠 & 总量', endpoint: '/api/utilization',
+    title: '空间功能利用率', subtitle: '定量诊断建筑面积配置的真实效能比，识别潜在的功能闲置或面积冗余',
+    chartTitle: '空间功能利用率占比 & 利用率均值', endpoint: '/api/utilization',
     dataTypes: ['behavior', 'region'],
     stats: [
-      { key: 'region_count', label: '区域数', unit: '个', cls: '' },
+      { key: 'region_count', label: '空间单元数', unit: '个', cls: '' },
       { key: 'behavior_types', label: '行为类型数', unit: '种', cls: 'teal' },
-      { key: 'avg_util', label: '平均利用率', unit: 's/㎡', cls: 'accent' },
-      { key: 'max_util', label: '最高利用率', unit: 's/㎡', cls: '' },
-      { key: 'min_util', label: '最低利用率', unit: 's/㎡', cls: 'amber' },
+      { key: 'avg_util', label: '利用率均值', unit: '秒/平方米', cls: 'accent' },
+      { key: 'max_util', label: '最高利用率', unit: '秒/平方米', cls: '' },
+      { key: 'min_util', label: '最低利用率', unit: '秒/平方米', cls: 'amber' },
     ]
   },
   // ── D: 满意度 ──
@@ -201,14 +201,14 @@ const VIEWS = {
     ]
   },
   satisfaction_region: {
-    title: '空间区域满意度', subtitle: '各空间区域的平均满意度评分与雷达图',
-    chartTitle: '区域满意度柱图 & 雷达图', endpoint: '/api/satisfaction_region',
+    title: '空间单元满意度', subtitle: '作为非线性耦合分析的监督信号，用于识别“高密集-低满意”等局部空间性能错位现象',
+    chartTitle: '空间单元满意度柱图 & 雷达图', endpoint: '/api/satisfaction_region',
     dataTypes: ['ques'],
     stats: [
-      { key: 'region_count', label: '评价区域数', unit: '个', cls: '' },
-      { key: 'avg_score', label: '区域均值', unit: '分', cls: 'teal' },
-      { key: 'best_region', label: '最满意区域', unit: '', cls: 'accent' },
-      { key: 'worst_region', label: '最低分区域', unit: '', cls: 'amber' },
+      { key: 'region_count', label: '评价空间单元数', unit: '个', cls: '' },
+      { key: 'avg_score', label: '空间单元均值', unit: '分', cls: 'teal' },
+      { key: 'best_region', label: '最满意空间单元', unit: '', cls: 'accent' },
+      { key: 'worst_region', label: '最低分空间单元', unit: '', cls: 'amber' },
     ]
   },
   satisfaction_design: {

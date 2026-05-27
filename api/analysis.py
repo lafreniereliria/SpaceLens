@@ -87,6 +87,11 @@ def _behavior_marker_size(point_count):
     n = max(int(point_count or 1), 1)
     return float(np.clip(130.0 / np.sqrt(n), 1.8, 14.0))
 
+def _category_bar_width(category_count):
+    """Give dense category bar charts enough horizontal room for labels."""
+    n = max(int(category_count or 1), 1)
+    return float(np.clip(5.0 + 0.42 * n, 9.0, 30.0))
+
 def _relaxed_topology_positions(cx, cy, node_r):
     """Normalize centroid positions and separate overlapping topology nodes."""
     cx = np.asarray(cx, dtype=float)
@@ -1740,9 +1745,12 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         _legend_upper_right(ax0, th)
         ax0.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax0.set_axisbelow(True)
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
-        fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
+        fig1,ax1=plt.subplots(figsize=(_category_bar_width(len(uniq_reg)),6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
-        _bar_common(ax1,_region_labels(uniq_reg, region_name_map),total_util,color='#f5a623',xlabel='空间单元',ylabel='空间功能利用率（秒/平方米）',th=th)
+        _bar_common(ax1,_region_labels(uniq_reg, None, prefix=''),total_util,color='#f5a623',xlabel='空间单元序号',ylabel='空间功能利用率（秒/平方米）',th=th)
+        ax1.tick_params(axis='x', labelsize=8, rotation=35)
+        for label in ax1.get_xticklabels():
+            label.set_ha('right')
         global_util=dur_matrix.sum()/reg_areas.sum() if reg_areas.sum()>0 else 0
         ax1.axhline(global_util,color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'利用率均值 {global_util:.2f}')
         _legend_upper_right(ax1, th)
@@ -5472,10 +5480,14 @@ def utilization():
         img_b64 = fig_to_base64(fig0)
         plt.close(fig0)
 
-        fig1, ax1 = plt.subplots(figsize=(9, 6))
+        fig1, ax1 = plt.subplots(figsize=(_category_bar_width(len(uniq_reg)), 6))
         fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1, th)
-        _bar_common(ax1, uniq_reg, total_util, color='#f5a623', ylabel='空间功能利用率（秒/平方米）')
+        _bar_common(ax1, uniq_reg, total_util, color='#f5a623',
+                    xlabel='空间单元序号', ylabel='空间功能利用率（秒/平方米）', th=th)
+        ax1.tick_params(axis='x', labelsize=8, rotation=35)
+        for label in ax1.get_xticklabels():
+            label.set_ha('right')
         global_util = dur_matrix.sum() / reg_areas.sum() if reg_areas.sum() > 0 else 0
         ax1.axhline(global_util, color='#ff5e5e', linestyle='--', linewidth=1.5,
                     label=f'利用率均值 {global_util:.1f}')

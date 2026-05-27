@@ -98,11 +98,12 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
 .row-cell:last-child { border-right:none; }
 
 /* 图片展开 */
-.cell-img-wrap { position:relative; width:100%; height:clamp(220px,24vw,360px); display:flex; align-items:center; justify-content:center; padding:8px; background:var(--bg-deep); border-radius:8px; overflow:hidden; cursor:pointer; }
-.cell-img-wrap img { width:100%; height:100%; display:block; object-fit:contain; border-radius:6px; }
-.cell-img-wrap .cell-placeholder { width:100%; height:100%; min-height:0 !important; }
-.cell-img-wrap .expand-hint { position:absolute; bottom:6px; right:6px; background:rgba(0,0,0,0.45); color:#fff; font-size:10px; padding:2px 7px; border-radius:4px; opacity:0; transition:opacity 0.15s; }
-.cell-img-wrap:hover .expand-hint { opacity:1; }
+.cell-img-wrap { position:relative; width:100%; display:flex; flex-direction:column; gap:8px; padding:8px; background:var(--bg-deep); border-radius:8px; overflow:hidden; }
+.cell-img-item { position:relative; width:100%; height:clamp(220px,24vw,360px); display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.cell-img-item img { width:100%; height:100%; display:block; object-fit:contain; border-radius:6px; }
+.cell-img-wrap .cell-placeholder { width:100%; min-height:160px !important; }
+.cell-img-item .expand-hint { position:absolute; bottom:6px; right:6px; background:rgba(0,0,0,0.45); color:#fff; font-size:10px; padding:2px 7px; border-radius:4px; opacity:0; transition:opacity 0.15s; }
+.cell-img-item:hover .expand-hint { opacity:1; }
 
 /* 空/跳过/过期状态 */
 .cell-placeholder { display:flex; align-items:center; justify-content:center; min-height:60px; border-radius:8px; background:var(--bg-deep); font-size:12px; color:var(--text-dim); text-align:center; padding:12px; }
@@ -375,36 +376,59 @@ function buildCompareArea() {
   // 绑定 IntersectionObserver 高亮侧边栏
   bindScrollHighlight();
 
-  // 异步分割所有指标图片（在 DOM 插入后执行）
-  requestAnimationFrame(function() { splitAllImages(); });
+  // 在 DOM 插入后填充各指标的独立图表图片
+  requestAnimationFrame(function() { renderAllImages(); });
 }
 
-// ── 批量分割所有指标图片 ──
-function splitAllImages() {
+// ── 批量填充所有指标图片 ──
+function renderAllImages() {
   METRIC_ORDER.forEach(function(m) {
-    var resultKey = m.isEnv ? null : m.id;  // 环境参数单独处理
     _projects.forEach(function(proj, projIdx) {
       if (proj.status === 'expired') return;
       var key = m.isEnv ? 'environment_p1' : m.id;
       var result = (proj.results||{})[key];
-      if (!result || !result.image) return;
-      var src = 'data:image/png;base64,'+result.image;
-      splitImage(src).then(function(halves) {
-        fillHalfCell(m.id, projIdx, 'left',  halves.left);
-        fillHalfCell(m.id, projIdx, 'right', halves.right);
-      });
+      if (!result) return;
+      fillImageCell(m.id, projIdx, 'left',  getImageKeysForHalf(result, 'left'));
+      fillImageCell(m.id, projIdx, 'right', getImageKeysForHalf(result, 'right'));
     });
   });
 }
 
-// ── 把裁剪后的图填入对应单元格 ──
-function fillHalfCell(metricId, projIdx, half, imgSrc) {
+function getImageKeysForHalf(result, half) {
+  if (!result) return [];
+  if (half === 'left') {
+    return result.image ? ['image'] : [];
+  }
+  var keys = [];
+  if (result.image2) keys.push('image2');
+  if (result.image3) keys.push('image3');
+  if (!keys.length && result.image_dist) keys.push('image_dist');
+  return keys;
+}
+
+// ── 把后端返回的独立图片填入对应单元格 ──
+function fillImageCell(metricId, projIdx, half, imageKeys) {
   var ph = document.getElementById('img-ph-'+metricId+'-'+projIdx+'-'+half);
   if (!ph) return;
-  if (!imgSrc) { ph.innerHTML = '<div class="cell-placeholder skip" style="min-height:48px">暂无图表</div>'; return; }
+  var proj = _projects[projIdx];
+  var resultKey = metricId === 'environment' ? 'environment_p'+_envParamN : metricId;
+  var result = (proj && proj.results || {})[resultKey];
+  imageKeys = imageKeys || [];
+  if (!result || !imageKeys.length) {
+    ph.innerHTML = '<div class="cell-placeholder skip" style="min-height:48px">暂无图表</div>';
+    return;
+  }
   ph.className = 'cell-img-wrap';
-  ph.onclick = (function(s){ return function(){ openLightbox(s); }; })(imgSrc);
-  ph.innerHTML = '<img src="'+imgSrc+'" alt=""><span class="expand-hint">放大</span>';
+  ph.onclick = null;
+  var html = imageKeys.map(function(key) {
+    var b64 = result[key];
+    if (!b64) return '';
+    var src = 'data:image/png;base64,'+b64;
+    return '<div class="cell-img-item" onclick="openLightbox(\''+src+'\')">'+
+      '<img src="'+src+'" alt=""><span class="expand-hint">放大</span>'+
+    '</div>';
+  }).join('');
+  ph.innerHTML = html || '<div class="cell-placeholder skip" style="min-height:48px">暂无图表</div>';
 }
 
 function buildRow(m) {
@@ -433,31 +457,6 @@ function buildRow(m) {
   '</div>';
 
   return topRow + botRow;
-}
-
-// ── 用 canvas 把 base64 PNG 从中间切成左右两半 ──
-// 返回 Promise<{left:dataURL, right:dataURL}>
-function splitImage(b64src) {
-  return new Promise(function(resolve) {
-    var img = new Image();
-    img.onload = function() {
-      var w = img.naturalWidth;
-      var h = img.naturalHeight;
-      var half = Math.floor(w / 2);
-
-      var cvL = document.createElement('canvas');
-      cvL.width = half; cvL.height = h;
-      cvL.getContext('2d').drawImage(img, 0, 0, half, h, 0, 0, half, h);
-
-      var cvR = document.createElement('canvas');
-      cvR.width = w - half; cvR.height = h;
-      cvR.getContext('2d').drawImage(img, half, 0, w - half, h, 0, 0, w - half, h);
-
-      resolve({ left: cvL.toDataURL('image/png'), right: cvR.toDataURL('image/png') });
-    };
-    img.onerror = function() { resolve({ left: null, right: null }); };
-    img.src = b64src;
-  });
 }
 
 function buildCell(m, proj, projIdx, half) {
@@ -510,9 +509,10 @@ function buildCell(m, proj, projIdx, half) {
     wrapExtra = tabsHtml;
   }
 
-  // 图片占位（异步分割后填入）
+  // 图片占位（DOM 插入后按 image/image2/image3 独立字段填入）
   var imgPlaceholderId = 'img-ph-'+m.id+'-'+projIdx+'-'+half;
-  var imgHtml = result.image
+  var imageKeys = getImageKeysForHalf(result, half);
+  var imgHtml = imageKeys.length
     ? '<div class="cell-img-wrap" id="'+imgPlaceholderId+'"><div class="cell-placeholder" style="min-height:48px;font-size:11px">图片加载中…</div></div>'
     : '';
 
@@ -545,11 +545,8 @@ function switchEnvParam(projIdx, pn, btn) {
     return;
   }
   if (result.image) {
-    var src = 'data:image/png;base64,'+result.image;
-    splitImage(src).then(function(halves) {
-      fillHalfCell('environment', projIdx, 'left',  halves.left);
-      fillHalfCell('environment', projIdx, 'right', halves.right);
-    });
+    fillImageCell('environment', projIdx, 'left',  getImageKeysForHalf(result, 'left'));
+    fillImageCell('environment', projIdx, 'right', getImageKeysForHalf(result, 'right'));
   }
   // 更新右半行统计数字
   var rightCell = document.getElementById('cell-environment-'+projIdx+'-right');

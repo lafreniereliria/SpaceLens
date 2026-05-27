@@ -77,6 +77,56 @@ def _trajectory_line_width(track_count):
     n = max(int(track_count or 1), 1)
     return max(0.65, min(2.2, 4.8 / np.sqrt(n)))
 
+def _cluster_marker_size(point_count):
+    """Keep cluster points legible without overplotting dense datasets."""
+    n = max(int(point_count or 1), 1)
+    return float(np.clip(90.0 / np.sqrt(n), 2.5, 8.0))
+
+def _relaxed_topology_positions(cx, cy, node_r):
+    """Normalize centroid positions and separate overlapping topology nodes."""
+    cx = np.asarray(cx, dtype=float)
+    cy = np.asarray(cy, dtype=float)
+    node_r = np.asarray(node_r, dtype=float)
+
+    def _norm01(arr):
+        lo, hi = float(np.min(arr)), float(np.max(arr))
+        return (arr - lo) / (hi - lo + 1e-9) * 0.82 + 0.09
+
+    pos = np.column_stack([_norm01(cx), 1.0 - _norm01(cy)])
+    n = len(pos)
+    if n <= 1:
+        return pos[:, 0], pos[:, 1]
+
+    max_r = float(np.max(node_r)) if len(node_r) else 0.04
+    margin = min(0.16, max(0.08, max_r + 0.035))
+    min_gap = max(0.04, min(0.12, 0.30 / np.sqrt(n)))
+    target = np.maximum(node_r[:, None] + node_r[None, :] + min_gap, 0.075)
+
+    for _ in range(220):
+        moved = False
+        for i in range(n):
+            for j in range(i + 1, n):
+                delta = pos[j] - pos[i]
+                dist = float(np.linalg.norm(delta))
+                want = float(target[i, j])
+                if dist >= want:
+                    continue
+                if dist < 1e-6:
+                    angle = 2 * np.pi * (i + 1) / max(n, 1)
+                    direction = np.array([np.cos(angle), np.sin(angle)])
+                    dist = 1e-6
+                else:
+                    direction = delta / dist
+                push = (want - dist) * 0.5
+                pos[i] -= direction * push
+                pos[j] += direction * push
+                moved = True
+        pos[:, 0] = np.clip(pos[:, 0], margin, 1.0 - margin)
+        pos[:, 1] = np.clip(pos[:, 1], margin, 1.0 - margin)
+        if not moved:
+            break
+    return pos[:, 0], pos[:, 1]
+
 # ─── 主题配色 ───
 def _theme(t='dark'):
     if t == 'light':
@@ -690,9 +740,10 @@ def _compute_cluster_result(loc_fs, img_fs, k, th, normalize_xy_fn=None, walkabl
     ax0.set_facecolor('white')
     ax0.imshow(img, alpha=0.35)
     ax0.axis('off')
+    point_size = _cluster_marker_size(len(x))
     for ci in range(k):
         mask = labels == ci
-        ax0.scatter(x[mask], y[mask], s=12, color=palette(ci),
+        ax0.scatter(x[mask], y[mask], s=point_size, color=palette(ci),
                     alpha=0.7, label=f'簇 {ci+1}')
     ax0.scatter(centers[:, 0], centers[:, 1], s=160, c='white',
                 marker='*', zorder=10, edgecolors='#ffcc00', linewidths=1)
@@ -1139,17 +1190,25 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
 
         # ── 图2：入流/出流柱状图 ──
         in_deg=trans.sum(axis=0); out_deg=trans.sum(axis=1)
+        diff_deg=in_deg-out_deg
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
-        bw=0.35; xs=np.arange(n)
-        bars_in=ax1.bar(xs-bw/2,in_deg,width=bw,color=th['accent'],alpha=0.85,label='入流')
-        bars_out=ax1.bar(xs+bw/2,out_deg,width=bw,color='#00c9a7',alpha=0.85,label='出流')
-        for bar in bars_in:
+        bw=0.24; xs=np.arange(n)
+        bars_in=ax1.bar(xs-bw,in_deg,width=bw,color=th['accent'],alpha=0.85,label='入流')
+        bars_out=ax1.bar(xs,out_deg,width=bw,color='#00c9a7',alpha=0.85,label='出流')
+        bars_diff=ax1.bar(xs+bw,diff_deg,width=bw,color='#f59e0b',alpha=0.85,label='差值(入-出)')
+        for bar in list(bars_in) + list(bars_out) + list(bars_diff):
             h=bar.get_height()
-            if h>0: ax1.text(bar.get_x()+bar.get_width()/2,h+h*0.02,str(int(h)),ha='center',va='bottom',color=th['bar_label'],fontsize=7)
-        for bar in bars_out:
-            h=bar.get_height()
-            if h>0: ax1.text(bar.get_x()+bar.get_width()/2,h+h*0.02,str(int(h)),ha='center',va='bottom',color=th['bar_label'],fontsize=7)
+            if h==0:
+                continue
+            offset=max(float(np.max(np.abs(diff_deg))) if len(diff_deg) else 1.0,
+                       float(np.max(in_deg)) if len(in_deg) else 1.0,
+                       float(np.max(out_deg)) if len(out_deg) else 1.0) * 0.025
+            ax1.text(bar.get_x()+bar.get_width()/2,h+(offset if h>0 else -offset),
+                     str(int(h)),ha='center',va='bottom' if h>0 else 'top',
+                     color=th['bar_label'],fontsize=7)
+        if np.any(diff_deg < 0):
+            ax1.axhline(0,color=th['spine'],linewidth=0.8)
         ax1.set_xticks(xs); ax1.set_xticklabels(_region_labels(reg_ids, region_name_map, prefix=''),fontsize=8,rotation=30,ha='right')
         ax1.set_xlabel('空间单元',color=th['subtext'],fontsize=10); ax1.set_ylabel('流量',color=th['subtext'],fontsize=10)
         ax1.set_title('各空间单元人员流入/流出量',color=th['text'],fontsize=13)
@@ -1166,11 +1225,10 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         df_tmp = df[df['Region'].astype(int).isin(reg_ids)].copy()
         cx = np.array([df_tmp[df_tmp['Region'].astype(int)==r]['X'].astype(float).mean() for r in reg_ids])
         cy = np.array([df_tmp[df_tmp['Region'].astype(int)==r]['Y'].astype(float).mean() for r in reg_ids])
-        # 归一化坐标到 [0.05, 0.95] 用于绘图
-        def _norm01(arr):
-            lo,hi=arr.min(),arr.max()
-            return (arr-lo)/(hi-lo+1e-9)*0.85+0.05
-        nx_pos=_norm01(cx); ny_pos=1.0-_norm01(cy)  # Y 反转（图像坐标→数学坐标）
+        # 节点大小 ∝ 总流量（入+出），再松弛位置以减少圆重叠
+        total_flow=in_deg+out_deg; max_flow=total_flow.max() if total_flow.max()>0 else 1
+        node_r=np.clip(0.020+0.028*(total_flow/max_flow),0.018,0.050)
+        nx_pos, ny_pos = _relaxed_topology_positions(cx, cy, node_r)
         # 绘制有向边
         max_t   = trans.max() if trans.max()>0 else 1
         for i in range(n):
@@ -1188,9 +1246,14 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
                     arrowprops=dict(arrowstyle='-|>',color='#4facfe',lw=lw,
                                    alpha=alpha,connectionstyle=f'arc3,rad={rad}'),
                     annotation_clip=False)
-        # 节点大小 ∝ 总流量（入+出）
-        total_flow=in_deg+out_deg; max_flow=total_flow.max() if total_flow.max()>0 else 1
-        node_r=np.clip(0.025+0.040*(total_flow/max_flow),0.02,0.07)
+                dx=x1-x0; dy=y1-y0; dist=(dx*dx+dy*dy)**0.5+1e-9
+                label_offset=(0.035 if rad else 0.0)
+                mx=(x0+x1)/2 - dy/dist*label_offset
+                my=(y0+y1)/2 + dx/dist*label_offset
+                ax2.text(mx,my,str(int(w)),ha='center',va='center',
+                         fontsize=7,color=th['text'],transform=ax2.transAxes,
+                         bbox=dict(boxstyle='round,pad=0.16',fc=th['fig_bg'],ec='none',alpha=0.72),
+                         zorder=4)
         cmap_n=_get_cmap('plasma')
         node_colors=[cmap_n(0.2+0.7*(total_flow[i]/max_flow)) for i in range(n)]
         for i in range(n):
@@ -3568,9 +3631,10 @@ def cluster():
         ax0.axis('off')
 
         palette = _get_cmap('tab10', k)
+        point_size = _cluster_marker_size(len(x))
         for ci in range(k):
             mask = labels == ci
-            ax0.scatter(x[mask], y[mask], s=12, color=palette(ci),
+            ax0.scatter(x[mask], y[mask], s=point_size, color=palette(ci),
                         alpha=0.7, label=f'簇 {ci+1}')
 
         # 聚类中心标记
@@ -4513,10 +4577,25 @@ def topology():
         _styled_axes(ax1, th)
         in_deg = trans.sum(axis=0)
         out_deg = trans.sum(axis=1)
-        bw = 0.35
+        diff_deg = in_deg - out_deg
+        bw = 0.24
         xs = np.arange(n)
-        ax1.bar(xs - bw/2, in_deg, width=bw, color=th['accent'], alpha=0.85, label='入流')
-        ax1.bar(xs + bw/2, out_deg, width=bw, color='#00c9a7', alpha=0.85, label='出流')
+        bars_in = ax1.bar(xs - bw, in_deg, width=bw, color=th['accent'], alpha=0.85, label='入流')
+        bars_out = ax1.bar(xs, out_deg, width=bw, color='#00c9a7', alpha=0.85, label='出流')
+        bars_diff = ax1.bar(xs + bw, diff_deg, width=bw, color='#f59e0b', alpha=0.85, label='差值(入-出)')
+        label_offset = max(float(np.max(np.abs(diff_deg))) if len(diff_deg) else 1.0,
+                           float(np.max(in_deg)) if len(in_deg) else 1.0,
+                           float(np.max(out_deg)) if len(out_deg) else 1.0) * 0.025
+        for bar in list(bars_in) + list(bars_out) + list(bars_diff):
+            h = bar.get_height()
+            if h == 0:
+                continue
+            ax1.text(bar.get_x() + bar.get_width() / 2,
+                     h + (label_offset if h > 0 else -label_offset),
+                     str(int(h)), ha='center', va='bottom' if h > 0 else 'top',
+                     color=th['bar_label'], fontsize=7)
+        if np.any(diff_deg < 0):
+            ax1.axhline(0, color=th['spine'], linewidth=0.8)
         ax1.set_xticks(xs); ax1.set_xticklabels(_region_labels(reg_ids, region_name_map, prefix=''), fontsize=8, rotation=30, ha='right')
         ax1.set_xlabel('空间单元', color=th['subtext'], fontsize=10)
         ax1.set_ylabel('流量', color=th['subtext'], fontsize=10)
@@ -4538,11 +4617,10 @@ def topology():
         df_tmp = df[df['Region'].astype(int).isin(reg_ids)].copy()
         cx = np.array([df_tmp[df_tmp['Region'].astype(int) == r]['X'].astype(float).mean() for r in reg_ids])
         cy = np.array([df_tmp[df_tmp['Region'].astype(int) == r]['Y'].astype(float).mean() for r in reg_ids])
-        def _norm01(arr):
-            lo, hi = arr.min(), arr.max()
-            return (arr - lo) / (hi - lo + 1e-9) * 0.85 + 0.05
-        nx_pos = _norm01(cx)
-        ny_pos = 1.0 - _norm01(cy)
+        total_flow = in_deg + out_deg
+        max_flow = total_flow.max() if total_flow.max() > 0 else 1
+        node_r = np.clip(0.020 + 0.028 * (total_flow / max_flow), 0.018, 0.050)
+        nx_pos, ny_pos = _relaxed_topology_positions(cx, cy, node_r)
         max_t = trans.max() if trans.max() > 0 else 1
         for i in range(n):
             for j in range(n):
@@ -4552,6 +4630,8 @@ def topology():
                 if w == 0:
                     continue
                 rad = 0.15 if trans[j, i] > 0 else 0.0
+                x0, y0 = nx_pos[i], ny_pos[i]
+                x1, y1 = nx_pos[j], ny_pos[j]
                 ax2.annotate('', xy=(nx_pos[j], ny_pos[j]), xytext=(nx_pos[i], ny_pos[i]),
                              xycoords='axes fraction', textcoords='axes fraction',
                              arrowprops=dict(arrowstyle='-|>', color='#4facfe',
@@ -4559,9 +4639,16 @@ def topology():
                                              alpha=0.25 + 0.65 * (w / max_t),
                                              connectionstyle=f'arc3,rad={rad}'),
                              annotation_clip=False)
-        total_flow = in_deg + out_deg
-        max_flow = total_flow.max() if total_flow.max() > 0 else 1
-        node_r = np.clip(0.025 + 0.040 * (total_flow / max_flow), 0.02, 0.07)
+                dx = x1 - x0
+                dy = y1 - y0
+                dist = (dx * dx + dy * dy) ** 0.5 + 1e-9
+                edge_label_offset = 0.035 if rad else 0.0
+                mx = (x0 + x1) / 2 - dy / dist * edge_label_offset
+                my = (y0 + y1) / 2 + dx / dist * edge_label_offset
+                ax2.text(mx, my, str(int(w)), ha='center', va='center',
+                         fontsize=7, color=th['text'], transform=ax2.transAxes,
+                         bbox=dict(boxstyle='round,pad=0.16', fc=th['fig_bg'], ec='none', alpha=0.72),
+                         zorder=4)
         cmap_n = _get_cmap('plasma')
         for i in range(n):
             color = cmap_n(0.2 + 0.7 * (total_flow[i] / max_flow))

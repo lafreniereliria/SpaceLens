@@ -154,6 +154,16 @@ def _jsonable_number(v):
         return v.tolist()
     return v
 
+def _client_result_payload(data):
+    """Return only UI-facing result fields; keep heavy export_data server-side."""
+    if not isinstance(data, dict):
+        return data
+    return {k: v for k, v in data.items() if k != 'export_data'}
+
+def _client_results_payload(results, omit=None):
+    omit = omit or set()
+    return {k: _client_result_payload(v) for k, v in (results or {}).items() if k not in omit}
+
 # ─── 主题配色 ───
 def _theme(t='dark'):
     if t == 'light':
@@ -2268,6 +2278,11 @@ def get_session(sid):
         sess = _sessions.get(sid)
     if sess is None:
         return jsonify({'error': '会话不存在或已过期'}), 404
+    omit = {
+        p.strip()
+        for p in (request.args.get('omit', '') or '').split(',')
+        if p.strip()
+    }
     return jsonify({
         'session_id':    sid,
         'building_type': sess['type'],
@@ -2278,7 +2293,7 @@ def get_session(sid):
         'collection_date': sess.get('collection_date', ''),
         'computed':      sess.get('computed', []),
         'skipped':       sess.get('skipped',  []),
-        'results':       sess.get('results',  {}),
+        'results':       _client_results_payload(sess.get('results',  {}), omit=omit),
         'status':        sess.get('status', 'running'),
         'source_files':  sess.get('source_files', {}),
         'region_name_map': sess.get('region_name_map', {}),
@@ -3221,7 +3236,7 @@ def api_compare_projects():
                     'status':        'done',
                     'computed':      sess.get('computed', []),
                     'skipped':       sess.get('skipped',  []),
-                    'results':       sess.get('results',  {}),
+                    'results':       _client_results_payload(sess.get('results',  {})),
                 })
                 continue
 
@@ -3240,7 +3255,7 @@ def api_compare_projects():
                         'status':        'done',
                         'computed':      restored.get('computed', []),
                         'skipped':       restored.get('skipped',  []),
-                        'results':       restored.get('results',  {}),
+                        'results':       _client_results_payload(restored.get('results',  {})),
                     })
                     continue
 
@@ -3295,7 +3310,7 @@ def api_view_project(pid):
                 'collection_date': sess.get('collection_date', proj.get('collection_date', '')),
                 'computed':      sess.get('computed', []),
                 'skipped':       sess.get('skipped',  []),
-                'results':       sess.get('results',  {}),
+                'results':       _client_results_payload(sess.get('results',  {})),
                 'source_files':  sess.get('source_files', {}),
                 'region_name_map': sess.get('region_name_map', {}),
                 'status':        'done',
@@ -3341,7 +3356,7 @@ def api_view_project(pid):
                     'collection_date': restored.get('collection_date', proj.get('collection_date', '')),
                     'computed':      restored.get('computed', []),
                     'skipped':       restored.get('skipped',  []),
-                    'results':       restored.get('results',  {}),
+                    'results':       _client_results_payload(restored.get('results',  {})),
                     'source_files':  restored.get('source_files', {}),
                     'region_name_map': restored.get('region_name_map', {}),
                     'status':        'done',

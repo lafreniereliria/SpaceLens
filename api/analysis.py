@@ -127,6 +127,33 @@ def _relaxed_topology_positions(cx, cy, node_r):
             break
     return pos[:, 0], pos[:, 1]
 
+def _series_rows(labels, values, label_name='项目', value_name='数值'):
+    return [{label_name: labels[i], value_name: _jsonable_number(values[i])} for i in range(len(labels))]
+
+def _matrix_payload(matrix, row_labels=None, col_labels=None, row_label_name='行'):
+    arr = np.asarray(matrix)
+    rows = []
+    if arr.ndim != 2:
+        return arr.tolist()
+    for i in range(arr.shape[0]):
+        row = {}
+        if row_labels is not None:
+            row[row_label_name] = row_labels[i]
+        for j in range(arr.shape[1]):
+            key = str(col_labels[j]) if col_labels is not None else f'列{j + 1}'
+            row[key] = _jsonable_number(arr[i, j])
+        rows.append(row)
+    return rows
+
+def _jsonable_number(v):
+    if isinstance(v, (np.integer,)):
+        return int(v)
+    if isinstance(v, (np.floating,)):
+        return round(float(v), 6)
+    if isinstance(v, (np.ndarray,)):
+        return v.tolist()
+    return v
+
 # ─── 主题配色 ───
 def _theme(t='dark'):
     if t == 'light':
@@ -791,13 +818,22 @@ def _compute_cluster_result(loc_fs, img_fs, k, th, normalize_xy_fn=None, walkabl
             'pct': round(float(mask.sum() / len(labels) * 100), 2),
         })
 
+    point_rows = [
+        {'点序号': i + 1, 'X': _jsonable_number(data_xy[i, 0]), 'Y': _jsonable_number(data_xy[i, 1]), '聚类编号': int(labels[i]) + 1}
+        for i in range(len(data_xy))
+    ]
+    center_rows = [
+        {'聚类编号': ci + 1, '中心X': _jsonable_number(centers[ci, 0]), '中心Y': _jsonable_number(centers[ci, 1]), '点位数量': int(np.sum(labels == ci))}
+        for ci in range(k)
+    ]
     summary = {
         'k': k,
         'total_points': int(len(x)),
         'inertia': round(inertia, 2),
         'clusters': clusters_info,
     }
-    return {'image': img_b64, 'image2': img2_b64, 'summary': summary}
+    return {'image': img_b64, 'image2': img2_b64, 'summary': summary,
+            'export_data': {'聚类点位': point_rows, '聚类中心': center_rows, '各聚类点位分布': clusters_info}}
 
 
 # ─────────────────────────────────────────────
@@ -930,10 +966,15 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         cbar.set_label('到访频次', color=th['subtext'], fontsize=9)
         plt.tight_layout(pad=2); img_b64 = fig_to_base64(fig0); plt.close(fig0)
         img2_b64 = None
+        region_rows = []
         if 'Region' in df.columns:
             fig1, ax1 = plt.subplots(figsize=(9, 6)); fig1.patch.set_facecolor(th['fig_bg'])
             _styled_axes(ax1, th)
             rc = df.groupby('Region').size().reset_index(name='count')
+            region_rows = [
+                {'空间单元': _jsonable_number(r), '到访频次': int(c)}
+                for r, c in zip(rc['Region'].tolist(), rc['count'].tolist())
+            ]
             _bar_common(ax1, _region_labels(rc['Region'], region_name_map), rc['count'], color=th['accent'], xlabel='空间单元', ylabel='到访频次（人次）', th=th)
             ax1.set_title('各空间单元到访频次', color=th['text'], fontsize=13)
             plt.tight_layout(pad=2); img2_b64 = fig_to_base64(fig1); plt.close(fig1)
@@ -941,6 +982,9 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             'total_records': int(len(df)),
             'unique_users': int(df['UserID'].nunique()) if 'UserID' in df.columns else '-',
             **freq_stats,
+        }, 'export_data': {
+            '热力图矩阵': _matrix_payload(freq_field),
+            '区域到访频次': region_rows,
         }}
     _run_metric('heatmap', _heatmap)
 
@@ -975,7 +1019,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         _bar_common(ax1,_region_labels(reg_ids, region_name_map),reg_dur,color='#00c9a7',xlabel='空间单元',ylabel='空间使用时长（秒）',th=th)
         ax1.set_title('各空间单元使用时长',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'seconds_per_record':USAGE_SECONDS_PER_RECORD,'total_duration_s':round(float(weights.sum()),2),'avg_duration_s':round(float(reg_dur.mean()),2),'max_duration_s':round(float(reg_dur.max()),2),'min_duration_s':round(float(reg_dur.min()),2),'region_count':int(len(reg_ids)),'peak_region':int(reg_ids[np.argmax(reg_dur)])}}
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'seconds_per_record':USAGE_SECONDS_PER_RECORD,'total_duration_s':round(float(weights.sum()),2),'avg_duration_s':round(float(reg_dur.mean()),2),'max_duration_s':round(float(reg_dur.max()),2),'min_duration_s':round(float(reg_dur.min()),2),'region_count':int(len(reg_ids)),'peak_region':int(reg_ids[np.argmax(reg_dur)])},'export_data':{'热力图矩阵':_matrix_payload(fg),'区域使用时长':_series_rows(reg_ids.tolist(),reg_dur.tolist(),'空间单元','使用时长_秒')}}
     _run_metric('usetime', _usetime)
 
     # ── A3 移动速率 ──
@@ -1021,7 +1065,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
                     show_mean=True,color_above='#f5a623',color_below='#00c9a7')
         ax1.set_title('各空间单元平均移动速率',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'global_speed_ms':round(float(global_speed),2),'avg_speed_ms':round(float(mean_speed.mean()),2),'max_speed_ms':round(float(mean_speed.max()),2),'min_speed_ms':round(float(mean_speed.min()),2),'peak_speed_region':int(reg_ids[np.argmax(mean_speed)]),'region_count':int(len(reg_ids))}}
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'global_speed_ms':round(float(global_speed),2),'avg_speed_ms':round(float(mean_speed.mean()),2),'max_speed_ms':round(float(mean_speed.max()),2),'min_speed_ms':round(float(mean_speed.min()),2),'peak_speed_region':int(reg_ids[np.argmax(mean_speed)]),'region_count':int(len(reg_ids))},'export_data':{'热力图矩阵':_matrix_payload(speed_grid),'区域移动速率':_series_rows(reg_ids.tolist(),mean_speed.tolist(),'空间单元','移动速率_米每秒')}}
     _run_metric('speed', _speed)
 
     # ── A4 停留时长 ──
@@ -1052,7 +1096,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         _bar_common(ax1,_region_labels(reg_ids, region_name_map),reg_dwell,color=th['accent'],xlabel='空间单元',ylabel='使用时长（秒）',th=th)
         ax1.set_title('各空间单元使用时长',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'total_dwell_s':round(float(t.sum()),2),'avg_dwell_s':round(float(reg_dwell.mean()),2),'max_dwell_s':round(float(reg_dwell.max()),2),'min_dwell_s':round(float(reg_dwell.min()),2),'peak_region':int(reg_ids[np.argmax(reg_dwell)])}}
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'total_dwell_s':round(float(t.sum()),2),'avg_dwell_s':round(float(reg_dwell.mean()),2),'max_dwell_s':round(float(reg_dwell.max()),2),'min_dwell_s':round(float(reg_dwell.min()),2),'peak_region':int(reg_ids[np.argmax(reg_dwell)])},'export_data':{'热力图矩阵':_matrix_payload(fg),'区域停留时长':_series_rows(reg_ids.tolist(),reg_dwell.tolist(),'空间单元','停留时长_秒')}}
     _run_metric('duration', _duration)
 
     # ── A5 空间聚类 (trajectory cluster) ──
@@ -1093,7 +1137,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         _bar_common(ax1,_region_labels(reg_ids, region_name_map),reg_uu,color='#00c9a7',xlabel='空间单元',ylabel='空间人员密度',th=th)
         ax1.set_title('各空间单元人员密度',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'unique_users':int(df['UserID'].nunique()),'avg_density':round(float(reg_uu.mean()),2),'max_density':round(float(reg_uu.max()),2),'min_density':round(float(reg_uu.min()),2),'region_count':int(len(reg_ids)),'peak_region':int(reg_ids[np.argmax(reg_uu)])}}
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'unique_users':int(df['UserID'].nunique()),'avg_density':round(float(reg_uu.mean()),2),'max_density':round(float(reg_uu.max()),2),'min_density':round(float(reg_uu.min()),2),'region_count':int(len(reg_ids)),'peak_region':int(reg_ids[np.argmax(reg_uu)])},'export_data':{'热力图矩阵':_matrix_payload(density_grid),'区域人员密度':_series_rows(reg_ids.tolist(),reg_uu.tolist(),'空间单元','独立人员数')}}
     _run_metric('density', _density_fn)
 
     # ── A7 空间开放程度 ──
@@ -1136,7 +1180,10 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         _legend_upper_right(ax1, th)
         ax1.set_title('各空间单元开放程度（人/平方米）',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'unique_users':int(df['UserID'].nunique()),'global_openness':round(float(global_open),2),'avg_openness':round(float(openness_val.mean()),2),'max_openness':round(float(openness_val.max()),2),'min_openness':round(float(openness_val.min()),2),'peak_region':int(reg_ids[np.argmax(openness_val)]),'region_count':int(len(reg_ids))}}
+        return {'image':img_b64,'image2':img2_b64,'summary':{'unique_users':int(df['UserID'].nunique()),'global_openness':round(float(global_open),2),'avg_openness':round(float(openness_val.mean()),2),'max_openness':round(float(openness_val.max()),2),'min_openness':round(float(openness_val.min()),2),'peak_region':int(reg_ids[np.argmax(openness_val)]),'region_count':int(len(reg_ids))},'export_data':{'热力图矩阵':_matrix_payload(open_grid),'区域开放程度':[
+            {'空间单元':_jsonable_number(reg_ids[i]),'独立人员数':_jsonable_number(reg_uu[i]),'面积_平方米':_jsonable_number(reg_areas[i]),'开放程度_人每平方米':_jsonable_number(openness_val[i])}
+            for i in range(len(reg_ids))
+        ]}}
     _run_metric('openness', _openness_fn)
 
     # ── A8 拓扑连接关系 ──
@@ -1272,7 +1319,18 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         return {'image':img_b64,'image2':img2_b64,'image3':img3_b64,
                 'summary':{'region_count':n,'total_transitions':int(trans.sum()),
                            'avg_in_flow':round(float(in_deg.mean()),2),'max_in_flow':int(in_deg.max()),'min_in_flow':int(in_deg.min()),
-                           'avg_out_flow':round(float(out_deg.mean()),2),'max_out_flow':int(out_deg.max()),'min_out_flow':int(out_deg.min())}}
+                           'avg_out_flow':round(float(out_deg.mean()),2),'max_out_flow':int(out_deg.max()),'min_out_flow':int(out_deg.min())},
+                'export_data':{
+                    '转移矩阵':_matrix_payload(trans, row_labels=reg_ids.tolist(), col_labels=reg_ids.tolist(), row_label_name='出发空间单元'),
+                    '流入流出差值':[
+                        {'空间单元':_jsonable_number(reg_ids[i]),'流入':int(in_deg[i]),'流出':int(out_deg[i]),'差值_入减出':int(diff_deg[i]),'总流量':int(total_flow[i])}
+                        for i in range(n)
+                    ],
+                    '拓扑边':[
+                        {'出发空间单元':_jsonable_number(reg_ids[i]),'目标空间单元':_jsonable_number(reg_ids[j]),'流量':int(trans[i,j])}
+                        for i in range(n) for j in range(n) if i != j and trans[i,j] > 0
+                    ],
+                }}
     _run_metric('topology', _topology_fn)
 
     # ── A9 轨迹差异系数 ──
@@ -1330,7 +1388,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         _legend_upper_right(ax1, th)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'total_users':int(len(per_ids)),'avg_length_m':round(float(avg_len),1),'max_diff_user':str(per_ids[np.argmax(diff_coeff_per)]),'region_count':int(len(reg_ids))}}
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_users':int(len(per_ids)),'avg_length_m':round(float(avg_len),1),'max_diff_user':str(per_ids[np.argmax(diff_coeff_per)]),'region_count':int(len(reg_ids))},'export_data':{'人员轨迹差异系数':_series_rows([str(u) for u in per_ids],diff_coeff_per.tolist(),'人员编号','差异系数'),'空间单元轨迹差异系数':_series_rows(reg_ids.tolist(),diff_coeff_reg.tolist(),'空间单元','差异系数')}}
     _run_metric('difference', _difference_fn)
 
     # ── 人员轨迹 (trajectory) ──
@@ -1393,7 +1451,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1.set_title('人员轨迹长度分布（10桶）',color=th['text'],fontsize=13)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'total_users':len(user_ids),'avg_length_m':round(float(np.mean(list(total_lengths.values()))),1),'max_length_m':round(max(total_lengths.values()),1),'min_length_m':round(min(total_lengths.values()),1)}}
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_users':len(user_ids),'avg_length_m':round(float(np.mean(list(total_lengths.values()))),1),'max_length_m':round(max(total_lengths.values()),1),'min_length_m':round(min(total_lengths.values()),1)},'export_data':{'人员轨迹长度':[{'人员编号':str(k),'轨迹长度_米':round(float(v),6)} for k,v in total_lengths.items()],'轨迹长度分布':[{'长度区间_米':labels[i],'用户数':int(counts[i])} for i in range(len(counts))]}}
     _run_metric('trajectory', _trajectory_fn)
 
     # ── B5 环境参数 (每类参数分别计算) ──
@@ -1446,7 +1504,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             _legend_upper_right(ax1, th)
             ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
             plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-            return {'image':img_b64,'image2':img2_b64,'summary':{'param':label,'num_points':int(len(vals)),'mean':round(float(vals.mean()),2),'max':round(float(vals.max()),2),'min':round(float(vals.min()),2)}}
+            return {'image':img_b64,'image2':img2_b64,'summary':{'param':label,'num_points':int(len(vals)),'mean':round(float(vals.mean()),2),'max':round(float(vals.max()),2),'min':round(float(vals.min()),2)},'export_data':{'插值矩阵':_matrix_payload(interp),'测点数据':[{'测点编号':i+1,'X':_jsonable_number(ex[i]),'Y':_jsonable_number(ey[i]),label:_jsonable_number(vals[i])} for i in range(len(vals))]}}
         return _inner
 
     for pn in range(1, 6):
@@ -1494,7 +1552,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         _legend_upper_right(ax1, th)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'behavior_types':len(uniq_beh),'region_count':int(len(uniq_reg)),'behaviors':beh_labels}}
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'behavior_types':len(uniq_beh),'region_count':int(len(uniq_reg)),'behaviors':beh_labels},'export_data':{'区域行为发生人次':_matrix_payload(count_matrix,row_labels=uniq_reg.tolist(),col_labels=beh_labels,row_label_name='空间单元'),'行为点位':df.to_dict(orient='records')}}
     _run_metric('behavior_count', _beh_count)
 
     def _beh_dur():
@@ -1538,7 +1596,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         _legend_upper_right(ax1, th)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'total_duration_s':int(t.sum()),'behavior_types':len(uniq_beh),'behaviors':beh_labels}}
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'total_duration_s':int(t.sum()),'behavior_types':len(uniq_beh),'behaviors':beh_labels},'export_data':{'热力图矩阵':_matrix_payload(beh_grid),'区域行为时长':_matrix_payload(dur_matrix,row_labels=uniq_reg.tolist(),col_labels=beh_labels,row_label_name='空间单元'),'行为点位':df.to_dict(orient='records')}}
     _run_metric('behavior_duration', _beh_dur)
 
     def _beh_rate():
@@ -1583,7 +1641,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         _legend_upper_right(ax1, th)
         ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'behavior_types':len(uniq_beh),'behaviors':beh_labels,'region_count':int(len(uniq_reg))}}
+        return {'image':img_b64,'image2':img2_b64,'summary':{'total_records':int(len(df)),'behavior_types':len(uniq_beh),'behaviors':beh_labels,'region_count':int(len(uniq_reg))},'export_data':{'区域行为发生率':_matrix_payload(rate_matrix,row_labels=uniq_reg.tolist(),col_labels=beh_labels,row_label_name='空间单元')}}
     _run_metric('behavior_rate', _beh_rate)
 
     def _beh_entropy():
@@ -1616,7 +1674,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         _set_sparse_xticks(ax1, uniq_users)
         ax1.set_title('人员行为复合程度',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'region_count':int(len(uniq_reg)),'user_count':int(len(uniq_users)),'avg_reg_entropy':round(float(np.mean(reg_entropy)),2),'max_reg_entropy':round(float(np.max(reg_entropy)),2),'min_reg_entropy':round(float(np.min(reg_entropy)),2),'behavior_types':int(len(uniq_beh))}}
+        return {'image':img_b64,'image2':img2_b64,'summary':{'region_count':int(len(uniq_reg)),'user_count':int(len(uniq_users)),'avg_reg_entropy':round(float(np.mean(reg_entropy)),2),'max_reg_entropy':round(float(np.max(reg_entropy)),2),'min_reg_entropy':round(float(np.min(reg_entropy)),2),'behavior_types':int(len(uniq_beh))},'export_data':{'空间单元行为复合程度':_series_rows(uniq_reg.tolist(),reg_entropy,'空间单元','行为复合程度'),'人员行为复合程度':_series_rows([str(u) for u in uniq_users],user_entropy,'人员编号','行为复合程度')}}
     _run_metric('behavior_entropy', _beh_entropy)
 
     # ── C5 功能利用率 ──
@@ -1674,7 +1732,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         _legend_upper_right(ax1, th)
         ax1.set_title('各空间单元总功能利用率',color=th['text'],fontsize=13)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'region_count':int(len(uniq_reg)),'behavior_types':int(len(uniq_beh)),'global_util':round(float(global_util),2),'avg_util':round(float(total_util.mean()),2),'max_util':round(float(total_util.max()),2),'min_util':round(float(total_util.min()),2),'behaviors':beh_labels}}
+        return {'image':img_b64,'image2':img2_b64,'summary':{'region_count':int(len(uniq_reg)),'behavior_types':int(len(uniq_beh)),'global_util':round(float(global_util),2),'avg_util':round(float(total_util.mean()),2),'max_util':round(float(total_util.max()),2),'min_util':round(float(total_util.min()),2),'behaviors':beh_labels},'export_data':{'空间功能利用率占比':_matrix_payload(util_share_matrix,row_labels=uniq_reg.tolist(),col_labels=beh_labels,row_label_name='空间单元'),'空间功能利用率':_matrix_payload(util_matrix,row_labels=uniq_reg.tolist(),col_labels=beh_labels,row_label_name='空间单元'),'空间单元总利用率':_series_rows(uniq_reg.tolist(),total_util.tolist(),'空间单元','总功能利用率_秒每平方米')}}
     _run_metric('utilization', _util)
 
     # ── D3 整体满意度 ──
@@ -1699,7 +1757,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         _legend_upper_right(ax1, th)
         plt.tight_layout(pad=2); img_dist_b64=fig_to_base64(fig); plt.close(fig)
         bar_data=[[str(uid),float(s)] for uid,s in zip(user_ids,scores)]
-        return {'image':img_dist_b64,'image_dist':img_dist_b64,'bar_data':bar_data,'avg_score':round(avg_score,1),'summary':{'total_users':int(len(df)),'avg_score':round(avg_score,1),'max_score':int(scores.max()),'min_score':int(scores.min())}}
+        return {'image':img_dist_b64,'image_dist':img_dist_b64,'bar_data':bar_data,'avg_score':round(avg_score,1),'summary':{'total_users':int(len(df)),'avg_score':round(avg_score,1),'max_score':int(scores.max()),'min_score':int(scores.min())},'export_data':{'个人满意度评分':[{'人员编号':str(uid),'满意度得分':_jsonable_number(score)} for uid,score in zip(user_ids,scores)],'分数段分布':[{'分数段':['<60','60-70','70-80','80-90','90-100'][i],'人数':int(counts[i])} for i in range(len(counts))]}}
     _run_metric('satisfaction', _satisfaction_fn)
 
     # ── D4 空间区域满意度 ──
@@ -1741,7 +1799,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1.tick_params(colors=th['cbar_tick']); ax1.set_title('空间单元满意度雷达',color=th['text'],fontsize=13,pad=15)
         ax1.spines['polar'].set_color('#2d2d3d'); ax1.grid(color=th['grid'],linewidth=0.5)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'region_count':int(len(reg_ids)),'avg_score':round(avg_score,2),'max_score':round(float(np.max(avg_vals)),2),'min_score':round(float(np.min(avg_vals)),2),'best_region':str(reg_ids[int(np.argmax(avg_vals))]),'worst_region':str(reg_ids[int(np.argmin(avg_vals))])}}
+        return {'image':img_b64,'image2':img2_b64,'summary':{'region_count':int(len(reg_ids)),'avg_score':round(avg_score,2),'max_score':round(float(np.max(avg_vals)),2),'min_score':round(float(np.min(avg_vals)),2),'best_region':str(reg_ids[int(np.argmax(avg_vals))]),'worst_region':str(reg_ids[int(np.argmin(avg_vals))])},'export_data':{'空间单元满意度':_series_rows(reg_ids,avg_vals.tolist(),'空间单元','满意度均值'),'问卷原始数据':df.to_dict(orient='records')}}
     _run_metric('satisfaction_region', _sat_region)
 
     # ── D5 设计要素满意度 ──
@@ -1777,7 +1835,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         ax1.tick_params(colors=th['cbar_tick']); ax1.set_title('设计要素满意度雷达',color=th['text'],fontsize=13,pad=15)
         ax1.spines['polar'].set_color('#2d2d3d'); ax1.grid(color=th['grid'],linewidth=0.5)
         plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-        return {'image':img_b64,'image2':img2_b64,'summary':{'factor_count':int(len(factor_ids)),'avg_score':round(avg_score,2),'max_score':round(float(np.max(avg_vals)),2),'min_score':round(float(np.min(avg_vals)),2),'best_factor':str(factor_ids[int(np.argmax(avg_vals))]),'worst_factor':str(factor_ids[int(np.argmin(avg_vals))])}}
+        return {'image':img_b64,'image2':img2_b64,'summary':{'factor_count':int(len(factor_ids)),'avg_score':round(avg_score,2),'max_score':round(float(np.max(avg_vals)),2),'min_score':round(float(np.min(avg_vals)),2),'best_factor':str(factor_ids[int(np.argmax(avg_vals))]),'worst_factor':str(factor_ids[int(np.argmin(avg_vals))])},'export_data':{'设计要素满意度':_series_rows(factor_ids,avg_vals.tolist(),'设计要素','满意度均值'),'问卷原始数据':df.to_dict(orient='records')}}
     _run_metric('satisfaction_design', _sat_design)
 
     # ── 全部完成，标记 status + 存入数据库 ──
@@ -2465,12 +2523,20 @@ def _build_project_zip(sid, sel_metrics, folder_name):
             if not data:
                 continue
             cn_name = _METRIC_NAMES.get(metric_id, metric_id)
-            if data.get('image'):
-                zf.writestr(f'images/{cn_name}.png', base64.b64decode(data['image']))
+            chart_titles = _METRIC_CHART_TITLES.get(metric_id, [])
+            for idx, field in enumerate(['image', 'image2', 'image3', 'image_dist']):
+                if not data.get(field):
+                    continue
+                if field == 'image_dist':
+                    chart_title = '满意度分布'
+                else:
+                    chart_title = chart_titles[idx] if idx < len(chart_titles) else f'{cn_name}_{idx + 1}'
+                safe_title = ''.join(c if c not in r'\/:*?"<>|' else '_' for c in chart_title)
+                zf.writestr(f'images/{cn_name}_{safe_title}.png', base64.b64decode(data[field]))
             summary = data.get('summary')
             if summary:
                 all_summary[cn_name] = summary
-                _write_summary_xlsx(zf, metric_id, cn_name, summary)
+                _write_summary_xlsx(zf, metric_id, cn_name, summary, data.get('export_data'), data.get('bar_data'))
 
         zf.writestr('summary.json', _json.dumps(all_summary, ensure_ascii=False, indent=2))
         building_type = sess.get('type', '')
@@ -2611,7 +2677,7 @@ def export_metric(sid, metric_id):
                         zf.writestr(f'{ecn}.png', base64.b64decode(img_b64))
                     summary = edata.get('summary')
                     if summary:
-                        _write_summary_xlsx(zf, eid, ecn, summary)
+                        _write_summary_xlsx(zf, eid, ecn, summary, edata.get('export_data'), edata.get('bar_data'))
             buf.seek(0)
             from flask import send_file as _send
             return _send(buf, mimetype='application/zip', as_attachment=True,
@@ -2653,7 +2719,7 @@ def export_metric(sid, metric_id):
             else:
                 summary = data.get('summary')
                 if summary:
-                    _write_summary_xlsx(zf, actual_id, cn_name, summary)
+                    _write_summary_xlsx(zf, actual_id, cn_name, summary, data.get('export_data'), data.get('bar_data'))
 
         buf.seek(0)
         from flask import send_file as _send
@@ -2716,24 +2782,23 @@ def save_metric(sid, metric_id, file_type):
         def _build_xlsx_bytes(mid, data):
             wb_buf = io.BytesIO()
             with pd.ExcelWriter(wb_buf, engine='openpyxl') as writer:
+                used_sheets = set()
                 # satisfaction 特殊：写个人评分 sheet
                 bar_data = data.get('bar_data')
                 if bar_data and mid == 'satisfaction':
                     pd.DataFrame(bar_data, columns=['人员编号', '满意度得分']).to_excel(
-                        writer, sheet_name='个人评分', index=False)
+                        writer, sheet_name=_safe_sheet_name('个人评分', used_sheets), index=False)
                 summary = data.get('summary')
                 if summary:
                     scalar_rows = [{'指标': k, '数值': v}
                                    for k, v in summary.items() if not isinstance(v, list)]
                     if scalar_rows:
-                        pd.DataFrame(scalar_rows).to_excel(writer, sheet_name='摘要', index=False)
+                        pd.DataFrame(scalar_rows).to_excel(writer, sheet_name=_safe_sheet_name('摘要', used_sheets), index=False)
                     for fk, fv in summary.items():
                         if isinstance(fv, list) and fv:
-                            first = fv[0]
-                            if isinstance(first, dict):
-                                pd.DataFrame(fv).to_excel(writer, sheet_name=fk[:31], index=False)
-                            else:
-                                pd.DataFrame({fk: fv}).to_excel(writer, sheet_name=fk[:31], index=False)
+                            _write_payload_sheet(writer, fk, fv, used_sheets)
+                for sheet_name, payload in (data.get('export_data') or {}).items():
+                    _write_payload_sheet(writer, sheet_name, payload, used_sheets)
             wb_buf.seek(0)
             return wb_buf.read()
 
@@ -2813,6 +2878,7 @@ def save_metric(sid, metric_id, file_type):
                     return jsonify({'error': '环境参数尚未计算'}), 400
                 wb_buf = io.BytesIO()
                 with pd.ExcelWriter(wb_buf, engine='openpyxl') as writer:
+                    used_sheets = set()
                     for eid in env_ids:
                         edata = results.get(eid, {})
                         ecn = cn_name_map.get(eid, eid)
@@ -2822,7 +2888,9 @@ def save_metric(sid, metric_id, file_type):
                                            for k, v in summary.items() if not isinstance(v, list)]
                             if scalar_rows:
                                 pd.DataFrame(scalar_rows).to_excel(
-                                    writer, sheet_name=ecn[:31], index=False)
+                                    writer, sheet_name=_safe_sheet_name(ecn, used_sheets), index=False)
+                        for sheet_name, payload in (edata.get('export_data') or {}).items():
+                            _write_payload_sheet(writer, f'{ecn}_{sheet_name}', payload, used_sheets)
                 wb_buf.seek(0)
                 xlsx_bytes = wb_buf.read()
                 default_name = f'{safe_folder}_环境参数.xlsx'
@@ -2858,10 +2926,11 @@ def save_metric(sid, metric_id, file_type):
                     for eid in env_ids:
                         edata = results.get(eid, {})
                         ecn = cn_name_map.get(eid, eid)
-                        if edata.get('image'):
-                            zf.writestr(f'{ecn}.png', base64.b64decode(edata['image']))
+                        for chart_title, b64 in _get_img_b64_list(eid, eid):
+                            safe_title = ''.join(c if c not in r'\/:*?"<>|' else '_' for c in chart_title)
+                            zf.writestr(f'{ecn}_{safe_title}.png', base64.b64decode(b64))
                         if edata.get('summary'):
-                            _write_summary_xlsx(zf, eid, ecn, edata['summary'])
+                            _write_summary_xlsx(zf, eid, ecn, edata['summary'], edata.get('export_data'), edata.get('bar_data'))
                 buf.seek(0); zip_bytes = buf.read()
                 default_name = f'{safe_folder}_环境参数.zip'
             else:
@@ -2871,15 +2940,10 @@ def save_metric(sid, metric_id, file_type):
                 cn_name = cn_name_map.get(metric_id, metric_id)
                 buf = io.BytesIO()
                 with _zipfile.ZipFile(buf, 'w', _zipfile.ZIP_DEFLATED) as zf:
-                    # 图片
-                    if metric_id == 'satisfaction':
-                        img_b64 = data.get('image_dist')
-                        if img_b64:
-                            zf.writestr('满意度分布.png', base64.b64decode(img_b64))
-                    else:
-                        img_b64 = data.get('image')
-                        if img_b64:
-                            zf.writestr(f'{cn_name}.png', base64.b64decode(img_b64))
+                    # 图片：保存当前结果中的全部图表
+                    for chart_title, b64 in _get_img_b64_list(metric_id, metric_id):
+                        safe_title = ''.join(c if c not in r'\/:*?"<>|' else '_' for c in chart_title)
+                        zf.writestr(f'{safe_title}.png', base64.b64decode(b64))
                     # Excel
                     xlsx_bytes = _build_xlsx_bytes(metric_id, data)
                     if xlsx_bytes:
@@ -2905,12 +2969,43 @@ def save_metric(sid, metric_id, file_type):
         return jsonify({'error': str(e), 'detail': traceback.format_exc()}), 500
 
 
-def _write_summary_xlsx(zf, metric_id, cn_name, summary):
-    """将一个指标的 summary dict 写入 ZIP 内的 data/<cn_name>.xlsx"""
+def _safe_sheet_name(name, used=None):
+    used = used if used is not None else set()
+    base = re.sub(r'[:\\/?*\[\]]', '_', str(name or 'Sheet'))[:31] or 'Sheet'
+    candidate = base
+    idx = 2
+    while candidate in used:
+        suffix = f'_{idx}'
+        candidate = (base[:31 - len(suffix)] + suffix)[:31]
+        idx += 1
+    used.add(candidate)
+    return candidate
+
+def _write_payload_sheet(writer, sheet_name, payload, used_sheets):
+    sheet = _safe_sheet_name(sheet_name, used_sheets)
+    if isinstance(payload, pd.DataFrame):
+        df = payload
+    elif isinstance(payload, list):
+        if payload and isinstance(payload[0], dict):
+            df = pd.DataFrame(payload)
+        else:
+            df = pd.DataFrame(payload)
+    elif isinstance(payload, dict):
+        if payload and all(isinstance(v, list) for v in payload.values()):
+            df = pd.DataFrame(payload)
+        else:
+            df = pd.DataFrame([{'指标': k, '数值': v} for k, v in payload.items()])
+    else:
+        df = pd.DataFrame([{'数值': payload}])
+    df.to_excel(writer, sheet_name=sheet, index=False)
+
+def _write_summary_xlsx(zf, metric_id, cn_name, summary, export_data=None, bar_data=None):
+    """将一个指标的 summary/export_data 写入 ZIP 内的 data/<cn_name>.xlsx"""
     try:
         # 将 summary 中的列表字段（如 clusters、behaviors）展开为独立 sheet
         wb_buf = io.BytesIO()
         with pd.ExcelWriter(wb_buf, engine='openpyxl') as writer:
+            used_sheets = set()
             # Sheet1: 主摘要（标量值）
             scalar_rows = []
             list_fields = {}
@@ -2922,19 +3017,20 @@ def _write_summary_xlsx(zf, metric_id, cn_name, summary):
 
             if scalar_rows:
                 pd.DataFrame(scalar_rows).to_excel(
-                    writer, sheet_name='摘要', index=False)
+                    writer, sheet_name=_safe_sheet_name('摘要', used_sheets), index=False)
             else:
                 pd.DataFrame([{'说明': '无标量摘要'}]).to_excel(
-                    writer, sheet_name='摘要', index=False)
+                    writer, sheet_name=_safe_sheet_name('摘要', used_sheets), index=False)
 
             # 如有列表字段（如 clusters 详情），展开为额外 sheet
             for field_name, field_val in list_fields.items():
-                if field_val and isinstance(field_val[0], dict):
-                    pd.DataFrame(field_val).to_excel(
-                        writer, sheet_name=field_name[:31], index=False)
-                else:
-                    pd.DataFrame({field_name: field_val}).to_excel(
-                        writer, sheet_name=field_name[:31], index=False)
+                _write_payload_sheet(writer, field_name, field_val, used_sheets)
+
+            if bar_data:
+                _write_payload_sheet(writer, '图表数据', bar_data, used_sheets)
+
+            for sheet_name, payload in (export_data or {}).items():
+                _write_payload_sheet(writer, sheet_name, payload, used_sheets)
 
         wb_buf.seek(0)
         zf.writestr(f'data/{cn_name}.xlsx', wb_buf.read())

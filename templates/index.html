@@ -1477,6 +1477,27 @@ function setNavBadge(metricId, state) {
   if (state) nbadge.classList.add(state);
 }
 
+function getExpectedMetricCount() {
+  return (typeof METRIC_DISPLAY !== 'undefined' && METRIC_DISPLAY.length)
+    ? METRIC_DISPLAY.length
+    : 23;
+}
+
+function updateEnvironmentAggregate(results, computed, skipped) {
+  var envIds = [1,2,3,4,5].map(function(n){ return 'environment_p' + n; });
+  var doneIds = envIds.filter(function(id){ return computed.indexOf(id) >= 0; });
+  var skippedIds = envIds.filter(function(id){ return skipped.indexOf(id) >= 0; });
+  if (doneIds.length > 0) {
+    setNavBadge('environment', 'done');
+    if (_currentView === 'environment') fillEnvPanel(results || {});
+  } else if (skippedIds.length === envIds.length) {
+    setNavBadge('environment', 'skip');
+    markPanelSkipped('environment');
+  } else {
+    setNavBadge('environment', 'computing');
+  }
+}
+
 // ── 将面板切换到跳过状态（无数据） ──
 function markPanelSkipped(metricId) {
   var ph = document.getElementById('chart-ph-' + metricId);
@@ -1535,6 +1556,7 @@ function startPolling(sid) {
         var results = data.results || {};
         var computed = data.computed || [];
         var skipped  = data.skipped  || [];
+        updateEnvironmentAggregate(results, computed, skipped);
 
         // ── 渲染新完成的指标 ──
         computed.forEach(function(metricId) {
@@ -1580,9 +1602,9 @@ function startPolling(sid) {
 
         // ── 更新状态栏 ──
         var done = computed.length + skipped.length;
-        // 后端: 17 个非环境指标 + 5 个 environment_pX = 22 项
+        var expectedTotal = getExpectedMetricCount();
         document.getElementById('status-text').textContent =
-          '计算中… ' + done + ' / 22 项完成';
+          '计算中… ' + done + ' / ' + expectedTotal + ' 项完成';
 
         // ── 检查是否全部完成 ──
         if (data.status === 'done') {

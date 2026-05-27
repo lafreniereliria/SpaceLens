@@ -207,7 +207,11 @@ var METRIC_ORDER = [
   { id:'topology',           badge:'A8',  name:'轨迹拓扑连接度', section:'定位分析' },
   { id:'difference',         badge:'A9',  name:'轨迹长度差异系数', section:'定位分析' },
   { id:'trajectory',         badge:'A10', name:'轨迹长度',    section:'定位分析' },
-  { id:'environment',        badge:'B5',  name:'环境参数',    section:'环境分析',  isEnv:true },
+  { id:'environment_p1',     badge:'B1',  name:'温度',        section:'环境分析' },
+  { id:'environment_p2',     badge:'B2',  name:'湿度',        section:'环境分析' },
+  { id:'environment_p3',     badge:'B3',  name:'光照',        section:'环境分析' },
+  { id:'environment_p4',     badge:'B4',  name:'风速',        section:'环境分析' },
+  { id:'environment_p5',     badge:'B5',  name:'噪声',        section:'环境分析' },
   { id:'behavior_count',     badge:'C1',  name:'行为发生人次', section:'行为分析' },
   { id:'behavior_duration',  badge:'C2',  name:'行为持续时长', section:'行为分析' },
   { id:'behavior_rate',      badge:'C3',  name:'行为平均发生率', section:'行为分析' },
@@ -230,6 +234,11 @@ var VIEWS_STATS = {
   difference:        [{key:'cv',label:'变异系数 CV',unit:''}],
   trajectory:        [{key:'total_users',label:'用户数',unit:''},{key:'avg_length_m',label:'平均轨迹',unit:'m'},{key:'max_length_m',label:'最长轨迹',unit:'m'}],
   environment:       [{key:'avg_value',label:'均值',unit:''},{key:'max_value',label:'最大值',unit:''},{key:'min_value',label:'最小值',unit:''}],
+  environment_p1:    [{key:'mean',label:'均值',unit:''},{key:'max',label:'最大值',unit:''},{key:'min',label:'最小值',unit:''},{key:'num_points',label:'测点数',unit:''}],
+  environment_p2:    [{key:'mean',label:'均值',unit:''},{key:'max',label:'最大值',unit:''},{key:'min',label:'最小值',unit:''},{key:'num_points',label:'测点数',unit:''}],
+  environment_p3:    [{key:'mean',label:'均值',unit:''},{key:'max',label:'最大值',unit:''},{key:'min',label:'最小值',unit:''},{key:'num_points',label:'测点数',unit:''}],
+  environment_p4:    [{key:'mean',label:'均值',unit:''},{key:'max',label:'最大值',unit:''},{key:'min',label:'最小值',unit:''},{key:'num_points',label:'测点数',unit:''}],
+  environment_p5:    [{key:'mean',label:'均值',unit:''},{key:'max',label:'最大值',unit:''},{key:'min',label:'最小值',unit:''},{key:'num_points',label:'测点数',unit:''}],
   behavior_count:    [{key:'total_count',label:'总行为发生人次',unit:''},{key:'behavior_types',label:'行为类型数',unit:''}],
   behavior_duration: [{key:'avg_duration_min',label:'平均行为持续时长',unit:'min'}],
   behavior_rate:     [{key:'rate_pct',label:'行为平均发生率',unit:'%'}],
@@ -250,7 +259,6 @@ var TYPE_NAMES = {
 // ─────────────────────────────────────────────
 var _projects   = [];   // [{id,name,building_type,status,computed,skipped,results}]
 var _activeRow  = null; // 当前高亮的指标 id
-var _envParamN  = 1;    // 环境参数当前子页（1-5）
 
 // ─────────────────────────────────────────────
 // 主题
@@ -385,7 +393,7 @@ function renderAllImages() {
   METRIC_ORDER.forEach(function(m) {
     _projects.forEach(function(proj, projIdx) {
       if (proj.status === 'expired') return;
-      var key = m.isEnv ? 'environment_p1' : m.id;
+      var key = m.id;
       var result = (proj.results||{})[key];
       if (!result) return;
       fillImageCell(m.id, projIdx, 'left',  getImageKeysForHalf(result, 'left'));
@@ -411,8 +419,7 @@ function fillImageCell(metricId, projIdx, half, imageKeys) {
   var ph = document.getElementById('img-ph-'+metricId+'-'+projIdx+'-'+half);
   if (!ph) return;
   var proj = _projects[projIdx];
-  var resultKey = metricId === 'environment' ? 'environment_p'+_envParamN : metricId;
-  var result = (proj && proj.results || {})[resultKey];
+  var result = (proj && proj.results || {})[metricId];
   imageKeys = imageKeys || [];
   if (!result || !imageKeys.length) {
     ph.innerHTML = '<div class="cell-placeholder skip" style="min-height:48px">暂无图表</div>';
@@ -433,8 +440,6 @@ function fillImageCell(metricId, projIdx, half, imageKeys) {
 
 function buildRow(m) {
   // 每个指标渲染两行：第一行对比左半图（平面分析），第二行对比右半图（统计图表）
-  var isEnv = !!m.isEnv;
-
   // 标签列：顶行 = badge + 名称 + "平面分析图"，底行 = "统计图表"
   var labelTop = '<div class="row-label-col row-top-label" onclick="scrollToRow(\''+m.id+'\')" style="border-bottom:1px dashed var(--border)">'+
     '<span class="row-metric-badge">'+m.badge+'</span>'+
@@ -461,12 +466,9 @@ function buildRow(m) {
 
 function buildCell(m, proj, projIdx, half) {
   // half: 'left' (平面图) | 'right' (统计图)
-  var resultKey = m.isEnv ? 'environment_p1' : m.id;
+  var resultKey = m.id;
   var result    = (proj.results || {})[resultKey];
-  var isSkipped = (proj.skipped||[]).indexOf(resultKey) >= 0 ||
-                  (m.isEnv && [1,2,3,4,5].every(function(n){
-                    return (proj.skipped||[]).indexOf('environment_p'+n) >= 0;
-                  }));
+  var isSkipped = (proj.skipped||[]).indexOf(resultKey) >= 0;
 
   // 单元格 id（用于异步填图）
   var cellId = 'cell-'+m.id+'-'+projIdx+'-'+half;
@@ -496,19 +498,6 @@ function buildCell(m, proj, projIdx, half) {
     innerHtml += '</div>';
   }
 
-  // 对环境参数：左半行加子参数 tab，右半行不加
-  var wrapExtra = '';
-  if (m.isEnv && half === 'left') {
-    var tabsHtml = '<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">';
-    ['温度','湿度','光照','风速','噪声'].forEach(function(label, ni) {
-      tabsHtml += '<button style="padding:3px 10px;border-radius:6px;border:1px solid var(--border);background:'+(ni===0?'var(--accent)':'transparent')+';color:'+(ni===0?'#fff':'var(--text-secondary)')+';font-size:11px;cursor:pointer;" '+
-        'id="env-tab-'+projIdx+'-'+(ni+1)+'" '+
-        'onclick="switchEnvParam('+projIdx+','+(ni+1)+',this)">'+label+'</button>';
-    });
-    tabsHtml += '</div>';
-    wrapExtra = tabsHtml;
-  }
-
   // 图片占位（DOM 插入后按 image/image2/image3 独立字段填入）
   var imgPlaceholderId = 'img-ph-'+m.id+'-'+projIdx+'-'+half;
   var imageKeys = getImageKeysForHalf(result, half);
@@ -517,52 +506,8 @@ function buildCell(m, proj, projIdx, half) {
     : '';
 
   return '<div class="row-cell" id="'+cellId+'" style="'+cellBorder+'">'+
-    wrapExtra + imgHtml + innerHtml +
+    imgHtml + innerHtml +
   '</div>';
-}
-
-// ─────────────────────────────────────────────
-// 环境参数切换
-// ─────────────────────────────────────────────
-function switchEnvParam(projIdx, pn, btn) {
-  // 切换 tab 样式
-  for (var i=1;i<=5;i++) {
-    var t = document.getElementById('env-tab-'+projIdx+'-'+i);
-    if (!t) continue;
-    t.style.background = (i===pn) ? 'var(--accent)' : 'transparent';
-    t.style.color      = (i===pn) ? '#fff' : 'var(--text-secondary)';
-  }
-  var proj = _projects[projIdx];
-  var resultKey = 'environment_p'+pn;
-  var result = (proj.results||{})[resultKey];
-
-  // 更新左半图（平面分析图）
-  var leftPh = document.getElementById('img-ph-environment-'+projIdx+'-left');
-  var rightPh = document.getElementById('img-ph-environment-'+projIdx+'-right');
-  if (!result || proj.status === 'expired') {
-    if (leftPh)  { leftPh.className='cell-img-wrap'; leftPh.innerHTML='<div class="cell-placeholder skip" style="min-height:48px">该参数数据不足</div>'; }
-    if (rightPh) { rightPh.className='cell-img-wrap'; rightPh.innerHTML='<div class="cell-placeholder skip" style="min-height:48px">该参数数据不足</div>'; }
-    return;
-  }
-  if (result.image) {
-    fillImageCell('environment', projIdx, 'left',  getImageKeysForHalf(result, 'left'));
-    fillImageCell('environment', projIdx, 'right', getImageKeysForHalf(result, 'right'));
-  }
-  // 更新右半行统计数字
-  var rightCell = document.getElementById('cell-environment-'+projIdx+'-right');
-  if (rightCell && result.summary && VIEWS_STATS['environment']) {
-    var statsHtml = '<div class="cell-stats">';
-    VIEWS_STATS['environment'].forEach(function(s) {
-      var val = (result.summary[s.key] !== undefined) ? result.summary[s.key] : '—';
-      statsHtml += '<div class="cell-stat"><div class="cell-stat-label">'+s.label+'</div>'+
-        '<div class="cell-stat-value">'+val+'</div></div>';
-    });
-    statsHtml += '</div>';
-    // 保留图片占位，替换 cell-stats
-    var existing = rightCell.querySelector('.cell-stats');
-    if (existing) existing.outerHTML = statsHtml;
-    else rightCell.insertAdjacentHTML('beforeend', statsHtml);
-  }
 }
 
 // ─────────────────────────────────────────────
@@ -576,7 +521,7 @@ function updateNavBadges() {
       if (!el) return;
       el.className = 'nav-dot';
       if (p.status === 'expired') { el.classList.add('skip'); return; }
-      var key = m.isEnv ? 'environment_p1' : m.id;
+      var key = m.id;
       if ((p.computed||[]).indexOf(key) >= 0) el.classList.add('done');
       else if ((p.skipped||[]).indexOf(key) >= 0) el.classList.add('skip');
       else el.classList.add('skip');

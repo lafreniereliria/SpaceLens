@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SpaceLens Post-Occupancy Report Data Pack",
+  "type": "object",
+  "required": ["schema_version", "project", "source", "metrics"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Data pack schema version, e.g. 1.0."
+    },
+    "project": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "building_type": {
+          "type": "string",
+          "description": "Examples: teaching_building, library, museum, office, other."
+        },
+        "evaluation_scope": { "type": "string" },
+        "collection_date": { "type": "string" },
+        "report_language": { "type": "string", "default": "zh-CN" },
+        "spaces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "type": {
+                "type": "string",
+                "description": "Examples: exhibition, reading, circulation, stay, courtyard, lobby, corridor."
+              },
+              "floor": { "type": "string" },
+              "area_m2": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "result_folder": { "type": "string" },
+        "summary_file": { "type": "string" },
+        "readme_metadata": {
+          "type": "object",
+          "description": "Parsed README.txt values such as 项目名称, 建筑类型, 导出指标数, 导出时间."
+        },
+        "data_files": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "image_files": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "generated_at": { "type": "string" },
+        "matrix_mode": {
+          "type": "string",
+          "enum": ["summary", "full"],
+          "description": "summary keeps heatmap/interpolation matrices compact while retaining source_file."
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Metric objects keyed by SpaceLens metric display name or normalized id.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "display_name": { "type": "string" },
+          "dimension": {
+            "type": "string",
+            "description": "physical_environment, movement, behavior, satisfaction, integrated, other."
+          },
+          "summary": { "type": "object" },
+          "source_data_file": { "type": "string" },
+          "tables": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "source_file": { "type": "string" },
+                "columns": {
+                  "type": "array",
+                  "description": "Full columns for narrow tables; preview columns for wide matrix tables.",
+                  "items": { "type": "string" }
+                },
+                "column_count": { "type": "integer" },
+                "row_count": { "type": "integer" },
+                "wide_table": { "type": "boolean" },
+                "records": {
+                  "type": "array",
+                  "items": { "type": "object" }
+                },
+                "truncated": { "type": "boolean" },
+                "records_omitted_reason": { "type": "string" },
+                "numeric_summary": { "type": "object" },
+                "matrix_summary": {
+                  "type": "object",
+                  "description": "Overall numeric summary for wide heatmap/interpolation matrices."
+                }
+              }
+            }
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": { "type": "string" },
+                "figure_name": { "type": "string" },
+                "caption": { "type": "string" }
+              }
+            }
+          },
+          "analysis_hints": {
+            "type": "object",
+            "properties": {
+              "top_spaces": { "type": "array", "items": { "type": "string" } },
+              "weak_spaces": { "type": "array", "items": { "type": "string" } },
+              "driver_metrics": { "type": "array", "items": { "type": "string" } },
+              "notes": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    "score_model": {
+      "type": "object",
+      "properties": {
+        "grade_thresholds": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["label", "min", "max"],
+            "properties": {
+              "label": { "type": "string" },
+              "min": { "type": "number" },
+              "max": { "type": "number" }
+            }
+          },
+          "default": [
+            { "label": "优秀", "min": 85, "max": 100 },
+            { "label": "良好", "min": 70, "max": 85 },
+            { "label": "一般", "min": 60, "max": 70 },
+            { "label": "待改进", "min": 0, "max": 60 }
+          ]
+        },
+        "dimension_weights": {
+          "type": "object",
+          "additionalProperties": { "type": "number" }
+        },
+        "metric_rules": {
+          "type": "object",
+          "description": "Metric direction or target intervals used for scoring.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "direction": { "type": "string", "enum": ["positive", "negative", "target_interval"] },
+              "target_min": { "type": "number" },
+              "target_max": { "type": "number" },
+              "unit": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "data_gaps": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

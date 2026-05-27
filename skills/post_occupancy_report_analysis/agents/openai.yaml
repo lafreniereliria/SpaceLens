@@ -1,0 +1,7 @@
+interface:
+  display_name: "Post-Occupancy Report Analysis"
+  short_description: "Generate POE reports from SpaceLens result data"
+  default_prompt: "Use $post_occupancy_report_analysis to generate a post-occupancy evaluation report from a SpaceLens result folder."
+
+policy:
+  allow_implicit_invocation: true

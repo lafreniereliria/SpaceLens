@@ -204,14 +204,20 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
 .toast.error   { border-left:3px solid var(--danger); }
 
 /* ── export progress ── */
-.export-progress-box { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:24px 26px; width:360px; max-width:90vw; box-shadow:0 20px 60px rgba(0,0,0,0.22); }
-.export-progress-head { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
-.export-progress-spinner { width:20px; height:20px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.7s linear infinite; flex-shrink:0; }
-.export-progress-title { font-size:15px; font-weight:700; color:var(--text-primary); }
-.export-progress-desc { font-size:12px; color:var(--text-secondary); line-height:1.6; margin-bottom:16px; }
+.export-progress-float { display:none; position:fixed; right:24px; bottom:24px; z-index:2600; pointer-events:none; }
+.export-progress-float.active { display:block; }
+.export-progress-box { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:16px 18px; width:340px; max-width:calc(100vw - 32px); box-shadow:0 12px 36px rgba(0,0,0,0.18); pointer-events:auto; }
+.export-progress-head { display:flex; align-items:center; gap:10px; margin-bottom:9px; }
+.export-progress-spinner { width:18px; height:18px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.7s linear infinite; flex-shrink:0; }
+.export-progress-title { font-size:14px; font-weight:700; color:var(--text-primary); }
+.export-progress-desc { font-size:12px; color:var(--text-secondary); line-height:1.5; margin-bottom:12px; }
 .export-progress-track { height:8px; border-radius:999px; background:var(--bg-deep); overflow:hidden; border:1px solid var(--border); }
 .export-progress-fill { height:100%; width:8%; border-radius:999px; background:linear-gradient(90deg,var(--accent),#22c55e); transition:width 0.45s ease; }
-.export-progress-hint { margin-top:10px; font-size:11px; color:var(--text-dim); line-height:1.5; }
+.export-progress-hint { margin-top:8px; font-size:11px; color:var(--text-dim); line-height:1.45; }
+@media (max-width: 640px) {
+  .export-progress-float { left:16px; right:16px; bottom:16px; }
+  .export-progress-box { width:100%; }
+}
 </style>
 </head>
 <body>
@@ -401,8 +407,8 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
   </div>
 </div>
 
-<!-- 另存为进度弹窗 -->
-<div class="confirm-overlay" id="export-progress-overlay">
+<!-- 另存为进度条（非阻塞，不遮挡页面操作） -->
+<div class="export-progress-float" id="export-progress-overlay">
   <div class="export-progress-box">
     <div class="export-progress-head">
       <div class="export-progress-spinner"></div>

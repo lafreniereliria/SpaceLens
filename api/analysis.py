@@ -1557,8 +1557,8 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         for j,b in enumerate(uniq_beh):
             mask=beh_nums==b; ax0.scatter(x[mask],y[mask],s=point_size,color=palette(j),alpha=0.75,label=beh_labels[j],zorder=3)
         ax0.axis('off'); ax0.set_title('各行为发生人次分布图',color=th['text'],fontsize=13,pad=10)
-        ax0.legend(loc='upper right',fontsize=7,ncol=2,facecolor=th['legend_bg'],edgecolor=th['spine'],labelcolor=th['bar_label'])
-        plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
+        _legend_upper_right(ax0, th, fontsize=8, ncol=1)
+        plt.tight_layout(rect=[0, 0, 0.80, 1], pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
         bw=0.7/len(uniq_beh); xs=np.arange(len(uniq_reg))
@@ -5073,8 +5073,7 @@ def behavior_count():
                         label=beh_labels[j], zorder=3)
         ax0.axis('off')
         ax0.set_title('各行为发生人次分布图', color=th['text'], fontsize=13, pad=10)
-        ax0.legend(loc='upper right', fontsize=7, ncol=2,
-                   facecolor=th['legend_bg'], edgecolor=th['spine'], labelcolor=th['bar_label'])
+        scatter_handles, scatter_labels = ax0.get_legend_handles_labels()
 
         ax1 = axes[1]
         _styled_axes(ax1, th)
@@ -5087,11 +5086,23 @@ def behavior_count():
         ax1.set_xlabel('空间单元编号', color=th['subtext'], fontsize=10)
         ax1.set_ylabel('行为发生人次（次）', color=th['subtext'], fontsize=10)
         ax1.set_title('各空间单元行为发生人次', color=th['text'], fontsize=13)
-        _legend_upper_right(ax1, th)
         ax1.yaxis.grid(True, color=th['grid'], linewidth=0.5)
         ax1.set_axisbelow(True)
 
-        plt.tight_layout(pad=2)
+        if scatter_handles:
+            fig.legend(
+                scatter_handles,
+                scatter_labels,
+                loc='upper right',
+                bbox_to_anchor=(0.985, 0.92),
+                ncol=1,
+                fontsize=8,
+                facecolor=th['legend_bg'],
+                edgecolor=th['spine'],
+                labelcolor=th['bar_label'],
+            )
+
+        plt.tight_layout(rect=[0, 0, 0.88, 1], pad=2)
         img_b64 = fig_to_base64(fig)
         plt.close(fig)
 

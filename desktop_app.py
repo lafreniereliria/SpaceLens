@@ -496,11 +496,11 @@ def _build_cover_html() -> str:
       <button class="panel-close" onclick="closePanel('team')">×</button>
     </div>
     <div class="panel-body">
-      <div class="info-row"><div class="info-label">单位</div><div class="info-value">同济大学建筑与城市规划学院</div></div>
-      <div class="info-row"><div class="info-label">研究团队</div><div class="info-value">建筑空间绩效评价研究组</div></div>
-      <div class="info-row"><div class="info-label">指导教师</div><div class="info-value">待补充</div></div>
-      <div class="info-row"><div class="info-label">开发成员</div><div class="info-value">待补充</div></div>
-      <div class="info-row"><div class="info-label">联系邮箱</div><div class="info-value">待补充</div></div>
+      <div class="info-row"><div class="info-label">单位</div><div class="info-value">西安建筑科技大学建筑学院</div></div>
+      <div class="info-row"><div class="info-label">研究团队</div><div class="info-value">空间感知智能化研究团队</div></div>
+      <div class="info-row"><div class="info-label">指导教师</div><div class="info-value">党雨田</div></div>
+      <div class="info-row"><div class="info-label">开发成员</div><div class="info-value">王筱婕　程争刚</div></div>
+      <div class="info-row"><div class="info-label">联系邮箱</div><div class="info-value">wangxiaojie@xauat.edu.cn</div></div>
     </div>
   </div>
 </div>

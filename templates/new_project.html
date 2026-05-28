@@ -421,12 +421,6 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
           <div class="match-file" id="mf-ques3" style="display:none"></div>
           <div class="match-none" id="mn-ques3">未找到</div>
         </div>
-        <div class="match-row" id="mr-region">
-          <div class="match-dot miss" id="dot-region"></div>
-          <div class="match-label">区域坐标</div>
-          <div class="match-file" id="mf-region" style="display:none"></div>
-          <div class="match-none" id="mn-region">未找到 (可选)</div>
-        </div>
         <div class="match-row" id="mr-bgmask">
           <div class="match-dot miss" id="dot-bgmask"></div>
           <div class="match-label">遮罩底图</div>
@@ -535,12 +529,6 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
           <input type="file" id="sinput-ques3" accept=".csv,.xlsx,.xls" hidden>
           <div class="file-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg></div>
           <div class="file-row-info"><div class="file-row-label">设计要素满意度问卷</div><div class="file-row-hint">推荐文件名 questionnaire_3.xlsx，含 UserNum、设计要素1~24 列</div><div class="file-row-name" id="sname-ques3">未选择</div></div>
-          <button class="file-btn">选择</button>
-        </div>
-        <div class="file-row" id="row-region" onclick="triggerFile('sinput-region')">
-          <input type="file" id="sinput-region" accept=".csv,.xlsx,.xls" hidden>
-          <div class="file-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 22 8 22 16 12 22 2 16 2 8"/></svg></div>
-          <div class="file-row-info"><div class="file-row-label">区域坐标（可选）</div><div class="file-row-hint">含 Region、X、Y 列</div><div class="file-row-name" id="sname-region">未选择</div></div>
           <button class="file-btn">选择</button>
         </div>
         <div class="file-row" id="row-bgmask" onclick="triggerFile('sinput-bgmask')">
@@ -690,25 +678,22 @@ var EXACT_NAME_MAP = {
   ques3:    ['questionnaire_3.xlsx','questionnaire_3.csv',
              'questionnaire3.xlsx','questionnaire3.csv',
              'survey_3.xlsx','survey_3.csv'],
-  region:   ['region_coordinates.xlsx','region_coordinates.csv',
-             'region.xlsx','region.csv',
-             'coordinates.xlsx','coordinates.csv'],
   bgmask:   ['background.png','background.jpg','background.jpeg',
              'mask.png','mask.jpg','mask.jpeg'],
 };
 var IMG_EXTS = ['.png','.jpg','.jpeg','.bmp','.webp'];
 
 // 存放已匹配的 File 对象（文件夹模式）
-var folderFiles = { img:null, loc:null, behavior:null, env:null, ques1:null, ques2:null, ques3:null, region:null, bgmask:null };
+var folderFiles = { img:null, loc:null, behavior:null, env:null, ques1:null, ques2:null, ques3:null, bgmask:null };
 var _folderName = '';  // 文件夹名称，用于结果页标题
 var _restoredSourceFiles = {};
 var _restoredProjectId = null;
 var _slotFieldMap = {
   img:'layout_img', loc:'loc_data', behavior:'behavior_data', env:'env_data',
   ques1:'ques_data_overall', ques2:'ques_data_region', ques3:'ques_data_design',
-  region:'region_data', bgmask:'background_img'
+  bgmask:'background_img'
 };
-var _sourceKeyMap = { img:'img', loc:'loc', behavior:'beh', env:'env', ques1:'ques1', ques2:'ques2', ques3:'ques3', region:'region', bgmask:'bgmask' };
+var _sourceKeyMap = { img:'img', loc:'loc', behavior:'beh', env:'env', ques1:'ques1', ques2:'ques2', ques3:'ques3', bgmask:'bgmask' };
 
 function _esc(s){
   return String(s == null ? '' : s)
@@ -727,7 +712,7 @@ function matchFiles(fileList){
   var usedFiles = new Set();
 
   // 精确匹配：按候选名单顺序查找，找到即止，已用文件不重复分配
-  ['img','loc','behavior','env','ques1','ques2','ques3','region','bgmask'].forEach(function(slot){
+  ['img','loc','behavior','env','ques1','ques2','ques3','bgmask'].forEach(function(slot){
     var candidates = EXACT_NAME_MAP[slot];
     for(var i = 0; i < candidates.length; i++){
       var key = candidates[i].toLowerCase();
@@ -756,7 +741,7 @@ function matchFiles(fileList){
 
 function showMatchResult(assigned){
   document.getElementById('match-list').style.display='flex';
-  ['img','loc','behavior','env','ques1','ques2','ques3','region','bgmask'].forEach(function(slot){
+  ['img','loc','behavior','env','ques1','ques2','ques3','bgmask'].forEach(function(slot){
     var f=assigned[slot];
     folderFiles[slot]=f||null;
     var dot=document.getElementById('dot-'+slot);
@@ -808,7 +793,7 @@ df.addEventListener('drop',function(e){
 
 // 分别导入
 function triggerFile(inputId){ document.getElementById(inputId).click(); }
-['img','loc','behavior','env','ques1','ques2','ques3','region','bgmask'].forEach(function(key){
+['img','loc','behavior','env','ques1','ques2','ques3','bgmask'].forEach(function(key){
   var inp=document.getElementById('sinput-'+key);
   inp.addEventListener('change',function(){
     if(this.files[0]){
@@ -1087,7 +1072,6 @@ function startCalc(){
     if(folderFiles.ques1)    fd.append('ques_data_overall',     folderFiles.ques1);
     if(folderFiles.ques2)    fd.append('ques_data_region',      folderFiles.ques2);
     if(folderFiles.ques3)    fd.append('ques_data_design',      folderFiles.ques3);
-    if(folderFiles.region)   fd.append('region_data',           folderFiles.region);
     if(folderFiles.bgmask)   fd.append('background_img',        folderFiles.bgmask);
     if(!folderFiles.img && !folderFiles.loc && !folderFiles.behavior && !folderFiles.env && !folderFiles.ques1 && !folderFiles.ques2 && !folderFiles.ques3){
       alert('未识别到任何数据文件，请检查文件夹内容'); return;
@@ -1100,7 +1084,6 @@ function startCalc(){
     if(folderFiles.ques1)    fd.append('ques_data_overall_path',   folderFiles.ques1.webkitRelativePath || folderFiles.ques1.name);
     if(folderFiles.ques2)    fd.append('ques_data_region_path',    folderFiles.ques2.webkitRelativePath || folderFiles.ques2.name);
     if(folderFiles.ques3)    fd.append('ques_data_design_path',    folderFiles.ques3.webkitRelativePath || folderFiles.ques3.name);
-    if(folderFiles.region)   fd.append('region_data_path',         folderFiles.region.webkitRelativePath || folderFiles.region.name);
     if(folderFiles.bgmask)   fd.append('background_img_path',      folderFiles.bgmask.webkitRelativePath || folderFiles.bgmask.name);
   } else {
     var img=document.getElementById('sinput-img').files[0];
@@ -1110,7 +1093,6 @@ function startCalc(){
     var ques1=document.getElementById('sinput-ques1').files[0];
     var ques2=document.getElementById('sinput-ques2').files[0];
     var ques3=document.getElementById('sinput-ques3').files[0];
-    var reg=document.getElementById('sinput-region').files[0];
     var bgmask=document.getElementById('sinput-bgmask') ? document.getElementById('sinput-bgmask').files[0] : null;
     var hasRestoredCore = ['img','loc','behavior','env','ques1','ques2','ques3'].some(function(slot){
       return !!_restoredSourceFiles[_sourceKeyMap[slot]];
@@ -1123,12 +1105,11 @@ function startCalc(){
     if(ques1) fd.append('ques_data_overall',    ques1);
     if(ques2) fd.append('ques_data_region',     ques2);
     if(ques3) fd.append('ques_data_design',     ques3);
-    if(reg)   fd.append('region_data',          reg);
     if(bgmask) fd.append('background_img',      bgmask);
     // 单文件模式：新选择的文件用文件名；历史恢复且未替换的文件用原路径
     [
       ['img', img], ['loc', loc], ['behavior', beh], ['env', env],
-      ['ques1', ques1], ['ques2', ques2], ['ques3', ques3], ['region', reg], ['bgmask', bgmask]
+      ['ques1', ques1], ['ques2', ques2], ['ques3', ques3], ['bgmask', bgmask]
     ].forEach(function(pair){
       var slot = pair[0];
       var file = pair[1];

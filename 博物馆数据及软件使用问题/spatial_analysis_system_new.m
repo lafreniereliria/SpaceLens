@@ -879,33 +879,8 @@ ax1 = axes('Parent',fig,'Position',[0.35 0.04 0.5 0.4]);%显示柱状图
         % 按时间和区域排序
         fullResult = sortrows(fullResult, {'TimeStart', 'RegionID'});
         %% 5计算各区域面积
-        data1 = readtable('region_coordinates.xlsx');
-        % 提取唯一区域编号
-        regionIDs = unique(data1{:, 1}); % 第一列是区域编号
-        % 初始化存储面积的数组
-        regionAreas = zeros(length(regionIDs), 2); % [区域编号, 面积]
-        % 遍历每个区域，计算面积
-        for i = 1:length(regionIDs)
-            id = regionIDs(i);
-
-            % 提取当前区域的坐标
-            regionData = data1(data1{:, 1} == id, :); % 筛选当前区域的数据
-            x = regionData{:, 2}; % 第二列是 x 坐标
-            y = regionData{:, 3}; % 第三列是 y 坐标
-
-            % 确保多边形闭合（首尾顶点相同）
-            if x(1) ~= x(end) || y(1) ~= y(end)
-                x = [x; x(1)];
-                y = [y; y(1)];
-            end
-
-            % 计算面积（使用鞋带公式）
-            area = 0.5 * abs(sum(x(1:end-1) .* y(2:end)) - sum(y(1:end-1) .* x(2:end)));
-            % area = polyarea(x, y);
-            % 存储结果
-            regionAreas(i, :) = [id, area];
-        end
-        regionAreas=regionAreas(:,2)/ra/ra;  % 区域实际面积
+        allRegions = unique(region_ids);
+        regionAreas = ones(max(allRegions), 1);  % 不再依赖外部坐标文件
         % regionAreas=[regionAreas([1,3:end]); 1]; % 删除区域2，补区域10的面积
         % 将结果保存到Excel
         writetable(fullResult, 'A6空间人员密度.xlsx');
@@ -950,44 +925,12 @@ end
         cla(ax, 'reset')
         cla(ax1, 'reset')
         ra=18.06; %图像与实际尺寸比例
-        %% 计算各区域面积
-        % 1. 读取数据
-        data = readtable('region_coordinates.xlsx');
-
-        % 2. 提取唯一区域编号
-        regionIDs = unique(data{:, 1}); % 第一列是区域编号
-
-        % 3. 初始化存储面积的数组
-        regionAreas = zeros(length(regionIDs), 2); % [区域编号, 面积]
-
-        % 4. 遍历每个区域，计算面积
-        for i = 1:length(regionIDs)
-            id = regionIDs(i);
-
-            % 提取当前区域的坐标
-            regionData = data(data{:, 1} == id, :); % 筛选当前区域的数据
-            x = regionData{:, 2}; % 第二列是 x 坐标
-            y = regionData{:, 3}; % 第三列是 y 坐标
-
-            % 确保多边形闭合（首尾顶点相同）
-            if x(1) ~= x(end) || y(1) ~= y(end)
-                x = [x; x(1)];
-                y = [y; y(1)];
-            end
-
-            % 计算面积（使用鞋带公式）
-            area = 0.5 * abs(sum(x(1:end-1) .* y(2:end)) - sum(y(1:end-1) .* x(2:end)));
-            % area = polyarea(x, y);
-            % 存储结果
-            regionAreas(i, :) = [id, area];
-        end
-        regionAreas=regionAreas(:,2)/ra/ra;  % 区域实际面积
-        regionAreas=[regionAreas([1,3:end]); 1]; % 删除区域2，补区域10的面积
         x=data_store.loc_data.X;
         y=data_store.loc_data.Y;
         ids=data_store.loc_data.UserID;
         region_ids = data_store.loc_data.Region;
         reg_ids = unique(region_ids);
+        regionAreas = ones(size(reg_ids));  % 不再依赖外部坐标文件
         region_counts=zeros(size(reg_ids));
         for k = 1:length(reg_ids)
             % 数据提取
@@ -1001,13 +944,13 @@ end
         data_table = table(reg_ids, region_counts1, 'VariableNames', {'区域编号', '空间开放程度'});
         writetable(data_table, 'A7空间开放程度.xlsx');
         %显示结果
-        bar(region_counts1(1:end-1), 'Parent', ax1);
+        bar(region_counts1, 'Parent', ax1);
         title(ax1,'各区域开放程度(人/㎡)');
-        set(ax1, 'XTickLabel', reg_ids(1:end-1));
+        set(ax1, 'XTickLabel', reg_ids);
         grid on;
         % 添加标准线
         totalNum=height(unique(data_store.loc_data.UserID));
-        tatalAre=sum(regionAreas(1:end-1)); 
+        tatalAre=sum(regionAreas);
         stander=totalNum/tatalAre;
         yline(ax1,stander, 'r--', '整个空间开放程度值', 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom');
  
@@ -1122,54 +1065,11 @@ end
         end
               
         %% 计算新坐标所在区域
-        % 从 Excel 文件中读取不规则区域的坐标
-        regions_filename = 'region_coordinates.xlsx';
-        regionData = readcell(regions_filename, 'Range', 'A2'); % 跳过表头
-        importedRegions = cell(0);
-        currentRegion = [];
-        currentRegionNum = NaN;
-        for i = 1:size(regionData, 1)
-            regionNum = regionData{i, 1};
-            x = regionData{i, 2};
-            y = regionData{i, 3};
-            if isnan(regionNum) || isnan(x) || isnan(y)
-                continue;  % 跳过无效数据
-            end
-            if isempty(currentRegion) || regionNum ~= currentRegionNum
-                % 保存上一个区域
-                if ~isempty(currentRegion)
-                    importedRegions{end+1} = currentRegion;
-                end
-                % 开始新区域
-                currentRegion = [x, y];
-                currentRegionNum = regionNum;
-            else
-                % 继续添加当前区域顶点
-                currentRegion = [currentRegion; x, y];
-            end
-        end
-        % 保存最后一个区域
-        if ~isempty(currentRegion)
-            importedRegions{end+1} = currentRegion;
-        end
+        % 不再依赖外部坐标文件，沿用定位数据中的区域编号。
         % 创建输出表格
         outputData =zeros(size(all_smooth_data, 1), 4);
         outputData(:,1:3) = table2array(all_smooth_data);  % 保留原始坐标
-        % 遍历每个输入点进行区域判断
-        for p = 1:size(all_smooth_data, 1)
-            point = all_smooth_data{p, 2:3};
-            regionIdx = 0;  % 默认不属于任何区域
-            for r = 1:length(importedRegions)
-                coords = importedRegions{r};
-                % 使用射线法判断点是否在多边形内
-                inPolygon = inpolygon(point(1), point(2), coords(:,1), coords(:,2));
-                if inPolygon
-                    regionIdx = r;
-                    break;
-                end
-            end
-            outputData(p, 4) = regionIdx;  % 记录区域编号
-        end
+        outputData(:,4) = 1;  % 旧脚本兼容占位，正式 GUI 使用定位数据区域列
         data = outputData;
         % 提取人员编号、坐标和区域编号
         personIDs = data(:, 1);
@@ -1908,38 +1808,7 @@ function show_Parameter(~,~)
         end
 
         %% 计算各区域面积
-        % 1. 读取数据
-        data = readtable('region_coordinates.xlsx');
-
-        % 2. 提取唯一区域编号
-        regionIDs = unique(data{:, 1}); % 第一列是区域编号
-
-        % 3. 初始化存储面积的数组
-        regionAreas = zeros(length(regionIDs), 2); % [区域编号, 面积]
-
-        % 4. 遍历每个区域，计算面积
-        for i = 1:length(regionIDs)
-            id = regionIDs(i);
-
-            % 提取当前区域的坐标
-            regionData = data(data{:, 1} == id, :); % 筛选当前区域的数据
-            x = regionData{:, 2}; % 第二列是 x 坐标
-            y = regionData{:, 3}; % 第三列是 y 坐标
-
-            % 确保多边形闭合（首尾顶点相同）
-            if x(1) ~= x(end) || y(1) ~= y(end)
-                x = [x; x(1)];
-                y = [y; y(1)];
-            end
-
-            % 计算面积（使用鞋带公式）
-            area = 0.5 * abs(sum(x(1:end-1) .* y(2:end)) - sum(y(1:end-1) .* x(2:end)));
-            % area = polyarea(x, y);
-            % 存储结果
-            regionAreas(i, :) = [id, area];
-        end
-        regionAreas=regionAreas(:,2)/ra/ra;  % 区域实际面积
-        regionAreas=[regionAreas([1,3:end])]; % 删除区域2
+        regionAreas = ones(length(unique_regions), 1);  % 不再依赖外部坐标文件
         region_counts1=duration_matrix./regionAreas;
         % 写入Excel文件
         data_table = table(unique_regions, region_counts1, 'VariableNames', {'区域编号', '空间功能利用率'});

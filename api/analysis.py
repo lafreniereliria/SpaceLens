@@ -616,7 +616,6 @@ _INPUT_SLOTS = {
     'ques1':    ('_ques1_b', '_ques1_n', 'ques_data_overall_path'),
     'ques2':    ('_ques2_b', '_ques2_n', 'ques_data_region_path'),
     'ques3':    ('_ques3_b', '_ques3_n', 'ques_data_design_path'),
-    'region':   ('_region_b', '_region_n', 'region_data_path'),
     'bgmask':   ('_bgmask_b', '_bgmask_n', 'background_img_path'),
 }
 
@@ -631,7 +630,6 @@ _METRICS_BY_INPUT_SLOT = {
     'ques1': {'satisfaction'},
     'ques2': {'satisfaction_region'},
     'ques3': {'satisfaction_design'},
-    'region': {'openness', 'utilization'},
     'bgmask': {'heatmap', 'usetime', 'speed', 'duration', 'density', 'openness', 'behavior_duration'},
 }
 
@@ -2216,7 +2214,7 @@ def _make_thumbnail(sess, max_size=200):
 def run_all():
     """
     接收：layout_img, loc_data, behavior_data, env_data,
-    ques_data_overall, ques_data_region, ques_data_design, region_data (optional)
+    ques_data_overall, ques_data_region, ques_data_design
     立即返回 { session_id }，后台线程异步计算各指标并写入缓存。
     """
     try:
@@ -2234,7 +2232,7 @@ def run_all():
         ques1_b, ques1_n   = _read('ques_data_overall')
         ques2_b, ques2_n   = _read('ques_data_region')
         ques3_b, ques3_n   = _read('ques_data_design')
-        region_b, region_n = _read('region_data')
+        region_b, region_n = None, None
         bgmask_b, bgmask_n = _read('background_img')
         source_project_id = request.form.get('source_project_id', '').strip()
         changed_slots = [str(s) for s in _parse_json_list(request.form.get('changed_slots', '[]')) if str(s) in _INPUT_SLOTS]
@@ -2264,7 +2262,6 @@ def run_all():
         ques1_path  = request.form.get('ques_data_overall_path',  ques1_n  or '')
         ques2_path  = request.form.get('ques_data_region_path',   ques2_n  or '')
         ques3_path  = request.form.get('ques_data_design_path',   ques3_n  or '')
-        region_path = request.form.get('region_data_path',        region_n or '')
         bgmask_path = request.form.get('background_img_path',      bgmask_n or '')
 
         # 桌面端：尝试解析为绝对路径（Qt chooseFiles 已注入）
@@ -2279,7 +2276,6 @@ def run_all():
         ques1_path  = _best_path(ques1_path,  ques1_n)
         ques2_path  = _best_path(ques2_path,  ques2_n)
         ques3_path  = _best_path(ques3_path,  ques3_n)
-        region_path = _best_path(region_path, region_n)
         bgmask_path = _best_path(bgmask_path, bgmask_n)
 
         def _fill_from_source(data, name, path, slot):
@@ -2308,7 +2304,6 @@ def run_all():
         ques1_b, ques1_n   = _fill_from_source(ques1_b, ques1_n, ques1_path, 'ques1')
         ques2_b, ques2_n   = _fill_from_source(ques2_b, ques2_n, ques2_path, 'ques2')
         ques3_b, ques3_n   = _fill_from_source(ques3_b, ques3_n, ques3_path, 'ques3')
-        region_b, region_n = _fill_from_source(region_b, region_n, region_path, 'region')
         bgmask_b, bgmask_n = _fill_from_source(bgmask_b, bgmask_n, bgmask_path, 'bgmask')
 
         # 从已解析的绝对路径推导文件夹绝对路径
@@ -2328,7 +2323,7 @@ def run_all():
 
         if not _abs_folder:
             _abs_folder = _abs_folder_from_sources(
-                img_path, loc_path, beh_path, env_path, ques1_path, ques2_path, ques3_path, region_path, bgmask_path
+                img_path, loc_path, beh_path, env_path, ques1_path, ques2_path, ques3_path, bgmask_path
             )
 
         # 计算各文件 MD5，用于去重
@@ -2342,7 +2337,6 @@ def run_all():
             'ques1':  _md5(ques1_b),
             'ques2':  _md5(ques2_b),
             'ques3':  _md5(ques3_b),
-            'region': _md5(region_b),
             'bgmask': _md5(bgmask_b),
         }
 
@@ -2407,8 +2401,6 @@ def run_all():
                 '_ques2_n': ques2_n,
                 '_ques3_b': ques3_b,
                 '_ques3_n': ques3_n,
-                '_region_b': region_b,
-                '_region_n': region_n,
                 '_bgmask_b': bgmask_b,
                 '_bgmask_n': bgmask_n,
                 '_files_md5': files_md5, # 各文件 MD5，用于去重
@@ -2420,7 +2412,6 @@ def run_all():
                     'ques1':  ques1_path  or None,
                     'ques2':  ques2_path  or None,
                     'ques3':  ques3_path  or None,
-                    'region': region_path or None,
                     'bgmask': bgmask_path or None,
                 },
                 'region_name_map': region_name_map,
@@ -2440,7 +2431,6 @@ def run_all():
                     'ques1': (ques1_n, len(ques1_b) if ques1_b else 0),
                     'ques2': (ques2_n, len(ques2_b) if ques2_b else 0),
                     'ques3': (ques3_n, len(ques3_b) if ques3_b else 0),
-                    'region': (region_n, len(region_b) if region_b else 0),
                     'bgmask': (bgmask_n, len(bgmask_b) if bgmask_b else 0),
                 },
             }
@@ -2609,7 +2599,7 @@ def recompute_session_cluster(sid):
 def open_source(sid, key):
     """
     桌面端专用：在资源管理器/Finder 中打开（或高亮）指定源文件。
-    key: img | loc | beh | env | ques1 | ques2 | ques3 | region
+    key: img | loc | beh | env | ques1 | ques2 | ques3 | bgmask
     """
     import subprocess as _sub
     import sys as _sys
@@ -4812,7 +4802,6 @@ def openness():
             th['accent'] = accent_param
         loc_file = request.files.get('loc_data')
         img_file = request.files.get('layout_img')
-        region_file = request.files.get('region_data')
         if loc_file is None or img_file is None:
             return jsonify({'error': '请上传定位数据和平面图'}), 400
 
@@ -4829,21 +4818,7 @@ def openness():
         reg_ids = np.sort(np.unique(regions))
         reg_unique_users = np.array([df[df['Region'] == r]['UserID'].nunique() for r in reg_ids], dtype=float)
 
-        # 若上传区域坐标文件则计算面积，否则用等权面积1
-        if region_file is not None:
-            rdf = load_df(region_file)
-            areas = {}
-            for rid in rdf['Region'].unique():
-                pts = rdf[rdf['Region'] == rid][['X', 'Y']].values
-                if len(pts) >= 3:
-                    pts_c = np.vstack([pts, pts[0]])
-                    a = 0.5 * abs(np.sum(pts_c[:-1, 0] * pts_c[1:, 1] - pts_c[1:, 0] * pts_c[:-1, 1]))
-                    areas[rid] = a / (SCALE ** 2)
-                else:
-                    areas[rid] = 1.0
-            reg_areas = np.array([areas.get(r, 1.0) for r in reg_ids])
-        else:
-            reg_areas = np.ones(len(reg_ids))
+        reg_areas = np.ones(len(reg_ids))
 
         with np.errstate(divide='ignore', invalid='ignore'):
             openness_val = np.where(reg_areas > 0, reg_unique_users / reg_areas, 0)
@@ -5660,7 +5635,6 @@ def utilization():
         if accent_param:
             th['accent'] = accent_param
         beh_file = request.files.get('behavior_data')
-        region_file = request.files.get('region_data')
         if beh_file is None:
             return jsonify({'error': '请上传行为数据'}), 400
 
@@ -5690,20 +5664,7 @@ def utilization():
             for j, b in enumerate(uniq_beh):
                 dur_matrix[i, j] = t[(regions == r) & (beh_nums == b)].sum()
 
-        if region_file is not None:
-            rdf = load_df(region_file)
-            areas = {}
-            for rid in rdf['Region'].unique():
-                pts = rdf[rdf['Region'] == rid][['X', 'Y']].values
-                if len(pts) >= 3:
-                    pts_c = np.vstack([pts, pts[0]])
-                    a = 0.5 * abs(np.sum(pts_c[:-1, 0] * pts_c[1:, 1] - pts_c[1:, 0] * pts_c[:-1, 1]))
-                    areas[rid] = a / (SCALE ** 2)
-                else:
-                    areas[rid] = 1.0
-            reg_areas = np.array([areas.get(r, 1.0) for r in uniq_reg])
-        else:
-            reg_areas = np.ones(len(uniq_reg))
+        reg_areas = np.ones(len(uniq_reg))
 
         util_matrix = dur_matrix / reg_areas[:, np.newaxis]
         total_util = util_matrix.sum(axis=1)

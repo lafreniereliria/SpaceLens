@@ -793,7 +793,6 @@ const SOURCE_FILE_LABEL = {
   ques1:    { label: '整体满意度问卷', icon: '📋' },
   ques2:    { label: '空间单元满意度问卷', icon: '📊' },
   ques3:    { label: '设计要素满意度问卷', icon: '🧩' },
-  region:   { label: '区域坐标', icon: '🗺' },
   bgmask:   { label: '遮罩底图', icon: '⬛' },
 };
 
@@ -804,7 +803,7 @@ const METRIC_SOURCE = {
   duration:          ['img', 'loc', 'bgmask'],
   cluster:           ['img', 'loc'],
   density:           ['img', 'loc', 'bgmask'],
-  openness:          ['img', 'loc', 'region', 'bgmask'],
+  openness:          ['img', 'loc', 'bgmask'],
   topology:          ['loc'],
   difference:        ['img', 'loc'],
   trajectory:        ['img', 'loc'],
@@ -813,7 +812,7 @@ const METRIC_SOURCE = {
   behavior_duration: ['img', 'behavior'],
   behavior_rate:     ['behavior'],
   behavior_entropy:  ['behavior'],
-  utilization:       ['behavior', 'region'],
+  utilization:       ['behavior'],
   satisfaction:      ['ques1'],
   satisfaction_region: ['ques2'],
   satisfaction_design: ['ques3'],
@@ -1652,8 +1651,8 @@ function _updateSourceBars(sourceFiles) {
   document.querySelectorAll('.source-btn[data-source-key]').forEach(function(btn) {
     var key = btn.dataset.sourceKey;
     // SOURCE_FILE_LABEL 的 key 映射到 source_files 的 key
-    // METRIC_SOURCE 里用: img, loc, behavior, env, ques, region
-    // source_files  里用: img, loc, beh,      env, ques, region
+    // METRIC_SOURCE 里用: img, loc, behavior, env, ques, bgmask
+    // source_files  里用: img, loc, beh, env, ques, bgmask
     var sfKey = key === 'behavior' ? 'beh' : key;
     var filePath = sourceFiles[sfKey];
     if (!filePath) return;

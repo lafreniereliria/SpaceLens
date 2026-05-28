@@ -243,9 +243,6 @@ function getQuestionnaireInputKey(view) {
   if (view === 'satisfaction_design') return 'design';
   return null;
 }
-// 需要区域坐标（可选）
-const NEEDS_REGION = new Set(['openness','utilization']);
-
 let currentView = 'heatmap';
 let kValue = 5;
 
@@ -446,8 +443,6 @@ function updateUploadCards(view) {
   toggle('drop-env', NEEDS_ENV.has(view));
   // 问卷数据
   toggle('drop-ques', NEEDS_QUES.has(view));
-  // 区域坐标（可选）
-  toggle('drop-region', NEEDS_REGION.has(view));
   // 聚类参数
   toggle('cluster-param', view === 'cluster');
   // 环境参数选择
@@ -466,7 +461,6 @@ function bindUploads() {
   bindFile('drop-behavior', 'input-behavior', 'fname-behavior');
   bindFile('drop-env', 'input-env', 'fname-env');
   bindFile('drop-ques', 'input-ques', 'fname-ques');
-  bindFile('drop-region', 'input-region', 'fname-region');
 }
 
 function bindFile(dropId, inputId, nameId) {
@@ -560,10 +554,6 @@ async function runAnalysis() {
     else if (qKey === 'region') fd.append('ques_data_region', f);
     else if (qKey === 'design') fd.append('ques_data_design', f);
     else fd.append('ques_data', f);
-  }
-  if (NEEDS_REGION.has(currentView)) {
-    const f = document.getElementById('input-region').files[0];
-    if (f) fd.append('region_data', f);  // 可选
   }
   if (currentView === 'cluster') fd.append('k', kValue);
   // 行为时长：是否显示数据点

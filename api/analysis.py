@@ -2737,9 +2737,7 @@ def _build_project_zip(sid, sel_metrics, folder_name):
     if sess is None:
         return None, None, '会话不存在或已过期'
 
-    safe_folder = ''.join(c if c not in r'\/:*?"<>|' else '_' for c in (folder_name or 'SpaceLens项目'))
-    if not safe_folder:
-        safe_folder = 'SpaceLens项目'
+    safe_folder = _safe_export_folder_name(folder_name)
 
     results  = sess.get('results', {})
     computed = sess.get('computed', [])
@@ -2788,6 +2786,11 @@ def _build_project_zip(sid, sel_metrics, folder_name):
     return buf.read(), safe_folder, None
 
 
+def _safe_export_folder_name(folder_name):
+    safe_folder = ''.join(c if c not in r'\/:*?"<>|' else '_' for c in (folder_name or 'SpaceLens项目'))
+    return safe_folder or 'SpaceLens项目'
+
+
 @analysis_bp.route('/save_project/<sid>', methods=['POST'])
 def save_project(sid):
     """
@@ -2802,10 +2805,7 @@ def save_project(sid):
         sel_metrics = body.get('metrics', None)
         folder_name = body.get('folder_name', '') or 'SpaceLens项目'
 
-        zip_bytes, safe_folder, err = _build_project_zip(sid, sel_metrics, folder_name)
-        if err:
-            return jsonify({'error': err}), 400
-
+        safe_folder = _safe_export_folder_name(folder_name)
         zip_filename = f'{safe_folder}_评价结果.zip'
 
         # ── 1. 优先使用 Qt 原生对话框（桌面端） ──
@@ -2833,6 +2833,10 @@ def save_project(sid):
 
         if not save_path:
             return jsonify({'cancelled': True})
+
+        zip_bytes, safe_folder, err = _build_project_zip(sid, sel_metrics, folder_name)
+        if err:
+            return jsonify({'error': err}), 400
 
         with open(save_path, 'wb') as f:
             f.write(zip_bytes)
@@ -3770,24 +3774,9 @@ def api_export_project_by_id(pid):
 
         sid = proj['session_id']
 
-        sess, restored_folder = _restore_project_session_if_needed(pid, proj)
-        if sess is None:
-            return jsonify({'expired': True,
-                            'message': '未找到可打包的历史结果文件，请先查看项目并指定结果文件夹'})
-
-        # 复用 save_project 端点逻辑
         body = request.get_json(silent=True) or {}
         body.setdefault('folder_name', proj['name'])
-        request._cached_json = (body, True)  # patch for nested call
-
-        zip_bytes, safe_folder, err = _build_project_zip(
-            sid,
-            body.get('metrics', None),
-            body.get('folder_name', proj['name'])
-        )
-        if err:
-            return jsonify({'error': err}), 400
-
+        safe_folder = _safe_export_folder_name(body.get('folder_name', proj['name']))
         zip_filename = f'{safe_folder}_评价结果.zip'
 
         if _native_save_dialog_hook is not None:
@@ -3809,6 +3798,19 @@ def api_export_project_by_id(pid):
 
         if not save_path:
             return jsonify({'cancelled': True})
+
+        sess, restored_folder = _restore_project_session_if_needed(pid, proj)
+        if sess is None:
+            return jsonify({'expired': True,
+                            'message': '未找到可打包的历史结果文件，请先查看项目并指定结果文件夹'})
+
+        zip_bytes, safe_folder, err = _build_project_zip(
+            sid,
+            body.get('metrics', None),
+            body.get('folder_name', proj['name'])
+        )
+        if err:
+            return jsonify({'error': err}), 400
 
         with open(save_path, 'wb') as f:
             f.write(zip_bytes)

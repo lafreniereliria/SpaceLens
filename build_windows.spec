@@ -2,8 +2,12 @@
 #
 # SpaceLens Windows desktop app packaging config
 # Usage (run on Windows):
-#   pip install pyinstaller PyQt6 PyQt6-WebEngine
-#   pyinstaller build_windows.spec
+#   .\build_windows.ps1
+#
+# If PyInstaller reports WinError 5 while removing dist\SpaceLens, an old
+# SpaceLens.exe or QtWebEngineProcess is still running. The PowerShell script
+# stops those processes and clears stale build folders before invoking
+# PyInstaller with --noconfirm --clean.
 #
 # Output: dist/SpaceLens/SpaceLens.exe  (onedir mode, faster startup)
 #

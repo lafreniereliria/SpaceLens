@@ -56,6 +56,16 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+### Windows 打包
+
+在 Windows 上打包桌面版时使用仓库内脚本：
+
+```powershell
+.\build_windows.ps1
+```
+
+如果之前打开过软件，脚本会先结束旧的 `SpaceLens.exe` 和 `QtWebEngineProcess`，再清理 `dist\SpaceLens` 后重新打包。若仍出现 `WinError 5 拒绝访问`，请关闭正在运行的 SpaceLens、关闭打开在 `dist` 目录中的资源管理器窗口，稍等几秒后重新执行脚本。
+
 ## 使用流程
 
 1. 打开软件，进入新建项目。

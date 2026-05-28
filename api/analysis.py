@@ -599,6 +599,8 @@ def heatmap():
 # 内存会话缓存
 # ─────────────────────────────────────────────
 import uuid, time as _time, threading as _threading
+from concurrent.futures import ProcessPoolExecutor as _ProcessPoolExecutor, as_completed as _as_completed
+from concurrent.futures.process import BrokenProcessPool as _BrokenProcessPool
 from werkzeug.datastructures import FileStorage
 from io import BytesIO
 
@@ -862,7 +864,8 @@ def _compute_cluster_result(loc_fs, img_fs, k, th, normalize_xy_fn=None, walkabl
 
 def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
                 env_b, env_n, ques1_b, ques1_n, ques2_b, ques2_n, ques3_b, ques3_n,
-                region_b, region_n, bgmask_b, bgmask_n, th, region_name_map=None, only_metrics=None):
+                region_b, region_n, bgmask_b, bgmask_n, th, region_name_map=None, only_metrics=None,
+                persist_at_end=True):
     """后台线程：逐个计算指标，每算完一个就更新会话缓存"""
     region_name_map = region_name_map or {}
     only_metrics = set(only_metrics or [])
@@ -1863,11 +1866,211 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
     _run_metric('satisfaction_design', _sat_design)
 
     # ── 全部完成，标记 status + 存入数据库 ──
+    sess_to_save = None
     with _sess_lock:
         sess = _sessions.get(sid)
         if sess is not None:
             sess['status'] = 'done'
-            _save_project_to_db(sid, sess)
+            if persist_at_end:
+                sess_to_save = dict(sess)
+    if sess_to_save is not None:
+        _save_project_to_db(sid, sess_to_save)
+
+
+_METRIC_EXECUTION_ORDER = [
+    'heatmap', 'usetime', 'speed', 'duration', 'cluster', 'density', 'openness',
+    'topology', 'difference', 'trajectory',
+    'environment_p1', 'environment_p2', 'environment_p3', 'environment_p4', 'environment_p5',
+    'behavior_count', 'behavior_duration', 'behavior_rate', 'behavior_entropy', 'utilization',
+    'satisfaction', 'satisfaction_region', 'satisfaction_design',
+]
+
+_PARALLEL_METRIC_GROUPS = [
+    ('loc_heatmaps', ('heatmap', 'usetime', 'duration', 'density', 'openness')),
+    ('loc_paths', ('speed', 'cluster', 'topology', 'difference', 'trajectory')),
+    ('environment', ('environment_p1', 'environment_p2', 'environment_p3', 'environment_p4', 'environment_p5')),
+    ('behavior', ('behavior_count', 'behavior_duration', 'behavior_rate', 'behavior_entropy', 'utilization')),
+    ('satisfaction', ('satisfaction', 'satisfaction_region', 'satisfaction_design')),
+]
+
+
+def _metric_sort_key(metric_id):
+    try:
+        return _METRIC_EXECUTION_ORDER.index(metric_id)
+    except ValueError:
+        return len(_METRIC_EXECUTION_ORDER)
+
+
+def _parallel_worker_compute(payload):
+    """Child-process worker: compute one metric group with the existing sequential engine."""
+    sid = payload['sid']
+    metrics = set(payload.get('metrics') or [])
+    with _sess_lock:
+        _sessions[sid] = {
+            'results': {},
+            'computed': [],
+            'skipped': [],
+            'type': payload.get('building_type', ''),
+            'folder': payload.get('folder_name', ''),
+            'project_name': payload.get('project_name', ''),
+            'floor_info': payload.get('floor_info', '0'),
+            'collection_date': payload.get('collection_date', ''),
+            'ts': _time.time(),
+            'status': 'running',
+        }
+
+    _bg_compute(
+        sid,
+        payload.get('img_b'), payload.get('img_n'),
+        payload.get('loc_b'), payload.get('loc_n'),
+        payload.get('beh_b'), payload.get('beh_n'),
+        payload.get('env_b'), payload.get('env_n'),
+        payload.get('ques1_b'), payload.get('ques1_n'),
+        payload.get('ques2_b'), payload.get('ques2_n'),
+        payload.get('ques3_b'), payload.get('ques3_n'),
+        payload.get('region_b'), payload.get('region_n'),
+        payload.get('bgmask_b'), payload.get('bgmask_n'),
+        payload.get('theme', {}),
+        payload.get('region_name_map') or {},
+        only_metrics=metrics,
+        persist_at_end=False,
+    )
+
+    with _sess_lock:
+        sess = _sessions.pop(sid, None) or {}
+    return {
+        'group': payload.get('group', ''),
+        'metrics': list(metrics),
+        'computed': sess.get('computed', []),
+        'skipped': sess.get('skipped', []),
+        'results': sess.get('results', {}),
+    }
+
+
+def _merge_metric_result(sid, metric_id, result):
+    with _sess_lock:
+        sess = _sessions.get(sid)
+        if sess is None:
+            return
+        sess['results'][metric_id] = result
+        if metric_id in sess.get('computed', []):
+            sess['computed'].remove(metric_id)
+        if metric_id in sess.get('skipped', []):
+            sess['skipped'].remove(metric_id)
+        if result is not None and not result.get('error'):
+            sess['computed'].append(metric_id)
+        else:
+            if result is None:
+                sess['results'][metric_id] = {'error': '数据不足，跳过（缺少必要文件或列）'}
+            sess['skipped'].append(metric_id)
+        sess['ts'] = _time.time()
+
+
+def _finalize_compute_session(sid):
+    sess_to_save = None
+    with _sess_lock:
+        sess = _sessions.get(sid)
+        if sess is None:
+            return
+        sess['computed'] = sorted(sess.get('computed', []), key=_metric_sort_key)
+        sess['skipped'] = sorted(sess.get('skipped', []), key=_metric_sort_key)
+        sess['status'] = 'done'
+        sess['ts'] = _time.time()
+        sess_to_save = dict(sess)
+    _save_project_to_db(sid, sess_to_save)
+
+
+def _parallel_worker_count():
+    try:
+        requested = int(_os.environ.get('SPACELENS_WORKERS', '') or 0)
+    except Exception:
+        requested = 0
+    if requested > 0:
+        return max(1, requested)
+    cpu_count = _os.cpu_count() or 2
+    return max(1, min(4, cpu_count - 1))
+
+
+def _bg_compute_parallel(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
+                         env_b, env_n, ques1_b, ques1_n, ques2_b, ques2_n, ques3_b, ques3_n,
+                         region_b, region_n, bgmask_b, bgmask_n, th, region_name_map=None, only_metrics=None):
+    """后台线程：按指标组启动多进程计算，主进程合并结果并持久化。"""
+    target_metrics = set(only_metrics or _METRIC_EXECUTION_ORDER)
+    chunks = []
+    for group_name, group_metrics in _PARALLEL_METRIC_GROUPS:
+        metrics = [m for m in group_metrics if m in target_metrics]
+        if metrics:
+            chunks.append((group_name, metrics))
+
+    disabled = str(_os.environ.get('SPACELENS_DISABLE_MULTIPROCESS', '')).lower() in {'1', 'true', 'yes'}
+    worker_count = min(_parallel_worker_count(), len(chunks))
+    if disabled or worker_count <= 1 or len(chunks) <= 1:
+        _bg_compute(
+            sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
+            env_b, env_n, ques1_b, ques1_n, ques2_b, ques2_n, ques3_b, ques3_n,
+            region_b, region_n, bgmask_b, bgmask_n, th, region_name_map, only_metrics,
+            persist_at_end=True,
+        )
+        return
+
+    common_payload = {
+        'img_b': img_b, 'img_n': img_n,
+        'loc_b': loc_b, 'loc_n': loc_n,
+        'beh_b': beh_b, 'beh_n': beh_n,
+        'env_b': env_b, 'env_n': env_n,
+        'ques1_b': ques1_b, 'ques1_n': ques1_n,
+        'ques2_b': ques2_b, 'ques2_n': ques2_n,
+        'ques3_b': ques3_b, 'ques3_n': ques3_n,
+        'region_b': region_b, 'region_n': region_n,
+        'bgmask_b': bgmask_b, 'bgmask_n': bgmask_n,
+        'theme': th,
+        'region_name_map': region_name_map or {},
+    }
+
+    try:
+        with _ProcessPoolExecutor(max_workers=worker_count) as executor:
+            future_to_chunk = {}
+            for idx, (group_name, metrics) in enumerate(chunks):
+                payload = dict(common_payload)
+                payload.update({
+                    'sid': f'{sid}:{group_name}:{idx}',
+                    'group': group_name,
+                    'metrics': metrics,
+                    'building_type': '',
+                    'folder_name': '',
+                    'project_name': '',
+                })
+                future_to_chunk[executor.submit(_parallel_worker_compute, payload)] = (group_name, metrics)
+
+            for future in _as_completed(future_to_chunk):
+                group_name, metrics = future_to_chunk[future]
+                try:
+                    chunk_result = future.result()
+                except _BrokenProcessPool:
+                    raise
+                except Exception as exc:
+                    import traceback
+                    tb = traceback.format_exc()
+                    for metric_id in metrics:
+                        _merge_metric_result(sid, metric_id, {
+                            'error': f'并行计算失败：{exc}',
+                            'traceback': tb,
+                        })
+                    continue
+
+                results = chunk_result.get('results') or {}
+                for metric_id in metrics:
+                    _merge_metric_result(sid, metric_id, results.get(metric_id))
+    except (_BrokenProcessPool, OSError, PermissionError):
+        _bg_compute(
+            sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
+            env_b, env_n, ques1_b, ques1_n, ques2_b, ques2_n, ques3_b, ques3_n,
+            region_b, region_n, bgmask_b, bgmask_n, th, region_name_map, only_metrics,
+            persist_at_end=True,
+        )
+        return
+
+    _finalize_compute_session(sid)
 
 
 def _save_project_to_db(sid, sess):
@@ -2242,7 +2445,7 @@ def run_all():
 
         # 启动后台线程
         t = _threading.Thread(
-            target=_bg_compute,
+            target=_bg_compute_parallel,
             args=(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
                   env_b, env_n, ques1_b, ques1_n, ques2_b, ques2_n, ques3_b, ques3_n,
                   region_b, region_n, bgmask_b, bgmask_n, th, region_name_map, only_metrics),

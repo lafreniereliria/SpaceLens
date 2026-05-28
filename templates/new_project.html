@@ -130,6 +130,18 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
 .restore-banner { display:none; margin-bottom:14px; padding:12px 14px; border:1px solid rgba(var(--accent-rgb),0.28); border-radius:9px; background:rgba(var(--accent-rgb),0.06); color:var(--text-secondary); font-size:12px; line-height:1.5; }
 .restore-banner.visible { display:block; }
 
+/* compute mode */
+.compute-mode-box { margin-top:18px; padding:14px 16px; border:1px solid var(--border); border-radius:10px; background:var(--bg-deep); display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.compute-mode-copy { min-width:0; }
+.compute-mode-title { font-size:13px; font-weight:700; color:var(--text-primary); margin-bottom:4px; }
+.compute-mode-desc { font-size:12px; color:var(--text-secondary); line-height:1.5; }
+.compute-toggle { position:relative; width:46px; height:26px; flex-shrink:0; cursor:pointer; margin-top:2px; }
+.compute-toggle input { position:absolute; opacity:0; pointer-events:none; }
+.compute-toggle-slider { position:absolute; inset:0; border-radius:999px; background:var(--border); transition:all 0.18s; }
+.compute-toggle-slider::after { content:''; position:absolute; width:20px; height:20px; left:3px; top:3px; border-radius:50%; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,0.22); transition:transform 0.18s; }
+.compute-toggle input:checked + .compute-toggle-slider { background:var(--accent); }
+.compute-toggle input:checked + .compute-toggle-slider::after { transform:translateX(20px); }
+
 /* region name mapping */
 .mapping-box { margin-top:18px; padding:14px; border:1px solid var(--border); border-radius:9px; background:var(--bg-deep); }
 .mapping-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:10px; }
@@ -422,6 +434,17 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
           <div class="match-none" id="mn-bgmask">未找到 (可选)</div>
         </div>
       </div>
+    </div>
+
+    <div class="compute-mode-box">
+      <div class="compute-mode-copy">
+        <div class="compute-mode-title">并行计算模式</div>
+        <div class="compute-mode-desc">默认关闭，使用兼容性更好的串行计算。高配置电脑可开启并行计算以缩短等待时间。</div>
+      </div>
+      <label class="compute-toggle" title="开启后会同时计算多个指标，低配置电脑可能更卡">
+        <input type="checkbox" id="multiprocess-toggle">
+        <span class="compute-toggle-slider"></span>
+      </label>
     </div>
 
     <!-- 查看重复项目触发按钮行（文件匹配后显示） -->
@@ -1040,6 +1063,7 @@ function startCalc(){
   fd.append('folder_name', _folderName);
   fd.append('floor_info', (document.getElementById('floor-info-input').value || '0').trim() || '0');
   fd.append('collection_date', document.getElementById('collection-date-input').value || _todayStr());
+  fd.append('use_multiprocess', document.getElementById('multiprocess-toggle').checked ? '1' : '0');
 
   // 项目名称
   var projectName = (document.getElementById('project-name-input').value||'').trim();
@@ -1129,7 +1153,7 @@ function startCalc(){
   var overlay=document.getElementById('computing-overlay');
   var sub=document.getElementById('computing-sub');
   overlay.classList.add('active');
-  if(sub) sub.textContent='正在启动计算…';
+  if(sub) sub.textContent=document.getElementById('multiprocess-toggle').checked ? '正在启动并行计算…' : '正在启动串行计算…';
 
   fetch('/api/run_all',{method:'POST',body:fd})
     .then(function(r){return r.json();})

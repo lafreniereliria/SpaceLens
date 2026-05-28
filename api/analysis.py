@@ -2354,6 +2354,7 @@ def run_all():
         theme_name    = request.form.get('theme', 'dark')
         accent_param  = request.form.get('accent', '')
         region_name_map = _parse_region_name_map(request.form.get('region_name_map', ''))
+        use_multiprocess = str(request.form.get('use_multiprocess', '0')).lower() in {'1', 'true', 'yes', 'on'}
 
         th = _theme(theme_name)
         if accent_param:
@@ -2423,6 +2424,7 @@ def run_all():
                     'bgmask': bgmask_path or None,
                 },
                 'region_name_map': region_name_map,
+                'use_multiprocess': use_multiprocess,
                 '_debug_img_b': img_b[:4] if img_b else None,
                 '_debug_loc_b': loc_b[:4] if loc_b else None,
                 '_debug_beh_b': beh_b[:4] if beh_b else None,
@@ -2444,8 +2446,9 @@ def run_all():
             }
 
         # 启动后台线程
+        compute_target = _bg_compute_parallel if use_multiprocess else _bg_compute
         t = _threading.Thread(
-            target=_bg_compute_parallel,
+            target=compute_target,
             args=(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
                   env_b, env_n, ques1_b, ques1_n, ques2_b, ques2_n, ques3_b, ques3_n,
                   region_b, region_n, bgmask_b, bgmask_n, th, region_name_map, only_metrics),

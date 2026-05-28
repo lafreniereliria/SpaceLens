@@ -202,6 +202,16 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
 .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
 .toast.success { border-left:3px solid var(--success); }
 .toast.error   { border-left:3px solid var(--danger); }
+
+/* ── export progress ── */
+.export-progress-box { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:24px 26px; width:360px; max-width:90vw; box-shadow:0 20px 60px rgba(0,0,0,0.22); }
+.export-progress-head { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+.export-progress-spinner { width:20px; height:20px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.7s linear infinite; flex-shrink:0; }
+.export-progress-title { font-size:15px; font-weight:700; color:var(--text-primary); }
+.export-progress-desc { font-size:12px; color:var(--text-secondary); line-height:1.6; margin-bottom:16px; }
+.export-progress-track { height:8px; border-radius:999px; background:var(--bg-deep); overflow:hidden; border:1px solid var(--border); }
+.export-progress-fill { height:100%; width:8%; border-radius:999px; background:linear-gradient(90deg,var(--accent),#22c55e); transition:width 0.45s ease; }
+.export-progress-hint { margin-top:10px; font-size:11px; color:var(--text-dim); line-height:1.5; }
 </style>
 </head>
 <body>
@@ -388,6 +398,21 @@ body { min-height:100vh; background:var(--bg); color:var(--text-primary); displa
       <button class="confirm-btn cancel" onclick="closeFolderDialog()">取消</button>
       <button class="confirm-btn primary" onclick="loadFromSpecifiedFolder()">加载</button>
     </div>
+  </div>
+</div>
+
+<!-- 另存为进度弹窗 -->
+<div class="confirm-overlay" id="export-progress-overlay">
+  <div class="export-progress-box">
+    <div class="export-progress-head">
+      <div class="export-progress-spinner"></div>
+      <div class="export-progress-title">正在准备另存为</div>
+    </div>
+    <div class="export-progress-desc" id="export-progress-text">请选择保存路径，选择后系统会继续打包结果文件。</div>
+    <div class="export-progress-track">
+      <div class="export-progress-fill" id="export-progress-fill"></div>
+    </div>
+    <div class="export-progress-hint">结果文件较大时，写入 ZIP 可能需要十几秒，请保持此页面打开。</div>
   </div>
 </div>
 
@@ -753,20 +778,66 @@ function loadFromSpecifiedFolder() {
 }
 
 // ── 另存为 ──
+var _exportProgressTimer = null;
+function showExportProgress() {
+  var overlay = document.getElementById('export-progress-overlay');
+  var fill = document.getElementById('export-progress-fill');
+  var text = document.getElementById('export-progress-text');
+  if (!overlay || !fill || !text) return;
+  var steps = [
+    { pct: 12, text: '请选择保存路径，选择后系统会继续打包结果文件。' },
+    { pct: 28, text: '正在等待保存路径确认…' },
+    { pct: 46, text: '正在恢复历史结果数据…' },
+    { pct: 64, text: '正在打包图表和 Excel 数据…' },
+    { pct: 82, text: '正在写入 ZIP 文件，请稍候…' },
+    { pct: 92, text: '文件较大时需要多等几秒，马上完成。' },
+  ];
+  var idx = 0;
+  overlay.classList.add('active');
+  fill.style.width = steps[0].pct + '%';
+  text.textContent = steps[0].text;
+  clearInterval(_exportProgressTimer);
+  _exportProgressTimer = setInterval(function(){
+    idx = Math.min(idx + 1, steps.length - 1);
+    fill.style.width = steps[idx].pct + '%';
+    text.textContent = steps[idx].text;
+  }, 1400);
+}
+
+function hideExportProgress(done) {
+  clearInterval(_exportProgressTimer);
+  _exportProgressTimer = null;
+  var overlay = document.getElementById('export-progress-overlay');
+  var fill = document.getElementById('export-progress-fill');
+  var text = document.getElementById('export-progress-text');
+  if (fill && done) fill.style.width = '100%';
+  if (text && done) text.textContent = '保存完成。';
+  setTimeout(function(){
+    if (overlay) overlay.classList.remove('active');
+  }, done ? 350 : 0);
+}
+
 function exportProject(pid) {
-  fetch('/api/projects/'+pid+'/export', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({}),
-  })
-    .then(function(r){ return r.json(); })
-    .then(function(data) {
-      if(data.expired) { showToast(data.message || '未找到可打包的历史结果，请先查看项目并指定结果文件夹', 'error'); return; }
-      if(data.cancelled) { return; }
-      if(data.error)  { showToast('导出失败：'+data.error, 'error'); return; }
-      if(data.success){ showToast('✓ 已保存至：'+data.path, 'success'); }
+  showExportProgress();
+  setTimeout(function(){
+    fetch('/api/projects/'+pid+'/export', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({}),
     })
-    .catch(function(e){ showToast('操作失败：'+e.message, 'error'); });
+      .then(function(r){ return r.json(); })
+      .then(function(data) {
+        if(data.expired) {
+          hideExportProgress(false);
+          showToast(data.message || '未找到可打包的历史结果，请先查看项目并指定结果文件夹', 'error');
+          return;
+        }
+        if(data.cancelled) { hideExportProgress(false); return; }
+        if(data.error)  { hideExportProgress(false); showToast('导出失败：'+data.error, 'error'); return; }
+        if(data.success){ hideExportProgress(true); showToast('✓ 已保存至：'+data.path, 'success'); }
+      })
+      .catch(function(e){ hideExportProgress(false); showToast('操作失败：'+e.message, 'error'); });
+  }, 80);
 }
 
 // ── 删除 ──

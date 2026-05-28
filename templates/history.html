@@ -761,7 +761,7 @@ function exportProject(pid) {
   })
     .then(function(r){ return r.json(); })
     .then(function(data) {
-      if(data.expired) { showToast('结果已过期，请重新计算后再导出', 'error'); return; }
+      if(data.expired) { showToast(data.message || '未找到可打包的历史结果，请先查看项目并指定结果文件夹', 'error'); return; }
       if(data.cancelled) { return; }
       if(data.error)  { showToast('导出失败：'+data.error, 'error'); return; }
       if(data.success){ showToast('✓ 已保存至：'+data.path, 'success'); }

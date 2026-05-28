@@ -3509,11 +3509,55 @@ def _restore_session_from_disk(sid, result_folder):
         return None
 
 
+def _default_result_folder_for_session(sid):
+    # type: (str) -> str
+    """Return the standard persisted result folder for a session id."""
+    from pathlib import Path as _Path
+    base_dir = _os.environ.get('SPACELENS_DATA_DIR', '') or str(_Path.home() / '.spacelens')
+    return _os.path.join(base_dir, 'results', sid)
+
+
+def _restore_project_session_if_needed(pid, proj):
+    # type: (int, dict) -> tuple
+    """
+    Ensure a historical project's session is available.
+    Returns (sess, restored_folder). restored_folder is empty when the session was already in memory.
+    """
+    sid = proj['session_id']
+
+    with _sess_lock:
+        sess = _sessions.get(sid)
+        if sess is not None:
+            sess['project_id'] = pid
+
+    if sess is not None and sess.get('status') == 'done':
+        return sess, ''
+
+    candidates = [
+        proj.get('result_folder') or '',
+        _default_result_folder_for_session(sid),
+    ]
+    seen = set()
+    for folder in candidates:
+        folder = str(folder or '').strip()
+        if not folder or folder in seen:
+            continue
+        seen.add(folder)
+        restored = _restore_session_from_disk(sid, folder)
+        if not restored:
+            continue
+        restored['project_id'] = pid
+        with _sess_lock:
+            _sessions[sid] = restored
+        return restored, folder
+
+    return None, ''
+
+
 @analysis_bp.route('/projects/<int:pid>/export', methods=['POST'])
 def api_export_project_by_id(pid):
     """
-    历史项目另存为：从数据库获取 session_id，调用 save_project 接口。
-    若 session 已过期，返回 { "expired": true }
+    历史项目另存为：优先复用内存 session；若已过期，则从已持久化结果恢复后直接打包。
     """
     try:
         from api.db import get_project as _get
@@ -3523,13 +3567,10 @@ def api_export_project_by_id(pid):
 
         sid = proj['session_id']
 
-        # 检查 session 是否存活
-        with _sess_lock:
-            sess = _sessions.get(sid)
-
-        if sess is None or sess.get('status') != 'done':
+        sess, restored_folder = _restore_project_session_if_needed(pid, proj)
+        if sess is None:
             return jsonify({'expired': True,
-                            'message': '该项目的计算结果已过期，请重新计算后再导出'})
+                            'message': '未找到可打包的历史结果文件，请先查看项目并指定结果文件夹'})
 
         # 复用 save_project 端点逻辑
         body = request.get_json(silent=True) or {}
@@ -3569,7 +3610,7 @@ def api_export_project_by_id(pid):
         with open(save_path, 'wb') as f:
             f.write(zip_bytes)
 
-        return jsonify({'success': True, 'path': save_path})
+        return jsonify({'success': True, 'path': save_path, 'restored_from': restored_folder})
 
     except Exception as e:
         import traceback

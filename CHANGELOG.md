@@ -17,6 +17,14 @@
 - `.github/ISSUE_TEMPLATE/`：AI 任务卡 / Bug 报告模板
 - `requirements-dev.txt`：开发期依赖（pytest / ruff）
 - `tests/` 测试骨架 + `conftest.py` + 关键回归用例（`/` 占位符、`_clean_behavior_df`）
+- **评分模块**：新增 `/score` 页面与 `/api/score/<sid>` 后端接口，实现《第五章
+  评分算法》全套公式：单一指标标准化（正向 / 逆向 / 目标区间型 / Likert）、
+  维度层得分（CV 权重 + 短板惩罚）、主观心理感知得分（回归 + 修正融合）、
+  综合绩效得分（AHP 维度权重）。前端展示综合得分卡、雷达图、维度柱状图、
+  指标得分图、空间区域排行 + 热力图，并支持调整 AHP 权重实时重算。
+  23 指标结果页右上角新增「开始评分」按钮入口（`templates/index.html`）。
+- `tests/unit/test_scoring.py`：29 条覆盖标准化 / 惩罚 / 权重 / 维度 / 主观 /
+  综合的回归用例。
 
 ### Fixed
 - 低分屏（1366×768 等）桌面端窗口溢出：按 `availableGeometry()` 动态调整窗口尺寸，

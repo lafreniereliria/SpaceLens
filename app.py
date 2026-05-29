@@ -51,6 +51,10 @@ def compare():
     return render_template('compare.html')
 
 
+@app.route('/score')
+def score():
+    return render_template('score.html')
+
 @app.route('/admin/db')
 def admin_db():
     return render_template('admin_db.html')

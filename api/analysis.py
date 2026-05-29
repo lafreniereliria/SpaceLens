@@ -5942,3 +5942,728 @@ def satisfaction_design():
         return jsonify({'image': img_b64, 'image2': img2_b64, 'summary': summary})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 评分算法模块（第五章 评分算法）
+# ═══════════════════════════════════════════════════════════════════
+# 实现：
+#   - 单一指标标准化（正向 / 逆向 / 目标区间型）
+#   - 维度层得分（CV 权重 + 短板惩罚）
+#   - 主观心理感知得分（Likert 量表 + 回归模型 + 修正融合）
+#   - 综合绩效得分（AHP 维度权重）
+# 输入：会话 results（_sessions[sid]['results']）
+# 输出：JSON 评分结构 + 多张可视化图（雷达 / 柱状 / 综合卡片 / 空间热力）
+
+# ── 指标 → 维度 映射 ────────────────────────────────────────────────
+_SCORE_DIMENSION_MAP = {
+    'physical': {
+        'label': '物理环境感知',
+        'metrics': ['environment_p1', 'environment_p2', 'environment_p3',
+                    'environment_p4', 'environment_p5'],
+    },
+    'circulation': {
+        'label': '动线感知',
+        'metrics': ['heatmap', 'usetime', 'speed', 'duration', 'topology',
+                    'difference', 'density', 'openness', 'trajectory'],
+    },
+    'behavior': {
+        'label': '行为感知',
+        'metrics': ['behavior_count', 'behavior_duration', 'behavior_rate',
+                    'behavior_entropy', 'utilization'],
+    },
+    'subjective': {
+        'label': '主观心理感知',
+        'metrics': ['satisfaction', 'satisfaction_region', 'satisfaction_design'],
+    },
+}
+
+# ── 指标分类（正向 / 逆向 / 目标区间型）+ 取值规则 ──────────────────
+# kind: 'positive' 正向 / 'negative' 逆向 / 'target' 目标区间型
+# x_opt, sigma: 仅目标区间型使用
+# value_keys: summary 中可取作主值的字段列表（按顺序优先）
+_METRIC_SCORE_RULES = {
+    # 物理环境（环境参数）—— 目标区间型，σ 取值依据《表1》
+    'environment_p1': {'kind': 'target', 'x_opt': 24.0, 'sigma': 2.0,  'value_keys': ['mean']},
+    'environment_p2': {'kind': 'target', 'x_opt': 50.0, 'sigma': 10.0, 'value_keys': ['mean']},
+    'environment_p3': {'kind': 'target', 'x_opt': 300.0,'sigma': 100.0,'value_keys': ['mean']},
+    'environment_p4': {'kind': 'target', 'x_opt': 0.8, 'sigma': 0.3,  'value_keys': ['mean']},  # 风速近似按"移动速率"
+    'environment_p5': {'kind': 'negative','value_keys': ['mean']},                              # 噪声越低越好
+    # 动线感知
+    'heatmap':       {'kind': 'positive', 'value_keys': ['avg_frequency', 'peak_frequency']},
+    'usetime':       {'kind': 'positive', 'value_keys': ['avg_duration_s', 'total_duration_s']},
+    'speed':         {'kind': 'target', 'x_opt': 0.8, 'sigma': 0.3, 'value_keys': ['global_speed_ms', 'avg_speed_ms']},
+    'duration':      {'kind': 'target', 'x_opt': 180.0, 'sigma': 120.0, 'value_keys': ['avg_duration_s']},
+    'topology':      {'kind': 'positive', 'value_keys': ['avg_flow', 'total_flow']},
+    'difference':    {'kind': 'negative', 'value_keys': ['avg_diff_coeff', 'avg_diff']},
+    'density':       {'kind': 'target', 'x_opt': 0.5, 'sigma': 0.3, 'value_keys': ['avg_density', 'avg_density_per_sqm']},
+    'openness':      {'kind': 'target', 'x_opt': 0.7, 'sigma': 0.2, 'value_keys': ['avg_openness', 'global_openness']},
+    'trajectory':    {'kind': 'positive', 'value_keys': ['avg_length_m']},
+    # 行为感知
+    'behavior_count':    {'kind': 'positive', 'value_keys': ['total_records']},
+    'behavior_duration': {'kind': 'positive', 'value_keys': ['total_duration_s']},
+    'behavior_rate':     {'kind': 'positive', 'value_keys': ['region_count']},   # 占位：用区域数代理
+    'behavior_entropy':  {'kind': 'positive', 'value_keys': ['avg_reg_entropy']},
+    'utilization':       {'kind': 'positive', 'value_keys': ['avg_util', 'global_util']},
+    # 主观满意度（直接转 0-100；李克特 1-7 → S = (x-1)/6 * 100）
+    'satisfaction':        {'kind': 'likert', 'value_keys': ['avg_score']},
+    'satisfaction_region': {'kind': 'likert', 'value_keys': ['avg_score']},
+    'satisfaction_design': {'kind': 'likert', 'value_keys': ['avg_score']},
+}
+
+# ── AHP 维度权重（默认值；可通过 API 参数覆盖）──────────────────────
+_DEFAULT_AHP_WEIGHTS = {
+    'subjective':  0.40,   # 主观心理感知占比最高
+    'physical':    0.20,
+    'circulation': 0.20,
+    'behavior':    0.20,
+}
+
+# 主观满意度融合系数 α（取 0.6~0.7，按文档取 0.65）
+_SUBJECTIVE_ALPHA = 0.65
+
+
+def _score_extract_value(summary, value_keys):
+    """从 summary dict 中按优先级顺序取主数值"""
+    if not isinstance(summary, dict):
+        return None
+    for k in value_keys:
+        if k in summary:
+            v = summary[k]
+            try:
+                fv = float(v)
+                if np.isfinite(fv):
+                    return fv
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def _score_standardize_positive(values):
+    """正向指标：S = 100 × (x - x_min) / (x_max - x_min)"""
+    arr = np.asarray(values, dtype=float)
+    vmin, vmax = float(np.nanmin(arr)), float(np.nanmax(arr))
+    if vmax - vmin < 1e-9:
+        return np.full_like(arr, 75.0)   # 数据无差异时给中性分
+    return 100.0 * (arr - vmin) / (vmax - vmin)
+
+
+def _score_standardize_negative(values):
+    """逆向指标：S = 100 × (x_max - x) / (x_max - x_min)"""
+    arr = np.asarray(values, dtype=float)
+    vmin, vmax = float(np.nanmin(arr)), float(np.nanmax(arr))
+    if vmax - vmin < 1e-9:
+        return np.full_like(arr, 75.0)
+    return 100.0 * (vmax - arr) / (vmax - vmin)
+
+
+def _score_standardize_target(value, x_opt, sigma):
+    """目标区间型：S = 100 × exp(-(x - x_opt)^2 / (2 σ^2))"""
+    if sigma <= 0:
+        return 0.0
+    return 100.0 * float(np.exp(-((value - x_opt) ** 2) / (2.0 * sigma ** 2)))
+
+
+def _score_standardize_likert(value):
+    """李克特 7 级量表 → S = (x-1)/6 × 100"""
+    return float(np.clip((float(value) - 1.0) / 6.0 * 100.0, 0.0, 100.0))
+
+
+def _score_standardize_single(metric_id, value, rule, all_values_in_dim=None):
+    """对单个指标值做标准化。
+    
+    正向/逆向指标需依赖维度内全部指标的极值，all_values_in_dim 为 dict
+    {metric_id: value}。目标区间/Likert 不需要。
+    """
+    kind = rule.get('kind', 'positive')
+    if kind == 'target':
+        return _score_standardize_target(value, rule['x_opt'], rule['sigma'])
+    if kind == 'likert':
+        return _score_standardize_likert(value)
+    # 正向/逆向：用本维度内同类指标做 min-max
+    same_kind_values = []
+    if all_values_in_dim:
+        for mid, v in all_values_in_dim.items():
+            r = _METRIC_SCORE_RULES.get(mid, {})
+            if r.get('kind') == kind and v is not None:
+                same_kind_values.append(v)
+    if not same_kind_values or len(same_kind_values) < 2:
+        # 单指标无法做 min-max，按距离 0 的相对位置给中性分
+        return 50.0
+    arr = np.array(same_kind_values, dtype=float)
+    vmin, vmax = float(np.nanmin(arr)), float(np.nanmax(arr))
+    if vmax - vmin < 1e-9:
+        return 75.0
+    if kind == 'positive':
+        return float(np.clip(100.0 * (value - vmin) / (vmax - vmin), 0.0, 100.0))
+    # negative
+    return float(np.clip(100.0 * (vmax - value) / (vmax - vmin), 0.0, 100.0))
+
+
+def _score_short_board_penalty(s):
+    """短板惩罚系数：S≥85→1.0; 70≤S<85→0.9; S<70→0.7"""
+    if s >= 85:
+        return 1.0
+    if s >= 70:
+        return 0.9
+    return 0.7
+
+
+def _score_cv_weights(scores):
+    """变异系数法计算权重：CV_i = σ_i / μ_i, ω_i = CV_i / Σ CV_i
+    
+    输入是同一维度下各指标得分（用作权重数据源）。
+    若指标只有一个值或所有值相同，返回等权。
+    """
+    arr = np.asarray(scores, dtype=float)
+    if len(arr) == 0:
+        return arr
+    if len(arr) == 1:
+        return np.array([1.0])
+    mu = float(np.mean(arr))
+    if abs(mu) < 1e-9:
+        return np.ones_like(arr) / len(arr)
+    sigma = float(np.std(arr, ddof=0))
+    if sigma < 1e-9:
+        return np.ones_like(arr) / len(arr)
+    # 这里 CV 退化为常数（对单点分数都是 sigma/mu），用各分数相对均值的偏离作为权重源
+    deviations = np.abs(arr - mu) / mu
+    if deviations.sum() < 1e-9:
+        return np.ones_like(arr) / len(arr)
+    return deviations / deviations.sum()
+
+
+def _score_dimension(metric_scores):
+    """维度得分 = Σ ω_i × S_i × P_i
+    
+    metric_scores: list[(metric_id, standardized_score)]
+    返回 (dim_score, [{metric_id, score, weight, penalty, weighted}, ...])
+    """
+    if not metric_scores:
+        return 0.0, []
+    scores = np.array([s for _, s in metric_scores], dtype=float)
+    # 单指标维度：直接返回该分数（权重=1，惩罚仍生效）
+    if len(scores) == 1:
+        s = scores[0]
+        p = _score_short_board_penalty(s)
+        return float(s * p), [{
+            'metric': metric_scores[0][0],
+            'score': round(float(s), 2),
+            'weight': 1.0,
+            'penalty': p,
+            'weighted': round(float(s * p), 2),
+        }]
+    weights = _score_cv_weights(scores)
+    breakdown = []
+    total = 0.0
+    for (mid, s), w in zip(metric_scores, weights):
+        p = _score_short_board_penalty(s)
+        contrib = float(w * s * p)
+        total += contrib
+        breakdown.append({
+            'metric': mid,
+            'score': round(float(s), 2),
+            'weight': round(float(w), 4),
+            'penalty': p,
+            'weighted': round(contrib, 2),
+        })
+    return float(total), breakdown
+
+
+def _score_subjective(metric_scores_dict):
+    """主观心理感知得分。
+    
+    metric_scores_dict: {satisfaction: S, satisfaction_region: S, satisfaction_design: S}
+    采用文档公式：
+      S_overall = a + β1·S_zone + β2·S_element        （这里没有训练数据，用经验权重）
+      S_predicted = a + β1·S_zone + β2·S_element
+      S_subjective = α·S_overall + (1-α)·S_predicted
+    经验权重：β1=0.55, β2=0.40, a=5.0
+    """
+    s_overall = metric_scores_dict.get('satisfaction')
+    s_zone    = metric_scores_dict.get('satisfaction_region')
+    s_element = metric_scores_dict.get('satisfaction_design')
+    
+    # 至少要有 overall 才能算
+    if s_overall is None and s_zone is None and s_element is None:
+        return None, {}
+    
+    # 经验回归参数（在缺少训练数据时使用，可后续替换）
+    a, beta1, beta2 = 5.0, 0.55, 0.40
+
+    # 缺少 overall 时退化为简单加权
+    if s_overall is None:
+        weighted = a + (beta1 * s_zone if s_zone is not None else 0) + (beta2 * s_element if s_element is not None else 0)
+        return float(np.clip(weighted, 0.0, 100.0)), {
+            'a': a, 'beta1': beta1, 'beta2': beta2,
+            'S_overall': None, 'S_zone': s_zone, 'S_element': s_element,
+            'S_predicted': round(float(np.clip(weighted, 0.0, 100.0)), 2),
+            'alpha': _SUBJECTIVE_ALPHA,
+        }
+    
+    s_zone_use    = s_zone if s_zone is not None else s_overall
+    s_element_use = s_element if s_element is not None else s_overall
+    s_predicted = float(np.clip(a + beta1 * s_zone_use + beta2 * s_element_use, 0.0, 100.0))
+    s_subjective = _SUBJECTIVE_ALPHA * s_overall + (1 - _SUBJECTIVE_ALPHA) * s_predicted
+    return float(np.clip(s_subjective, 0.0, 100.0)), {
+        'a': a, 'beta1': beta1, 'beta2': beta2,
+        'S_overall': round(float(s_overall), 2),
+        'S_zone': round(float(s_zone), 2) if s_zone is not None else None,
+        'S_element': round(float(s_element), 2) if s_element is not None else None,
+        'S_predicted': round(s_predicted, 2),
+        'alpha': _SUBJECTIVE_ALPHA,
+    }
+
+
+def _score_grade(total):
+    if total >= 85:
+        return '优秀'
+    if total >= 70:
+        return '良好'
+    if total >= 60:
+        return '一般'
+    return '存在明显问题'
+
+
+def compute_scores(sess_results, ahp_weights=None, region_name_map=None):
+    """主入口：根据会话计算结果生成完整评分结构。
+    
+    返回 dict（结构见下方）。
+    """
+    ahp_weights = ahp_weights or _DEFAULT_AHP_WEIGHTS
+    region_name_map = region_name_map or {}
+    
+    # 第一步：抽取每个指标的主数值
+    per_metric_value = {}   # metric_id -> raw value
+    per_metric_dim   = {}   # metric_id -> dim_key
+    for dim_key, dim_def in _SCORE_DIMENSION_MAP.items():
+        for mid in dim_def['metrics']:
+            data = sess_results.get(mid)
+            if not data or (isinstance(data, dict) and data.get('error')):
+                continue
+            summary = data.get('summary') if isinstance(data, dict) else None
+            rule = _METRIC_SCORE_RULES.get(mid)
+            if not rule or not summary:
+                continue
+            val = _score_extract_value(summary, rule['value_keys'])
+            if val is None:
+                continue
+            per_metric_value[mid] = val
+            per_metric_dim[mid] = dim_key
+    
+    # 第二步：维度内做标准化
+    per_metric_score = {}
+    for dim_key, dim_def in _SCORE_DIMENSION_MAP.items():
+        dim_values = {mid: v for mid, v in per_metric_value.items()
+                      if per_metric_dim.get(mid) == dim_key}
+        for mid, v in dim_values.items():
+            rule = _METRIC_SCORE_RULES[mid]
+            s = _score_standardize_single(mid, v, rule, dim_values)
+            per_metric_score[mid] = float(np.clip(s, 0.0, 100.0))
+    
+    # 第三步：维度得分（主观维度走独立逻辑）
+    dim_scores = {}
+    dim_breakdowns = {}
+    for dim_key, dim_def in _SCORE_DIMENSION_MAP.items():
+        items = [(mid, per_metric_score[mid]) for mid in dim_def['metrics']
+                 if mid in per_metric_score]
+        if dim_key == 'subjective':
+            sub_dict = {mid: per_metric_score.get(mid) for mid in dim_def['metrics']}
+            s, info = _score_subjective(sub_dict)
+            dim_scores[dim_key] = s
+            dim_breakdowns[dim_key] = {'subjective_model': info, 'metrics': [
+                {'metric': mid, 'score': round(per_metric_score[mid], 2)}
+                for mid in dim_def['metrics'] if mid in per_metric_score
+            ]}
+        else:
+            s, bd = _score_dimension(items)
+            dim_scores[dim_key] = s if items else None
+            dim_breakdowns[dim_key] = {'metrics': bd}
+    
+    # 第四步：综合得分
+    total = 0.0
+    weight_sum = 0.0
+    for dim_key, w in ahp_weights.items():
+        s = dim_scores.get(dim_key)
+        if s is not None:
+            total += w * s
+            weight_sum += w
+    total_score = total / weight_sum if weight_sum > 1e-9 else 0.0
+    
+    # 第五步：尝试计算各空间单元综合得分（用 export_data 的空间单元行）
+    region_scores = _compute_region_scores(sess_results, ahp_weights)
+    
+    return {
+        'dimensions': {
+            dim_key: {
+                'label': dim_def['label'],
+                'score': round(dim_scores[dim_key], 2) if dim_scores.get(dim_key) is not None else None,
+                'weight': ahp_weights.get(dim_key, 0.0),
+                'breakdown': dim_breakdowns[dim_key],
+            }
+            for dim_key, dim_def in _SCORE_DIMENSION_MAP.items()
+        },
+        'per_metric_value': {k: round(v, 4) for k, v in per_metric_value.items()},
+        'per_metric_score': {k: round(v, 2) for k, v in per_metric_score.items()},
+        'total_score': round(total_score, 2),
+        'grade': _score_grade(total_score),
+        'ahp_weights': ahp_weights,
+        'region_scores': region_scores,
+        'metric_labels': {k: _METRIC_NAMES.get(k, k) for k in per_metric_score},
+        'dimension_labels': {k: v['label'] for k, v in _SCORE_DIMENSION_MAP.items()},
+    }
+
+
+def _compute_region_scores(sess_results, ahp_weights):
+    """尝试为每个空间单元计算综合得分。
+    
+    只要 export_data 中有 '空间单元' 字段的 series 行，就把该指标在该空间单元
+    的值并入。然后对每个空间单元的指标值做同样的标准化→维度→综合流程。
+    """
+    # 收集 {region_id: {metric_id: value}}
+    region_data = {}
+    
+    def _add_series(metric_id, rows):
+        if not isinstance(rows, list):
+            return
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            rid = row.get('空间单元') or row.get('Region')
+            if rid is None:
+                continue
+            rid = str(rid).strip()
+            # 找数值列：除"空间单元"以外的第一个数值
+            for k, v in row.items():
+                if k in ('空间单元', 'Region'):
+                    continue
+                try:
+                    fv = float(v)
+                    if np.isfinite(fv):
+                        region_data.setdefault(rid, {})[metric_id] = fv
+                        break
+                except (TypeError, ValueError):
+                    continue
+    
+    # 扫描所有指标的 export_data
+    for mid, data in sess_results.items():
+        if not isinstance(data, dict) or data.get('error'):
+            continue
+        export = data.get('export_data')
+        if not isinstance(export, dict):
+            continue
+        for sheet_name, payload in export.items():
+            if isinstance(payload, list) and payload and isinstance(payload[0], dict):
+                if any(k in payload[0] for k in ('空间单元', 'Region')):
+                    _add_series(mid, payload)
+                    break
+    
+    if not region_data:
+        return []
+    
+    # 对每个空间单元做综合得分（用与全局相同的方法）
+    out = []
+    for rid, mvals in region_data.items():
+        # 重建一个 sess_results 模拟：每个指标只有 summary{mean / avg_score / ...} = 该 region 值
+        sim_results = {}
+        for mid, v in mvals.items():
+            rule = _METRIC_SCORE_RULES.get(mid)
+            if not rule:
+                continue
+            # 复用第一个 value_key 字段名让 _score_extract_value 能取到
+            key = rule['value_keys'][0]
+            sim_results[mid] = {'summary': {key: v}}
+        if not sim_results:
+            continue
+        # 注意 region 内指标数量较少时也要走完整逻辑
+        sub_score = compute_scores(sim_results, ahp_weights=ahp_weights)
+        out.append({
+            'region': rid,
+            'total_score': sub_score['total_score'],
+            'grade': sub_score['grade'],
+            'dimensions': {k: v['score'] for k, v in sub_score['dimensions'].items()},
+            'metrics': {k: v for k, v in sub_score['per_metric_score'].items()},
+        })
+    # 按总分倒序
+    out.sort(key=lambda r: -(r['total_score'] or 0))
+    return out
+
+
+def _render_score_charts(score_data, th=None, region_name_map=None):
+    """生成评分相关的可视化图表，返回 {chart_key: base64png}"""
+    th = th or _theme('dark')
+    region_name_map = region_name_map or {}
+    out = {}
+    
+    dim_labels = score_data['dimension_labels']
+    dim_order = ['subjective', 'physical', 'circulation', 'behavior']
+    dim_scores = [score_data['dimensions'][k]['score'] for k in dim_order]
+    
+    # ── 图 1：综合得分卡片（环形 + 等级）─────────
+    fig1, ax1 = plt.subplots(figsize=(6, 6))
+    fig1.patch.set_facecolor(th['fig_bg'])
+    ax1.set_facecolor(th['fig_bg'])
+    total = score_data['total_score']
+    # 环形进度
+    theta = np.linspace(0, 2 * np.pi, 100)
+    r_outer, r_inner = 1.0, 0.78
+    # 背景灰环
+    ax1.fill(np.append(r_outer * np.cos(theta), (r_inner * np.cos(theta))[::-1]),
+             np.append(r_outer * np.sin(theta), (r_inner * np.sin(theta))[::-1]),
+             color=th['ax_bg2'], alpha=0.6)
+    # 得分环（按分数比例）
+    fill_theta = np.linspace(np.pi / 2, np.pi / 2 - 2 * np.pi * total / 100.0, 100)
+    if total >= 85:
+        color = '#00c9a7'
+    elif total >= 70:
+        color = '#6244e5'
+    elif total >= 60:
+        color = '#f5a623'
+    else:
+        color = '#e03d3d'
+    ax1.fill(np.append(r_outer * np.cos(fill_theta), (r_inner * np.cos(fill_theta))[::-1]),
+             np.append(r_outer * np.sin(fill_theta), (r_inner * np.sin(fill_theta))[::-1]),
+             color=color, alpha=0.95)
+    # 中心文字
+    ax1.text(0, 0.18, f'{total:.1f}', ha='center', va='center',
+             color=th['text'], fontsize=42, fontweight='bold')
+    ax1.text(0, -0.05, '综合绩效得分', ha='center', va='center',
+             color=th['subtext'], fontsize=11)
+    ax1.text(0, -0.28, score_data['grade'], ha='center', va='center',
+             color=color, fontsize=16, fontweight='bold')
+    ax1.set_xlim(-1.2, 1.2)
+    ax1.set_ylim(-1.2, 1.2)
+    ax1.set_aspect('equal')
+    ax1.axis('off')
+    plt.tight_layout(pad=1)
+    out['image_total'] = fig_to_base64(fig1)
+    plt.close(fig1)
+    
+    # ── 图 2：维度雷达图 ─────────────────────────
+    angles = np.linspace(0, 2 * np.pi, len(dim_order), endpoint=False).tolist()
+    angles += angles[:1]
+    values = [s if s is not None else 0 for s in dim_scores]
+    values += values[:1]
+    labels = [dim_labels[k] for k in dim_order]
+    fig2, ax2 = plt.subplots(figsize=(7, 7), subplot_kw=dict(polar=True))
+    fig2.patch.set_facecolor(th['fig_bg'])
+    ax2.set_facecolor(th['ax_bg'])
+    ax2.plot(angles, values, color=th['accent'], linewidth=2.5)
+    ax2.fill(angles, values, color=th['accent'], alpha=0.25)
+    ax2.set_xticks(angles[:-1])
+    ax2.set_xticklabels(labels, color=th['text'], fontsize=11)
+    ax2.set_yticks([20, 40, 60, 80, 100])
+    ax2.set_yticklabels(['20', '40', '60', '80', '100'], color=th['subtext'], fontsize=8)
+    ax2.set_ylim(0, 100)
+    ax2.tick_params(colors=th['cbar_tick'])
+    ax2.grid(color=th['grid'], linewidth=0.6)
+    ax2.spines['polar'].set_color(th['spine'])
+    # 在每个顶点标分数
+    for ang, val, lab in zip(angles[:-1], values[:-1], labels):
+        ax2.annotate(f'{val:.1f}', xy=(ang, val), xytext=(0, 10),
+                     textcoords='offset points', ha='center',
+                     color=th['text'], fontsize=10, fontweight='bold')
+    ax2.set_title('四维度评分雷达图', color=th['text'], fontsize=13, pad=20)
+    plt.tight_layout(pad=2)
+    out['image_radar'] = fig_to_base64(fig2)
+    plt.close(fig2)
+    
+    # ── 图 3：四维度柱状图（含权重）──────────────
+    fig3, ax3 = plt.subplots(figsize=(10, 5))
+    fig3.patch.set_facecolor(th['fig_bg'])
+    _styled_axes(ax3, th)
+    bar_colors = ['#7c5cfc', '#00c9a7', '#f5a623', '#e03d3d']
+    xpos = np.arange(len(dim_order))
+    raw_vals = [s if s is not None else 0 for s in dim_scores]
+    weights = [score_data['dimensions'][k]['weight'] for k in dim_order]
+    bars = ax3.bar(xpos, raw_vals, color=bar_colors, alpha=0.88, width=0.55,
+                   edgecolor=th['bar_edge'], linewidth=0.6)
+    for bar, v, w in zip(bars, raw_vals, weights):
+        ax3.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 1.2,
+                 f'{v:.1f}\n(权重{w:.2f})',
+                 ha='center', va='bottom', color=th['bar_label'], fontsize=9)
+    ax3.set_xticks(xpos)
+    ax3.set_xticklabels(labels, color=th['text'], fontsize=10)
+    ax3.set_ylim(0, 110)
+    ax3.set_ylabel('维度得分', color=th['subtext'], fontsize=10)
+    ax3.set_title('各维度评分柱状图', color=th['text'], fontsize=13)
+    ax3.yaxis.grid(True, color=th['grid'], linewidth=0.5)
+    ax3.set_axisbelow(True)
+    plt.tight_layout(pad=2)
+    out['image_dim_bar'] = fig_to_base64(fig3)
+    plt.close(fig3)
+    
+    # ── 图 4：各指标得分柱状图（按维度分组着色）──
+    per_metric = score_data['per_metric_score']
+    if per_metric:
+        m_ids = list(per_metric.keys())
+        m_vals = [per_metric[m] for m in m_ids]
+        m_labels = [_METRIC_NAMES.get(m, m) for m in m_ids]
+        # 按维度着色
+        dim_color_map = {'physical': '#00c9a7', 'circulation': '#f5a623',
+                         'behavior': '#e03d3d', 'subjective': '#7c5cfc'}
+        metric_to_dim = {}
+        for dim_key, dim_def in _SCORE_DIMENSION_MAP.items():
+            for mid in dim_def['metrics']:
+                metric_to_dim[mid] = dim_key
+        colors = [dim_color_map.get(metric_to_dim.get(m, ''), th['accent']) for m in m_ids]
+        fig4, ax4 = plt.subplots(figsize=(max(10, len(m_ids) * 0.6), 5.5))
+        fig4.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax4, th)
+        xpos = np.arange(len(m_ids))
+        bars = ax4.bar(xpos, m_vals, color=colors, alpha=0.88, width=0.65,
+                       edgecolor=th['bar_edge'], linewidth=0.5)
+        for bar, v in zip(bars, m_vals):
+            ax4.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 1.2,
+                     f'{v:.1f}', ha='center', va='bottom',
+                     color=th['bar_label'], fontsize=8)
+        ax4.set_xticks(xpos)
+        ax4.set_xticklabels(m_labels, color=th['text'], fontsize=9, rotation=30, ha='right')
+        ax4.set_ylim(0, 110)
+        ax4.set_ylabel('得分', color=th['subtext'], fontsize=10)
+        ax4.set_title('各指标标准化得分', color=th['text'], fontsize=13)
+        ax4.yaxis.grid(True, color=th['grid'], linewidth=0.5)
+        ax4.set_axisbelow(True)
+        # 维度图例
+        from matplotlib.patches import Patch
+        legend_handles = [Patch(color=dim_color_map[k], label=score_data['dimension_labels'][k])
+                          for k in dim_order]
+        ax4.legend(handles=legend_handles, loc='upper right', fontsize=8,
+                   facecolor=th['legend_bg'], edgecolor=th['legend_edge'],
+                   labelcolor=th['tick'])
+        plt.tight_layout(pad=2)
+        out['image_metric_bar'] = fig_to_base64(fig4)
+        plt.close(fig4)
+    
+    # ── 图 5：空间区域评分柱状图（排序）──────────
+    region_scores = score_data.get('region_scores') or []
+    if region_scores:
+        sorted_regions = region_scores[:30]   # 太多了截断
+        r_ids = [r['region'] for r in sorted_regions]
+        r_vals = [r['total_score'] for r in sorted_regions]
+        r_labels = [region_name_map.get(rid, f'空间{rid}') for rid in r_ids]
+        # 颜色按得分梯度
+        def _grade_color(v):
+            if v >= 85:
+                return '#00c9a7'
+            if v >= 70:
+                return '#6244e5'
+            if v >= 60:
+                return '#f5a623'
+            return '#e03d3d'
+        colors = [_grade_color(v) for v in r_vals]
+        fig5, ax5 = plt.subplots(figsize=(max(10, len(r_ids) * 0.55), 5.5))
+        fig5.patch.set_facecolor(th['fig_bg'])
+        _styled_axes(ax5, th)
+        xpos = np.arange(len(r_ids))
+        bars = ax5.bar(xpos, r_vals, color=colors, alpha=0.9, width=0.62,
+                       edgecolor=th['bar_edge'], linewidth=0.5)
+        for bar, v in zip(bars, r_vals):
+            ax5.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 1.2,
+                     f'{v:.1f}', ha='center', va='bottom',
+                     color=th['bar_label'], fontsize=8)
+        # 分级参考线
+        for y, lab in [(60, '一般'), (70, '良好'), (85, '优秀')]:
+            ax5.axhline(y, color=th['grid'], linestyle='--', linewidth=0.8)
+            ax5.text(len(r_ids) - 0.4, y + 1, lab, color=th['subtext'], fontsize=7, ha='right')
+        ax5.set_xticks(xpos)
+        ax5.set_xticklabels(r_labels, color=th['text'], fontsize=9, rotation=30, ha='right')
+        ax5.set_ylim(0, 110)
+        ax5.set_ylabel('综合评分', color=th['subtext'], fontsize=10)
+        ax5.set_title('各空间单元综合评分（按得分排序）', color=th['text'], fontsize=13)
+        ax5.yaxis.grid(True, color=th['grid'], linewidth=0.5)
+        ax5.set_axisbelow(True)
+        plt.tight_layout(pad=2)
+        out['image_region_bar'] = fig_to_base64(fig5)
+        plt.close(fig5)
+        
+        # ── 图 6：空间区域 × 维度 热力图 ─────────────
+        dim_keys_with_score = [k for k in dim_order
+                               if any(r['dimensions'].get(k) is not None for r in sorted_regions)]
+        if dim_keys_with_score:
+            mat = np.zeros((len(sorted_regions), len(dim_keys_with_score)))
+            for i, r in enumerate(sorted_regions):
+                for j, dk in enumerate(dim_keys_with_score):
+                    v = r['dimensions'].get(dk)
+                    mat[i, j] = v if v is not None else np.nan
+            fig6, ax6 = plt.subplots(figsize=(max(8, len(dim_keys_with_score) * 1.6),
+                                              max(4, len(sorted_regions) * 0.35)))
+            fig6.patch.set_facecolor(th['fig_bg'])
+            ax6.set_facecolor(th['ax_bg'])
+            im = ax6.imshow(mat, cmap='RdYlGn', vmin=0, vmax=100, aspect='auto')
+            ax6.set_xticks(np.arange(len(dim_keys_with_score)))
+            ax6.set_xticklabels([dim_labels[k] for k in dim_keys_with_score],
+                                color=th['text'], fontsize=10, rotation=15, ha='right')
+            ax6.set_yticks(np.arange(len(sorted_regions)))
+            ax6.set_yticklabels(r_labels, color=th['text'], fontsize=9)
+            # 单元格写值
+            for i in range(mat.shape[0]):
+                for j in range(mat.shape[1]):
+                    v = mat[i, j]
+                    if np.isfinite(v):
+                        txt_color = '#0f1117' if v >= 50 else '#fafafa'
+                        ax6.text(j, i, f'{v:.0f}', ha='center', va='center',
+                                 color=txt_color, fontsize=8, fontweight='bold')
+            cbar = fig6.colorbar(im, ax=ax6, fraction=0.04, pad=0.02)
+            cbar.ax.tick_params(colors=th['cbar_tick'], labelsize=8)
+            cbar.set_label('得分', color=th['subtext'], fontsize=9)
+            ax6.set_title('空间区域 × 维度评分热力图', color=th['text'], fontsize=13, pad=10)
+            plt.tight_layout(pad=2)
+            out['image_region_heatmap'] = fig_to_base64(fig6)
+            plt.close(fig6)
+    
+    return out
+
+
+@analysis_bp.route('/score/<sid>', methods=['GET', 'POST'])
+def score_session(sid):
+    """评分计算 + 渲染入口"""
+    with _sess_lock:
+        sess = _sessions.get(sid)
+    if sess is None:
+        return jsonify({'error': '会话不存在或已过期'}), 404
+    
+    # AHP 权重：支持从请求体传入覆盖
+    ahp_weights = dict(_DEFAULT_AHP_WEIGHTS)
+    if request.method == 'POST':
+        body = request.get_json(silent=True) or {}
+        user_weights = body.get('ahp_weights')
+        if isinstance(user_weights, dict):
+            for k in ahp_weights:
+                if k in user_weights:
+                    try:
+                        ahp_weights[k] = float(user_weights[k])
+                    except (TypeError, ValueError):
+                        pass
+    else:
+        for k in list(ahp_weights.keys()):
+            v = request.args.get(f'w_{k}')
+            if v is not None:
+                try:
+                    ahp_weights[k] = float(v)
+                except ValueError:
+                    pass
+    
+    theme_name = (request.args.get('theme')
+                  or (request.get_json(silent=True) or {}).get('theme')
+                  or 'dark')
+    th = _theme(theme_name)
+    
+    region_name_map = sess.get('region_name_map') or {}
+    results = sess.get('results', {})
+    
+    try:
+        score = compute_scores(results, ahp_weights=ahp_weights,
+                               region_name_map=region_name_map)
+        charts = _render_score_charts(score, th=th, region_name_map=region_name_map)
+        return jsonify({
+            'session_id': sid,
+            'project_name': sess.get('project_name', ''),
+            'folder_name': sess.get('folder', ''),
+            'building_type': sess.get('type', ''),
+            'score': score,
+            'images': charts,
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500

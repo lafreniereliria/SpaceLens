@@ -664,6 +664,11 @@
     <div class="topbar-right">
       <div class="status-dot online" id="status-dot"></div>
       <span class="status-text" id="status-text">加载中…</span>
+      <!-- 开始评分按钮 -->
+      <button class="save-project-btn" id="start-score-btn" onclick="goToScorePage()" title="基于当前结果开始评分" style="display:none;background:linear-gradient(135deg,#7c5cfc,#00c9a7);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        开始评分
+      </button>
       <!-- 保存项目按钮 -->
       <button class="save-project-btn" id="save-project-btn" onclick="openSaveModal()" title="保存项目结果" style="display:none">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
@@ -1618,9 +1623,11 @@ function startPolling(sid) {
           stopPolling();
           document.getElementById('status-text').textContent =
             '全部完成，共 ' + computed.length + ' 项结果';
-          // 计算完成后显示保存项目按钮
+          // 计算完成后显示保存项目按钮 + 开始评分按钮
           var saveBtn = document.getElementById('save-project-btn');
           if (saveBtn && computed.length > 0) saveBtn.style.display = 'inline-flex';
+          var scoreBtn = document.getElementById('start-score-btn');
+          if (scoreBtn && computed.length > 0) scoreBtn.style.display = 'inline-flex';
         } else {
           _pollTimer = setTimeout(poll, 1500);
         }
@@ -1782,6 +1789,14 @@ var METRIC_DISPLAY = [
   { id: 'satisfaction_design', badge: 'D5',  name: '设计要素满意度' },
 ];
 
+function goToScorePage() {
+  var sid = getSessionId();
+  if (!sid) {
+    alert('未找到当前会话，请先完成数据分析');
+    return;
+  }
+  window.location.href = '/score?sid=' + encodeURIComponent(sid);
+}
 function openSaveModal() {
   if (!_sessionData) return;
   var computed = _sessionData.computed || [];

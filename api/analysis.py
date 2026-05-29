@@ -724,14 +724,21 @@ def _region_key(region_id):
     return str(region_id)
 
 
-def _region_label(region_id, region_name_map=None, prefix='区域 '):
+def _region_label(region_id, region_name_map=None, prefix=''):
+    """Return label for a spatial region.
+
+    Priority:
+    1. If `region_name_map` provides a note/alias for this id → use it.
+    2. Otherwise, return only the numeric/string id (no "区域 " prefix by default),
+       optionally prefixed by `prefix` if the caller explicitly passes one.
+    """
     key = _region_key(region_id)
     if region_name_map and key in region_name_map:
         return region_name_map[key]
     return f'{prefix}{key}'
 
 
-def _region_labels(region_ids, region_name_map=None, prefix='区域 '):
+def _region_labels(region_ids, region_name_map=None, prefix=''):
     return [_region_label(r, region_name_map, prefix=prefix) for r in region_ids]
 
 
@@ -1397,7 +1404,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
-        bars1=ax1.bar([str(r) for r in reg_ids],diff_coeff_reg,
+        bars1=ax1.bar(_region_labels(reg_ids, region_name_map),diff_coeff_reg,
                      color=['#f5a623' if v >= 1.0 else '#00c9a7' for v in diff_coeff_reg],
                      alpha=0.85,width=0.6)
         for bar in bars1:
@@ -1748,7 +1755,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
         plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
         fig1,ax1=plt.subplots(figsize=(_category_bar_width(len(uniq_reg)),6)); fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1,th)
-        _bar_common(ax1,_region_labels(uniq_reg, None, prefix=''),total_util,color='#f5a623',xlabel='空间单元序号',ylabel='空间功能利用率（秒/平方米）',th=th)
+        _bar_common(ax1,_region_labels(uniq_reg, region_name_map),total_util,color='#f5a623',xlabel='空间单元序号',ylabel='空间功能利用率（秒/平方米）',th=th)
         ax1.tick_params(axis='x', labelsize=8, rotation=35)
         for label in ax1.get_xticklabels():
             label.set_ha('right')
@@ -4519,7 +4526,7 @@ def usetime():
 
         ax1 = axes[1]
         _styled_axes(ax1, th)
-        _bar_common(ax1, reg_ids, reg_durations, color='#00c9a7', ylabel='空间使用时长（秒）', th=th)
+        _bar_common(ax1, _region_labels(reg_ids, region_name_map), reg_durations, color='#00c9a7', ylabel='空间使用时长（秒）', th=th)
         ax1.set_title('各空间单元使用时长', color=th['text'], fontsize=13)
 
         plt.tight_layout(pad=2)
@@ -4622,7 +4629,7 @@ def speed():
 
         ax1 = axes[1]
         _styled_axes(ax1, th)
-        _bar_common(ax1, reg_ids, mean_speed, color='#f5a623', ylabel='移动速率（米/秒）', th=th,
+        _bar_common(ax1, _region_labels(reg_ids, region_name_map), mean_speed, color='#f5a623', ylabel='移动速率（米/秒）', th=th,
                     show_mean=True, color_above='#f5a623', color_below='#00c9a7')
         ax1.set_title('各空间单元平均移动速率', color=th['text'], fontsize=13)
 
@@ -4770,7 +4777,7 @@ def density():
 
         ax1 = axes[1]
         _styled_axes(ax1, th)
-        _bar_common(ax1, reg_ids, reg_unique_users, color='#00c9a7', ylabel='空间人员密度')
+        _bar_common(ax1, _region_labels(reg_ids, region_name_map), reg_unique_users, color='#00c9a7', ylabel='空间人员密度')
         ax1.set_title('各空间单元人员密度', color=th['text'], fontsize=13)
 
         plt.tight_layout(pad=2)
@@ -4846,7 +4853,7 @@ def openness():
 
         ax1 = axes[1]
         _styled_axes(ax1, th)
-        _bar_common(ax1, reg_ids, openness_val, color='#f5a623', ylabel='人/平方米')
+        _bar_common(ax1, _region_labels(reg_ids, region_name_map), openness_val, color='#f5a623', ylabel='人/平方米')
         ax1.axhline(global_open, color='#ff5e5e', linestyle='--', linewidth=1.5,
                     label=f'平均开放程度 {global_open:.3f}')
         _legend_upper_right(ax1, th)
@@ -5105,7 +5112,7 @@ def difference():
 
         ax1 = axes[1]
         _styled_axes(ax1, th)
-        ax1.bar([str(r) for r in reg_ids], diff_coeff_reg,
+        ax1.bar(_region_labels(reg_ids, region_name_map), diff_coeff_reg,
                 color=['#f5a623' if v >= 1.0 else '#00c9a7' for v in diff_coeff_reg],
                 alpha=0.85, width=0.6)
         ax1.axhline(1.0, color='#ff5e5e', linestyle='--', linewidth=1.5, label='基准线(=1)')
@@ -5248,6 +5255,7 @@ def behavior_count():
         accent_param = request.form.get('accent')
         if accent_param:
             th['accent'] = accent_param
+        region_name_map = _parse_region_name_map(request.form.get('region_name_map', ''))
         beh_file = request.files.get('behavior_data')
         img_file = request.files.get('layout_img')
         if beh_file is None or img_file is None:
@@ -5306,7 +5314,7 @@ def behavior_count():
         for j, b in enumerate(uniq_beh):
             ax1.bar(xs + j * bw - 0.35 + bw/2, count_matrix[:, j], width=bw,
                     color=palette(j), alpha=0.85, label=beh_labels[j])
-        ax1.set_xticks(xs); ax1.set_xticklabels(uniq_reg, fontsize=8)
+        ax1.set_xticks(xs); ax1.set_xticklabels(_region_labels(uniq_reg, region_name_map), fontsize=8)
         ax1.set_xlabel('空间单元编号', color=th['subtext'], fontsize=10)
         ax1.set_ylabel('行为发生人次（次）', color=th['subtext'], fontsize=10)
         ax1.set_title('各空间单元行为发生人次', color=th['text'], fontsize=13)
@@ -5353,6 +5361,7 @@ def behavior_duration():
         accent_param = request.form.get('accent')
         if accent_param:
             th['accent'] = accent_param
+        region_name_map = _parse_region_name_map(request.form.get('region_name_map', ''))
         beh_file = request.files.get('behavior_data')
         img_file = request.files.get('layout_img')
         if beh_file is None or img_file is None:
@@ -5425,7 +5434,7 @@ def behavior_duration():
             ax1.bar(xs + j * bw - 0.35 + bw/2, dur_matrix[:, j], width=bw,
                     color=palette(j), alpha=0.85, label=beh_labels[j])
         ax1.set_xticks(xs)
-        ax1.set_xticklabels(uniq_reg, fontsize=8)
+        ax1.set_xticklabels(_region_labels(uniq_reg, region_name_map), fontsize=8)
         ax1.set_xlabel('空间单元编号', color=th['subtext'], fontsize=10)
         ax1.set_ylabel('行为发生时长（秒）', color=th['subtext'], fontsize=10)
         ax1.set_title('各空间单元行为发生时长', color=th['text'], fontsize=13)
@@ -5459,6 +5468,7 @@ def behavior_rate():
         accent_param = request.form.get('accent')
         if accent_param:
             th['accent'] = accent_param
+        region_name_map = _parse_region_name_map(request.form.get('region_name_map', ''))
         beh_file = request.files.get('behavior_data')
         if beh_file is None:
             return jsonify({'error': '请上传行为数据'}), 400
@@ -5498,7 +5508,7 @@ def behavior_rate():
         _styled_axes(ax0, th)
         bottom = np.zeros(len(uniq_reg))
         for j, b in enumerate(uniq_beh):
-            ax0.bar(uniq_reg.astype(str), rate_matrix[:, j], bottom=bottom,
+            ax0.bar(_region_labels(uniq_reg, region_name_map), rate_matrix[:, j], bottom=bottom,
                     color=palette(j), alpha=0.85, label=beh_labels[j])
             bottom += rate_matrix[:, j]
         ax0.set_xlabel('空间单元编号', color=th['subtext'], fontsize=10)
@@ -5519,7 +5529,7 @@ def behavior_rate():
         for j, b in enumerate(uniq_beh):
             ax1.bar(xs + j * bw - 0.35 + bw/2, rate_matrix[:, j], width=bw,
                     color=palette(j), alpha=0.85, label=beh_labels[j])
-        ax1.set_xticks(xs); ax1.set_xticklabels(uniq_reg, fontsize=8)
+        ax1.set_xticks(xs); ax1.set_xticklabels(_region_labels(uniq_reg, region_name_map), fontsize=8)
         ax1.set_xlabel('空间单元编号', color=th['subtext'], fontsize=10)
         ax1.set_ylabel('行为平均发生率', color=th['subtext'], fontsize=10)
         ax1.set_title('各空间单元各行为平均发生率', color=th['text'], fontsize=13)
@@ -5553,6 +5563,7 @@ def behavior_entropy():
         accent_param = request.form.get('accent')
         if accent_param:
             th['accent'] = accent_param
+        region_name_map = _parse_region_name_map(request.form.get('region_name_map', ''))
         beh_file = request.files.get('behavior_data')
         if beh_file is None:
             return jsonify({'error': '请上传行为数据'}), 400
@@ -5596,7 +5607,7 @@ def behavior_entropy():
         fig0, ax0 = plt.subplots(figsize=(9, 6))
         fig0.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax0, th)
-        _bar_common(ax0, uniq_reg, reg_entropy, color=th['accent'], ylabel='行为复合程度（比特）')
+        _bar_common(ax0, _region_labels(uniq_reg, region_name_map), reg_entropy, color=th['accent'], ylabel='行为复合程度（比特）')
         ax0.set_title('各空间单元行为复合程度', color=th['text'], fontsize=13, pad=10)
         plt.tight_layout(pad=2)
         img_b64 = fig_to_base64(fig0)
@@ -5634,6 +5645,7 @@ def utilization():
         accent_param = request.form.get('accent')
         if accent_param:
             th['accent'] = accent_param
+        region_name_map = _parse_region_name_map(request.form.get('region_name_map', ''))
         beh_file = request.files.get('behavior_data')
         if beh_file is None:
             return jsonify({'error': '请上传行为数据'}), 400
@@ -5682,7 +5694,7 @@ def utilization():
         _styled_axes(ax0, th)
         bottom = np.zeros(len(uniq_reg))
         for j, b in enumerate(uniq_beh):
-            seg_bars = ax0.bar(uniq_reg.astype(str), util_share_matrix[:, j], bottom=bottom,
+            seg_bars = ax0.bar(_region_labels(uniq_reg, region_name_map), util_share_matrix[:, j], bottom=bottom,
                                 color=palette(j), alpha=0.85, label=beh_labels[j])
             for bi, bar in enumerate(seg_bars):
                 h = util_share_matrix[bi, j]
@@ -5704,7 +5716,7 @@ def utilization():
         fig1, ax1 = plt.subplots(figsize=(_category_bar_width(len(uniq_reg)), 6))
         fig1.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax1, th)
-        _bar_common(ax1, uniq_reg, total_util, color='#f5a623',
+        _bar_common(ax1, _region_labels(uniq_reg, region_name_map), total_util, color='#f5a623',
                     xlabel='空间单元序号', ylabel='空间功能利用率（秒/平方米）', th=th)
         ax1.tick_params(axis='x', labelsize=8, rotation=35)
         for label in ax1.get_xticklabels():
@@ -5805,6 +5817,7 @@ def satisfaction_region():
         accent_param = request.form.get('accent')
         if accent_param:
             th['accent'] = accent_param
+        region_name_map = _parse_region_name_map(request.form.get('region_name_map', ''))
         ques_file = request.files.get('ques_data_region') or request.files.get('ques_data')
         if ques_file is None:
             return jsonify({'error': '请上传空间单元满意度问卷数据'}), 400
@@ -5830,7 +5843,7 @@ def satisfaction_region():
         fig0.patch.set_facecolor(th['fig_bg'])
         _styled_axes(ax0, th)
         colors = ['#7c5cfc' if v >= avg_score else '#00c9a7' for v in avg_vals]
-        ax0.bar([str(r) for r in reg_ids], avg_vals, color=colors, alpha=0.85, width=0.6)
+        ax0.bar(_region_labels(reg_ids, region_name_map), avg_vals, color=colors, alpha=0.85, width=0.6)
         ax0.axhline(avg_score, color='#ff5e5e', linestyle='--', linewidth=1.5,
                     label=f'均值 {avg_score:.1f}')
         ax0.set_xlabel('区域编号', color=th['subtext'], fontsize=10)
@@ -5854,7 +5867,7 @@ def satisfaction_region():
         ax1.plot(theta_r, vals_r, color=th['accent'], linewidth=2)
         ax1.fill(theta_r, vals_r, color=th['accent'], alpha=0.2)
         ax1.set_xticks(theta)
-        ax1.set_xticklabels([str(r) for r in reg_ids], color=th['subtext'], fontsize=8)
+        ax1.set_xticklabels(_region_labels(reg_ids, region_name_map), color=th['subtext'], fontsize=8)
         ax1.tick_params(colors=th['cbar_tick'])
         ax1.set_title('空间单元满意度雷达', color=th['text'], fontsize=13, pad=15)
         ax1.spines['polar'].set_color('#2d2d3d')

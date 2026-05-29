@@ -13,6 +13,9 @@
 - 行为数据中的 `/` 会过滤，不进入图例和统计。
 - 导出 Excel 包含图表背后数据，项目 ZIP 保存多张结果图。
 - session 轮询瘦身，避免大矩阵和重复图片导致前端卡住。
+- **评分模块**（`POST /api/score/<sid>` + `/score` 页面）实现《第五章 评分算法》，
+  支持单一指标标准化、维度层得分（CV 权重 + 短板惩罚）、主观心理感知（回归融合）、
+  综合 AHP 得分、空间区域级排行；前端可调权重实时重算。详见 `docs/scoring_design.md`。
 
 ## 近期优先级
 
@@ -80,8 +83,13 @@ python -m py_compile app.py desktop_app.py api/analysis.py api/db.py
 - `api/analysis.py` 职责过重，后续维护成本高。
 - 结果图、导出数据和前端展示数据仍共用同一 result dict，需要继续边界化。
 - 当前指标对列名强约定，用户数据稍有差异就容易跳过。
-- 桌面端与纯 Web 模式能力不完全一致。
+- **桌面端与纯 Web 模式存在双份 Flask 实例**：任何新页面路由需同时写 `app.py`
+  和 `desktop_app.py::_setup_flask_routes`，API 路由（Blueprint）不受影响。
+  长期应统一到共享的路由声明，消除维护重复。
 - 管理员页面适合本地调试，不应作为生产级权限系统。
+- 评分模块中 `behavior_rate` 使用 `region_count` 作为代理值，
+  语义不准确，后续建议从 export_data 中提取真实发生率均值。
+- 评分主观维度的回归参数（a/β1/β2）目前为经验值，建议接入实际问卷数据拟合。
 
 ## 版本规划
 

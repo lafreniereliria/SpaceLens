@@ -96,6 +96,29 @@ mask = _cov if _cov is not None else extract_measurement_mask(img)
 - 新增 WebView 或重置 URL 后**必须重新应用 zoom factor**（已用
   `loadFinished.connect` 兜底，照搬即可）。
 
+### 4.6 桌面端和 Web 端是两套 Flask 实例 ⚠️ 重要
+
+- **新增页面路由（`@app.route('/xxx')`）必须改两个文件！**
+  - `app.py`：纯 Web 模式 (`python app.py`) 的入口
+  - `desktop_app.py::_setup_flask_routes`（约第 660 行）：桌面端的内联 Flask 实例
+- API 路由不受影响：两边都执行 `register_blueprint(analysis_bp, url_prefix='/api')`，
+  所以 `api/analysis.py` 里 `@analysis_bp.route('/xxx')` 只写一次即可。
+- 症状：桌面端访问新页面时报 `The requested URL was not found on the server`，
+  但 Web 模式（`python app.py`）能打开 → 大概率是漏了 `desktop_app.py` 那一份。
+- 历史案例：thread `vfdjm1oraxrtstbjq1gr` 加 `/score` 时只改了 `app.py`，
+  桌面端 404，commit `c1f9445` 补回。
+
+### 4.7 评分模块依赖 summary 字段名约定
+
+- `api/analysis.py` 里 `_METRIC_SCORE_RULES` 通过 `value_keys`（如 `['mean']`,
+  `['avg_frequency']`, `['avg_score']`）从每个指标的 `summary` dict 中提取主数值。
+- **改某个指标的 `summary` 字段名时**（比如 `avg_score` 改成 `mean_score`），
+  必须同步更新 `_METRIC_SCORE_RULES[<metric_id>]['value_keys']`，否则该指标
+  在评分页会被"静默跳过"——不报错但维度得分缺它，总分异常。
+- 自检：改完后跑 `pytest tests/unit/test_scoring.py`，并访问
+  `/score?sid=<sid>` 确认每个指标都出现在"各指标标准化得分"图。
+- 指标 → 维度映射 + σ 参数详见 `docs/scoring_design.md`。
+
 ---
 
 ## 5. 数据列约定
@@ -152,6 +175,8 @@ chore/<short>    配置 / 依赖 / 文档
 | 改桌面端窗口/进度 | `desktop_app.py::MainWindow` |
 | 改导出 | `api/analysis.py` 搜 `export_zip` / `export_excel` |
 | 历史项目恢复 | `api/db.py` + `api/analysis.py` 搜 `restore` |
+| 评分模块（综合 / 维度 / 主观） | `api/analysis.py` 搜 `compute_scores` + `docs/scoring_design.md` |
+| 加新页面路由 | `app.py` **和** `desktop_app.py::_setup_flask_routes` 都要加（见 §4.6）|
 | 协作流程 | `CONTRIBUTING.md` |
 | 路线图 | `ROADMAP.md` |
 

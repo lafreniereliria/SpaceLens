@@ -26,6 +26,8 @@
 
 ### Changed
 - `.gitignore`：追加大文件 / 临时产物 / Agent 沙箱目录过滤规则
+- 环境参数指标移除"各测点 XX 值"散点图，仅保留空间分布热力图
+  （`api/analysis.py` `_env_fn` / `/api/environment` / `_METRIC_CHART_TITLES`）
 
 ---
 

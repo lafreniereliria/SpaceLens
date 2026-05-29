@@ -1520,19 +1520,7 @@ def _bg_compute(sid, img_b, img_n, loc_b, loc_n, beh_b, beh_n,
             sm.set_array([]); cbar=fig0.colorbar(sm,ax=ax0,fraction=0.03,pad=0.02)
             cbar.ax.tick_params(colors=th['cbar_tick'],labelsize=8); cbar.set_label(label,color=th['subtext'],fontsize=9)
             plt.tight_layout(pad=2); img_b64=fig_to_base64(fig0); plt.close(fig0)
-            # 图2：测点散点图
-            fig1,ax1=plt.subplots(figsize=(9,6)); fig1.patch.set_facecolor(th['fig_bg'])
-            _styled_axes(ax1,th)
-            ax1.scatter(range(len(vals)),vals,color=th['accent'],s=40,alpha=0.85,zorder=3)
-            for xi,vi in enumerate(vals):
-                ax1.annotate(f'{vi:.2f}',(xi,vi),xytext=(0,6),textcoords='offset points',ha='center',va='bottom',color=th['bar_label'],fontsize=7)
-            ax1.axhline(float(vals.mean()),color='#ff5e5e',linestyle='--',linewidth=1.5,label=f'均值 {vals.mean():.2f}')
-            ax1.set_xlabel('测点编号',color=th['subtext'],fontsize=10); ax1.set_ylabel(label,color=th['subtext'],fontsize=10)
-            ax1.set_title(f'各测点{label}值',color=th['text'],fontsize=13)
-            _legend_upper_right(ax1, th)
-            ax1.yaxis.grid(True,color=th['grid'],linewidth=0.5); ax1.set_axisbelow(True)
-            plt.tight_layout(pad=2); img2_b64=fig_to_base64(fig1); plt.close(fig1)
-            return {'image':img_b64,'image2':img2_b64,'summary':{'param':label,'num_points':int(len(vals)),'mean':round(float(vals.mean()),2),'max':round(float(vals.max()),2),'min':round(float(vals.min()),2)},'export_data':{'插值矩阵':_matrix_payload(interp),'测点数据':[{'测点编号':i+1,'X':_jsonable_number(ex[i]),'Y':_jsonable_number(ey[i]),label:_jsonable_number(vals[i])} for i in range(len(vals))]}}
+            return {'image':img_b64,'summary':{'param':label,'num_points':int(len(vals)),'mean':round(float(vals.mean()),2),'max':round(float(vals.max()),2),'min':round(float(vals.min()),2)},'export_data':{'插值矩阵':_matrix_payload(interp),'测点数据':[{'测点编号':i+1,'X':_jsonable_number(ex[i]),'Y':_jsonable_number(ey[i]),label:_jsonable_number(vals[i])} for i in range(len(vals))]}}
         return _inner
 
     for pn in range(1, 6):
@@ -2711,11 +2699,11 @@ _METRIC_CHART_TITLES = {
     'topology':            ['空间单元转移矩阵', '各空间单元人员流入流出量', '空间单元拓扑网络图'],
     'difference':          ['轨迹长度差异系数', '空间单元平均轨迹长度差异系数'],
     'trajectory':          ['人员移动轨迹', '人员轨迹长度'],
-    'environment_p1':      ['温度空间分布', '各测点温度值'],
-    'environment_p2':      ['湿度空间分布', '各测点湿度值'],
-    'environment_p3':      ['光照空间分布', '各测点光照值'],
-    'environment_p4':      ['风速空间分布', '各测点风速值'],
-    'environment_p5':      ['噪声空间分布', '各测点噪声值'],
+    'environment_p1':      ['温度空间分布'],
+    'environment_p2':      ['湿度空间分布'],
+    'environment_p3':      ['光照空间分布'],
+    'environment_p4':      ['风速空间分布'],
+    'environment_p5':      ['噪声空间分布'],
     'behavior_count':      ['各行为发生人次分布图', '各空间单元行为发生人次'],
     'behavior_duration':   ['行为发生时长热力图', '各空间单元行为发生时长'],
     'behavior_rate':       ['各空间单元行为平均发生率_堆叠图', '各空间单元各行为平均发生率'],
@@ -5199,10 +5187,9 @@ def environment():
         if interp is None:
             return jsonify({'error': '有效环境测点过少，无法进行空间插值'}), 400
 
-        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+        fig, ax0 = plt.subplots(figsize=(9, 6))
         fig.patch.set_facecolor(th['fig_bg'])
 
-        ax0 = axes[0]
         ax0.set_facecolor('white')
         ax0.imshow(overlay)
         ax0.scatter(ex, ey, c='white', s=24, zorder=5, edgecolors='#ffcc00', linewidths=0.8)
@@ -5214,18 +5201,6 @@ def environment():
         cbar = fig.colorbar(sm, ax=ax0, fraction=0.03, pad=0.02)
         cbar.ax.tick_params(colors=th['cbar_tick'], labelsize=8)
         cbar.set_label(label, color=th['subtext'], fontsize=9)
-
-        ax1 = axes[1]
-        _styled_axes(ax1, th)
-        ax1.scatter(range(len(vals)), vals, color=th['accent'], s=40, alpha=0.85, zorder=3)
-        ax1.axhline(float(vals.mean()), color='#ff5e5e', linestyle='--', linewidth=1.5,
-                    label=f'均值 {vals.mean():.2f}')
-        ax1.set_xlabel('测点编号', color=th['subtext'], fontsize=10)
-        ax1.set_ylabel(label, color=th['subtext'], fontsize=10)
-        ax1.set_title(f'各测点{label}值', color=th['text'], fontsize=13)
-        _legend_upper_right(ax1, th)
-        ax1.yaxis.grid(True, color=th['grid'], linewidth=0.5)
-        ax1.set_axisbelow(True)
 
         plt.tight_layout(pad=2)
         img_b64 = fig_to_base64(fig)

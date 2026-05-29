@@ -688,6 +688,10 @@ def _run_flask_impl(port: int, state: dict):
     def _compare():
         return _flask.render_template('compare.html')
 
+    @flask_app.route('/score')
+    def _score():
+        return _flask.render_template('score.html')
+
     @flask_app.route('/admin/db')
     def _admin_db():
         return _flask.render_template('admin_db.html')

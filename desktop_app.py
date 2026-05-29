@@ -821,10 +821,51 @@ class MainWindow(QMainWindow):
         self._flask_ready = False
 
         self.setWindowTitle(APP_NAME)
-        self.setMinimumSize(1200, 780)
-        self.resize(1440, 900)
-        screen = QApplication.primaryScreen().geometry()
-        self.move((screen.width() - 1440) // 2, (screen.height() - 900) // 2)
+
+        # ── 根据显示器实际可用分辨率动态调整窗口尺寸，兼容低分屏 ──
+        # 设计基准：1440 × 900；低分屏（如 1366×768、1280×720、1024×768）
+        # 上若仍硬使用基准尺寸，会出现窗口超出屏幕、UI 溢出无法操作的问题。
+        # 这里读取 availableGeometry()（已排除任务栏/Dock 占用的区域），
+        # 在保证最小可用尺寸的前提下按比例缩放窗口，并对 WebView 内嵌的
+        # HTML 页面应用缩放因子（zoomFactor），让内部内容也同比例适配。
+        DESIGN_W, DESIGN_H = 1440, 900
+        FLOOR_W, FLOOR_H = 900, 600   # 极端最小尺寸（窗口本身允许的下限）
+
+        screen = QApplication.primaryScreen()
+        avail = screen.availableGeometry() if screen is not None else None
+        if avail is not None and avail.width() > 0 and avail.height() > 0:
+            avail_w, avail_h = avail.width(), avail.height()
+        else:
+            avail_w, avail_h = DESIGN_W, DESIGN_H
+
+        # 目标窗口尺寸：不超过设计基准，也不超过可用区域的 ~95% / 92%
+        target_w = min(DESIGN_W, int(avail_w * 0.95))
+        target_h = min(DESIGN_H, int(avail_h * 0.92))
+        target_w = max(target_w, FLOOR_W)
+        target_h = max(target_h, FLOOR_H)
+
+        # 最小窗口尺寸：取目标尺寸与“硬地板”中较小者，确保用户仍可缩小到合理范围
+        min_w = min(target_w, 1100)
+        min_h = min(target_h, 720)
+        min_w = max(min_w, FLOOR_W)
+        min_h = max(min_h, FLOOR_H)
+        self.setMinimumSize(min_w, min_h)
+        self.resize(target_w, target_h)
+
+        # 居中（以 availableGeometry 为准，避免遮挡任务栏）
+        if avail is not None and avail.width() > 0:
+            cx = avail.x() + max(0, (avail.width()  - target_w) // 2)
+            cy = avail.y() + max(0, (avail.height() - target_h) // 2)
+            self.move(cx, cy)
+        else:
+            self.move(max(0, (avail_w - target_w) // 2),
+                      max(0, (avail_h - target_h) // 2))
+
+        # WebView 缩放因子：对低分屏进行整体缩放，避免内部 HTML 溢出
+        # 取宽高两个方向的比例最小值，并夹在 [0.75, 1.0] 之间，防止文字过小
+        self._zoom_factor = max(0.75, min(1.0,
+                                          target_w / DESIGN_W,
+                                          target_h / DESIGN_H))
 
         # WebView
         self.webview = QWebEngineView()
@@ -832,6 +873,11 @@ class MainWindow(QMainWindow):
         profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
         page = SpaceLensPage(profile, self.webview)   # ← 使用自定义 Page
         self.webview.setPage(page)
+        self.webview.setZoomFactor(self._zoom_factor)
+        # 切换到任意新页面（封面/主界面）后都重新应用缩放，避免 Qt 重置
+        self.webview.loadFinished.connect(
+            lambda _ok: self.webview.setZoomFactor(self._zoom_factor)
+        )
         self.setCentralWidget(self.webview)
 
         # 立即加载封面（不依赖 Flask）

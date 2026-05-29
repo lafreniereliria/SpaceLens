@@ -41,6 +41,7 @@
   };
   var DIM_ORDER = ['subjective', 'physical', 'circulation', 'behavior'];
   var currentWeights = Object.assign({}, DEFAULT_WEIGHTS);
+  var _lastFolderName = '';
 
   // ── 主题切换 ──
   (function bindTheme() {
@@ -159,6 +160,13 @@
     }
     $('status-text').textContent = '评分完成 · 总分 ' + (s.total_score != null ? s.total_score.toFixed(1) : '--');
 
+    // 保存按钮：评分计算成功就显示
+    var saveBtn = $('save-score-btn');
+    if (saveBtn) saveBtn.style.display = 'inline-flex';
+
+    // 缓存最近的项目名（保存模态默认值）
+    _lastFolderName = data.folder_name || '';
+
     // 图
     var imgs = data.images || {};
     setImg('img-total', imgs.image_total);
@@ -270,4 +278,163 @@
     renderWeightsForm();
     recompute();
   }
+
+  // ── 侧边栏 TOC：点击平滑滚动 + 滚动 spy 高亮 ──
+  function setupToc() {
+    var links = document.querySelectorAll('.score-toc-link[data-anchor]');
+    if (!links.length) return;
+    links.forEach(function (a) {
+      a.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        var anchor = a.getAttribute('data-anchor');
+        var target = document.getElementById(anchor);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+
+    function onScroll() {
+      var scrollY = window.scrollY || document.documentElement.scrollTop;
+      var best = null;
+      var bestTop = -Infinity;
+      links.forEach(function (a) {
+        var anchor = a.getAttribute('data-anchor');
+        var target = document.getElementById(anchor);
+        if (!target) return;
+        var top = target.getBoundingClientRect().top + scrollY - 120;
+        if (top <= scrollY && top > bestTop) {
+          bestTop = top;
+          best = a;
+        }
+      });
+      links.forEach(function (a) { a.classList.remove('active'); });
+      if (best) best.classList.add('active');
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+  }
+  setupToc();
+
+  // ── 保存模态：默认两项都勾选；自动按选择决定 include_score/score_only ──
+  function openSaveModal() {
+    if (!SID) { alert('未找到会话 ID，无法保存'); return; }
+    var ov = $('sp-overlay');
+    if (!ov) return;
+    $('sp-folder-input').value = _lastFolderName || ('评分_' + new Date().toISOString().slice(0, 10));
+    $('sp-opt-23').checked = true;
+    $('sp-opt-score').checked = true;
+    updateSaveHint();
+    ov.style.display = 'flex';
+  }
+  function closeSaveModal() {
+    var ov = $('sp-overlay');
+    if (ov) ov.style.display = 'none';
+  }
+  function closeSaveModalOutside(e) {
+    if (e.target && e.target.id === 'sp-overlay') closeSaveModal();
+  }
+  function updateSaveHint() {
+    var o23 = $('sp-opt-23').checked;
+    var os  = $('sp-opt-score').checked;
+    var hint = $('sp-hint');
+    var warn = $('sp-warn');
+    var btn  = $('sp-save-btn');
+    if (!o23 && !os) {
+      hint.textContent = '请选择导出内容';
+      warn.style.display = 'block';
+      btn.disabled = true;
+      return;
+    }
+    warn.style.display = 'none';
+    btn.disabled = false;
+    if (o23 && os) hint.textContent = '将导出 23 指标 + 评分';
+    else if (o23)  hint.textContent = '将导出 23 指标结果';
+    else           hint.textContent = '将单独导出评分结果';
+  }
+  ['sp-opt-23', 'sp-opt-score'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('change', updateSaveHint);
+  });
+
+  function doSaveProject() {
+    var o23 = $('sp-opt-23').checked;
+    var os  = $('sp-opt-score').checked;
+    if (!o23 && !os) { updateSaveHint(); return; }
+
+    var folder = ($('sp-folder-input').value || '').trim() || 'SpaceLens项目';
+    var btn = $('sp-save-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="sp-saving-spinner"></div> 打包中…';
+
+    var body = {
+      folder_name: folder,
+      include_score: o23 && os,
+      score_only: !o23 && os,
+      ahp_weights: readWeights(),
+    };
+    // 23 指标导出：默认全部已计算的（metrics=null）
+
+    fetch('/api/save_project/' + SID, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.cancelled) return;
+        if (data.error) throw new Error(data.error);
+        closeSaveModal();
+        var st = $('status-text');
+        if (st) {
+          var prev = st.textContent;
+          st.textContent = '✓ 已保存至：' + (data.path || '本地文件');
+          st.style.color = 'var(--success, #22c55e)';
+          setTimeout(function () {
+            st.textContent = prev;
+            st.style.color = '';
+          }, 5000);
+        }
+      })
+      .catch(function (err) {
+        // 桌面端原生对话框不可用时，降级到浏览器下载
+        if (err && err.message && err.message.indexOf('文件对话框') >= 0) {
+          fallbackBrowserDownload(body);
+        } else {
+          alert('保存失败：' + (err && err.message ? err.message : err));
+        }
+      })
+      .finally(function () {
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> 保存到本地';
+      });
+  }
+
+  function fallbackBrowserDownload(body) {
+    fetch('/api/export_project/' + SID, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (j) { throw new Error(j.error || ('HTTP ' + r.status)); });
+      return r.blob().then(function (b) {
+        var url = URL.createObjectURL(b);
+        var a = document.createElement('a');
+        a.href = url;
+        var suffix = body.score_only ? '_评分结果' : (body.include_score ? '_评价与评分结果' : '_评价结果');
+        a.download = (body.folder_name || 'SpaceLens项目') + suffix + '.zip';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        closeSaveModal();
+      });
+    }).catch(function (err) {
+      alert('保存失败：' + (err && err.message ? err.message : err));
+    });
+  }
+
+  window.openSaveModal = openSaveModal;
+  window.closeSaveModal = closeSaveModal;
+  window.closeSaveModalOutside = closeSaveModalOutside;
+  window.doSaveProject = doSaveProject;
 })();

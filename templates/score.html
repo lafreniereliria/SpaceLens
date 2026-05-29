@@ -28,6 +28,7 @@
   background: var(--surface-1); border: 1px solid var(--border);
   border-radius: 14px; padding: 22px 24px;
   box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+  scroll-margin-top: 80px;
 }
 .score-card h3 {
   font-size: 13px; color: var(--text-muted); font-weight: 600;
@@ -41,7 +42,7 @@
 }
 .score-card .img-wrap { display: flex; justify-content: center; align-items: center; }
 .score-card .img-wrap img {
-  max-width: 100%; max-height: 380px; border-radius: 8px;
+  max-width: 100%; max-height: 460px; border-radius: 8px;
 }
 .score-meta {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -59,11 +60,11 @@
   font-size: 17px; color: var(--text); font-weight: 600;
 }
 
+/* 评分卡片之间统一改为单列：所有柱状图/雷达图都按全宽显示 */
 .score-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+  display: grid; grid-template-columns: 1fr; gap: 20px;
   margin-bottom: 20px;
 }
-.score-grid.full { grid-template-columns: 1fr; }
 
 .dim-grid {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -154,8 +155,121 @@
 .weight-input input:focus { outline: none; border-color: var(--accent); }
 .weight-sum-hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
 
+/* ── 侧边栏 TOC 目录 ── */
+.score-toc {
+  padding: 8px 14px 20px;
+}
+.score-toc .toc-label {
+  font-size: 10px; color: var(--text-muted); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.8px;
+  padding: 6px 12px 8px;
+}
+.score-toc-link {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-radius: 8px;
+  font-size: 13px; color: var(--text-muted); text-decoration: none;
+  cursor: pointer; transition: all 0.12s;
+  border-left: 3px solid transparent;
+}
+.score-toc-link:hover {
+  background: var(--surface-2); color: var(--text);
+}
+.score-toc-link.active {
+  background: rgba(var(--accent-rgb),0.12);
+  color: var(--accent); font-weight: 600;
+  border-left-color: var(--accent);
+}
+.score-toc-link svg { flex-shrink: 0; }
+
+/* ── 顶部按钮：与 index.html 保持一致 ── */
+.topnav-mgr-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text-muted); text-decoration: none;
+  padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px;
+  transition: all 0.15s; background: var(--surface-1); cursor: pointer;
+}
+.topnav-mgr-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+.save-project-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 13px;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: 8px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: all 0.15s;
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb),0.35);
+}
+.save-project-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+.save-project-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+/* ── 保存模态层（与 index.html 同款样式简化版） ── */
+.sp-overlay {
+  position: fixed; inset: 0; z-index: 2000;
+  background: rgba(0,0,0,0.55); backdrop-filter: blur(3px);
+  display: none; align-items: center; justify-content: center;
+}
+.sp-modal {
+  width: 560px; max-width: 92vw;
+  background: var(--surface-1); border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.35);
+  overflow: hidden; display: flex; flex-direction: column;
+  border: 1px solid var(--border);
+}
+.sp-header {
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+}
+.sp-header h3 { font-size: 15px; color: var(--text); font-weight: 600; margin: 0; }
+.sp-body { padding: 18px 22px; max-height: 65vh; overflow: auto; }
+.sp-row { margin-bottom: 16px; }
+.sp-row label {
+  display: block; font-size: 12px; color: var(--text-muted);
+  font-weight: 600; margin-bottom: 6px;
+}
+.sp-row input[type="text"] {
+  width: 100%; padding: 9px 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface-2);
+  color: var(--text); font-size: 13px;
+}
+.sp-checkbox-row {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--surface-2);
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.sp-checkbox-row input { margin-top: 3px; flex-shrink: 0; }
+.sp-checkbox-row .desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.sp-checkbox-row .ttl { font-size: 13px; color: var(--text); font-weight: 600; }
+.sp-footer {
+  padding: 14px 22px; border-top: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+  background: var(--surface-2);
+}
+.sp-footer-btns { display: flex; gap: 10px; }
+.sp-btn-cancel, .sp-btn-save {
+  padding: 8px 16px; border-radius: 8px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--border); display: inline-flex; align-items: center; gap: 6px;
+}
+.sp-btn-cancel { background: var(--surface-1); color: var(--text); }
+.sp-btn-cancel:hover { border-color: var(--accent); color: var(--accent); }
+.sp-btn-save { background: var(--accent); color: #fff; border-color: var(--accent); }
+.sp-btn-save:hover { opacity: 0.88; }
+.sp-btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+.sp-saving-spinner {
+  width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 @media (max-width: 920px) {
-  .score-hero, .score-grid { grid-template-columns: 1fr; }
+  .score-hero { grid-template-columns: 1fr; }
 }
 </style>
 </head>
@@ -173,23 +287,25 @@
       </div>
     </a>
   </div>
-  <nav class="sidebar-nav" style="padding:20px 14px">
-    <a href="/results" class="sidebar-link" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;color:var(--text-muted);text-decoration:none;font-size:13px">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
-      返回 23 指标结果
-    </a>
-    <div style="height:1px;background:var(--border);margin:10px 0"></div>
-    <div style="padding:10px 12px;border-radius:8px;background:rgba(var(--accent-rgb),0.12);color:var(--accent);font-size:13px;font-weight:600;display:flex;align-items:center;gap:10px">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-      综合评分
-    </div>
+  <nav class="score-toc">
+    <div class="toc-label">评分目录</div>
+    <a class="score-toc-link" data-anchor="card-weights"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>AHP 权重</a>
+    <a class="score-toc-link active" data-anchor="card-hero"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>综合得分</a>
+    <a class="score-toc-link" data-anchor="card-dims"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>各维度概览</a>
+    <a class="score-toc-link" data-anchor="card-dim-bar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>维度柱状图</a>
+    <a class="score-toc-link" data-anchor="card-metric-bar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>指标得分</a>
+    <a class="score-toc-link" data-anchor="card-breakdown"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>指标贡献明细</a>
+    <a class="score-toc-link" data-anchor="card-region"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>空间区域评分</a>
+    <a class="score-toc-link" data-anchor="card-algo"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>算法说明</a>
+    <div style="height:1px;background:var(--border);margin:14px 0"></div>
+    <a href="/results" class="score-toc-link" style="color:var(--text-muted)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>返回 23 指标结果</a>
   </nav>
 </aside>
 
 <main class="main-content">
   <header class="topbar">
     <div class="topbar-left">
-      <a href="/results" class="topnav-mgr-btn" id="back-btn">
+      <a href="/results" class="topnav-mgr-btn" id="back-btn" title="返回 23 指标结果">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         返回 23 指标结果
       </a>
@@ -200,6 +316,11 @@
     <div class="topbar-right">
       <div class="status-dot online" id="status-dot"></div>
       <span class="status-text" id="status-text">加载中…</span>
+      <!-- 保存项目 + 评分按钮 -->
+      <button class="save-project-btn" id="save-score-btn" onclick="openSaveModal()" title="保存 23 指标结果 + 评分结果" style="display:none">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        保存项目
+      </button>
       <button class="theme-toggle" id="theme-toggle" title="切换明暗">
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
           <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
@@ -236,7 +357,7 @@
     <div id="score-content" style="display:none">
 
       <!-- 权重调整面板 -->
-      <div id="weights-panel" class="score-card">
+      <div id="weights-panel" class="score-card" id="card-weights">
         <h3>AHP 维度权重 <span class="badge">可调</span></h3>
         <div class="weights-form" id="weights-form">
           <!-- 由 JS 生成 -->
@@ -249,7 +370,7 @@
       </div>
 
       <!-- 综合卡片 + 维度雷达 -->
-      <div class="score-hero">
+      <div class="score-hero" id="card-hero">
         <div class="score-card">
           <h3>综合绩效得分</h3>
           <div class="img-wrap"><img id="img-total" alt="综合得分"></div>
@@ -261,32 +382,32 @@
       </div>
 
       <!-- 维度概览块 -->
-      <div class="score-card" style="margin-bottom:20px">
+      <div class="score-card" style="margin-bottom:20px" id="card-dims">
         <h3>各维度评分概览</h3>
         <div class="dim-grid" id="dim-grid"></div>
       </div>
 
-      <!-- 维度柱状图 -->
+      <!-- 维度柱状图（单列） -->
       <div class="score-grid">
-        <div class="score-card">
+        <div class="score-card" id="card-dim-bar">
           <h3>各维度评分柱状图</h3>
           <div class="img-wrap"><img id="img-dim-bar" alt="维度柱状图"></div>
         </div>
-        <div class="score-card">
+        <div class="score-card" id="card-metric-bar">
           <h3>各指标标准化得分</h3>
           <div class="img-wrap"><img id="img-metric-bar" alt="指标得分"></div>
         </div>
       </div>
 
       <!-- 各维度详细指标拆解 -->
-      <div class="score-card" style="margin-bottom:20px">
+      <div class="score-card" style="margin-bottom:20px" id="card-breakdown">
         <h3>各维度指标贡献明细</h3>
         <div id="dim-breakdown"></div>
       </div>
 
-      <!-- 空间区域评分 -->
-      <div class="score-grid full" id="region-section" style="display:none">
-        <div class="score-card">
+      <!-- 空间区域评分（单列） -->
+      <div class="score-grid" id="region-section" style="display:none">
+        <div class="score-card" id="card-region">
           <h3>空间区域综合评分（已按得分排序）</h3>
           <div class="img-wrap"><img id="img-region-bar" alt="空间区域评分"></div>
         </div>
@@ -301,7 +422,7 @@
       </div>
 
       <!-- 算法说明 -->
-      <div class="score-card" style="margin-bottom:20px">
+      <div class="score-card" style="margin-bottom:20px" id="card-algo">
         <h3>评分算法说明</h3>
         <div style="color:var(--text-muted);font-size:13px;line-height:1.8">
           <p><strong style="color:var(--text)">1. 单一指标标准化</strong>：根据指标类型采用不同公式映射至 0–100 分。
@@ -330,6 +451,50 @@
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- ── 保存模态层 ────────────────────────────── -->
+  <div class="sp-overlay" id="sp-overlay" onclick="closeSaveModalOutside(event)">
+    <div class="sp-modal" onclick="event.stopPropagation()">
+      <div class="sp-header">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        <h3>保存项目结果</h3>
+      </div>
+      <div class="sp-body">
+        <div class="sp-row">
+          <label>保存文件名（不含 .zip）</label>
+          <input type="text" id="sp-folder-input" placeholder="SpaceLens项目">
+        </div>
+        <div class="sp-row">
+          <label style="margin-bottom:8px">导出内容</label>
+          <label class="sp-checkbox-row" for="sp-opt-23">
+            <input type="checkbox" id="sp-opt-23" checked>
+            <div>
+              <div class="ttl">23 指标分析结果</div>
+              <div class="desc">所有已完成指标的图表 PNG + Excel 摘要（与 23 指标页"保存项目"一致）</div>
+            </div>
+          </label>
+          <label class="sp-checkbox-row" for="sp-opt-score">
+            <input type="checkbox" id="sp-opt-score" checked>
+            <div>
+              <div class="ttl">评分结果（综合 / 维度 / 区域）</div>
+              <div class="desc">本页 6 张评分图 + JSON 形式的总分/维度/AHP 权重</div>
+            </div>
+          </label>
+          <div id="sp-warn" style="color:#e03d3d;font-size:12px;display:none;margin-top:6px">至少选择一项导出内容</div>
+        </div>
+      </div>
+      <div class="sp-footer">
+        <span style="font-size:12px;color:var(--text-muted)" id="sp-hint">导出 23 指标 + 评分</span>
+        <div class="sp-footer-btns">
+          <button class="sp-btn-cancel" onclick="closeSaveModal()">取消</button>
+          <button class="sp-btn-save" id="sp-save-btn" onclick="doSaveProject()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            保存到本地
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 

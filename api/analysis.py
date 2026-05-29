@@ -2715,9 +2715,11 @@ _METRIC_CHART_TITLES = {
 }
 
 
-def _build_project_zip(sid, sel_metrics, folder_name):
+def _build_project_zip(sid, sel_metrics, folder_name, include_score=False, score_only=False, ahp_weights=None):
     """
     通用：将会话结果打包成 ZIP bytes。
+    - include_score=True：在 ZIP 中追加 score/ 目录（评分图 + JSON）
+    - score_only=True：只导出评分（忽略 sel_metrics，不写 images/data/）
     返回 (zip_bytes, safe_folder_name, error_str)
     """
     with _sess_lock:
@@ -2729,9 +2731,12 @@ def _build_project_zip(sid, sel_metrics, folder_name):
 
     results  = sess.get('results', {})
     computed = sess.get('computed', [])
-    to_export = computed[:] if sel_metrics is None else [m for m in sel_metrics if m in computed]
-    if not to_export:
-        return None, safe_folder, '没有可导出的计算结果'
+    if score_only:
+        to_export = []
+    else:
+        to_export = computed[:] if sel_metrics is None else [m for m in sel_metrics if m in computed]
+        if not to_export:
+            return None, safe_folder, '没有可导出的计算结果'
 
     buf = io.BytesIO()
     with _zipfile.ZipFile(buf, 'w', _zipfile.ZIP_DEFLATED) as zf:
@@ -2756,18 +2761,81 @@ def _build_project_zip(sid, sel_metrics, folder_name):
                 all_summary[cn_name] = summary
                 _write_summary_xlsx(zf, metric_id, cn_name, summary, data.get('export_data'), data.get('bar_data'))
 
-        zf.writestr('summary.json', _json.dumps(all_summary, ensure_ascii=False, indent=2))
+        if not score_only:
+            zf.writestr('summary.json', _json.dumps(all_summary, ensure_ascii=False, indent=2))
+
+        # ── 评分结果（可选）─────────────────────────
+        score_payload = None
+        if include_score or score_only:
+            try:
+                weights = dict(_DEFAULT_AHP_WEIGHTS)
+                if isinstance(ahp_weights, dict):
+                    for k in weights:
+                        if k in ahp_weights:
+                            try:
+                                weights[k] = float(ahp_weights[k])
+                            except (TypeError, ValueError):
+                                pass
+                region_name_map = sess.get('region_name_map') or {}
+                score = compute_scores(results, ahp_weights=weights,
+                                       region_name_map=region_name_map)
+                charts = _render_score_charts(score, th=_theme('light'),
+                                              region_name_map=region_name_map)
+                score_chart_titles = {
+                    'image_total': '01_综合得分卡片',
+                    'image_radar': '02_四维度雷达图',
+                    'image_dim_bar': '03_各维度评分柱状图',
+                    'image_metric_bar': '04_各指标标准化得分',
+                    'image_region_bar': '05_空间区域综合评分',
+                    'image_region_heatmap': '06_空间区域维度评分热力图',
+                }
+                for key, title in score_chart_titles.items():
+                    b64 = charts.get(key)
+                    if b64:
+                        zf.writestr(f'score/{title}.png', base64.b64decode(b64))
+                # JSON 形式的评分摘要
+                score_summary = {
+                    'total_score': score.get('total_score'),
+                    'grade': score.get('grade'),
+                    'ahp_weights': weights,
+                    'dimensions': {k: {
+                        'label': v.get('label'),
+                        'score': v.get('score'),
+                        'weight': v.get('weight'),
+                    } for k, v in (score.get('dimensions') or {}).items()},
+                    'per_metric_score': score.get('per_metric_score'),
+                    'region_scores': score.get('region_scores'),
+                }
+                zf.writestr('score/score_summary.json',
+                            _json.dumps(score_summary, ensure_ascii=False, indent=2))
+                score_payload = score_summary
+            except Exception as exc:
+                # 评分失败不阻断主导出，写入错误日志
+                zf.writestr('score/_ERROR.txt',
+                            f'评分计算失败：{exc}\n'.encode('utf-8'))
+
         building_type = sess.get('type', '')
-        readme = (
-            f'项目名称：{folder_name}\n'
-            f'建筑类型：{building_type}\n'
-            f'导出指标数：{len(to_export)}\n'
-            f'导出时间：{_time.strftime("%Y-%m-%d %H:%M:%S")}\n'
-            '\n各子文件夹说明：\n'
-            '  images/  — 指标结果图片（PNG）\n'
-            '  data/    — 指标数值汇总（Excel）\n'
-            '  summary.json — 全量数值摘要\n'
-        )
+        readme_lines = [
+            f'项目名称：{folder_name}',
+            f'建筑类型：{building_type}',
+            f'导出指标数：{len(to_export)}',
+            f'导出时间：{_time.strftime("%Y-%m-%d %H:%M:%S")}',
+            '',
+            '各子文件夹说明：',
+        ]
+        if not score_only:
+            readme_lines += [
+                '  images/  — 指标结果图片（PNG）',
+                '  data/    — 指标数值汇总（Excel）',
+                '  summary.json — 全量数值摘要',
+            ]
+        if include_score or score_only:
+            readme_lines.append('  score/   — 评分模块结果（综合 / 维度 / 雷达 / 区域）')
+            if score_payload and score_payload.get('total_score') is not None:
+                readme_lines.append(
+                    f"  评分总分：{score_payload['total_score']:.2f} · 等级：{score_payload.get('grade','--')}"
+                )
+        readme = '\n'.join(readme_lines) + '\n'
         zf.writestr('README.txt', readme.encode('utf-8'))
 
     buf.seek(0)
@@ -2783,18 +2851,30 @@ def _safe_export_folder_name(folder_name):
 def save_project(sid):
     """
     桌面端专用：弹出原生文件保存对话框，将 ZIP 写到用户选择的路径。
-    POST body JSON: { "metrics": [...], "folder_name": "..." }
+    POST body JSON:
+      { "metrics": [...], "folder_name": "...",
+        "include_score": true/false,
+        "score_only": true/false,
+        "ahp_weights": {...} }
     成功返回: { "success": true, "path": "..." }
     取消返回: { "cancelled": true }
     失败返回: { "error": "..." }
     """
     try:
-        body        = request.get_json(silent=True) or {}
-        sel_metrics = body.get('metrics', None)
-        folder_name = body.get('folder_name', '') or 'SpaceLens项目'
+        body          = request.get_json(silent=True) or {}
+        sel_metrics   = body.get('metrics', None)
+        folder_name   = body.get('folder_name', '') or 'SpaceLens项目'
+        include_score = bool(body.get('include_score', False))
+        score_only    = bool(body.get('score_only', False))
+        ahp_weights   = body.get('ahp_weights', None)
 
         safe_folder = _safe_export_folder_name(folder_name)
-        zip_filename = f'{safe_folder}_评价结果.zip'
+        if score_only:
+            zip_filename = f'{safe_folder}_评分结果.zip'
+        elif include_score:
+            zip_filename = f'{safe_folder}_评价与评分结果.zip'
+        else:
+            zip_filename = f'{safe_folder}_评价结果.zip'
 
         # ── 1. 优先使用 Qt 原生对话框（桌面端） ──
         if _native_save_dialog_hook is not None:
@@ -2822,7 +2902,11 @@ def save_project(sid):
         if not save_path:
             return jsonify({'cancelled': True})
 
-        zip_bytes, safe_folder, err = _build_project_zip(sid, sel_metrics, folder_name)
+        zip_bytes, safe_folder, err = _build_project_zip(
+            sid, sel_metrics, folder_name,
+            include_score=include_score, score_only=score_only,
+            ahp_weights=ahp_weights,
+        )
         if err:
             return jsonify({'error': err}), 400
 
@@ -2840,22 +2924,35 @@ def save_project(sid):
 def export_project(sid):
     """原始 blob 下载端点（浏览器环境保留）"""
     try:
-        body        = request.get_json(silent=True) or {}
-        sel_metrics = body.get('metrics', None)
-        folder_name = body.get('folder_name', '') or 'SpaceLens项目'
+        body          = request.get_json(silent=True) or {}
+        sel_metrics   = body.get('metrics', None)
+        folder_name   = body.get('folder_name', '') or 'SpaceLens项目'
+        include_score = bool(body.get('include_score', False))
+        score_only    = bool(body.get('score_only', False))
+        ahp_weights   = body.get('ahp_weights', None)
 
-        zip_bytes, safe_folder, err = _build_project_zip(sid, sel_metrics, folder_name)
+        zip_bytes, safe_folder, err = _build_project_zip(
+            sid, sel_metrics, folder_name,
+            include_score=include_score, score_only=score_only,
+            ahp_weights=ahp_weights,
+        )
         if err:
             status = 404 if '不存在' in err else 400
             return jsonify({'error': err}), status
 
         from flask import send_file
         buf = io.BytesIO(zip_bytes)
+        if score_only:
+            dl_name = f'{safe_folder}_评分结果.zip'
+        elif include_score:
+            dl_name = f'{safe_folder}_评价与评分结果.zip'
+        else:
+            dl_name = f'{safe_folder}_评价结果.zip'
         return send_file(
             buf,
             mimetype='application/zip',
             as_attachment=True,
-            download_name=f'{safe_folder}_评价结果.zip',
+            download_name=dl_name,
         )
     except Exception as e:
         return jsonify({'error': str(e)}), 500

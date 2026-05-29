@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: pip
+
+      - name: Install runtime deps
+        run: pip install -r requirements.txt
+
+      - name: Install dev deps
+        run: pip install -r requirements-dev.txt
+
+      - name: Compile check
+        run: |
+          python -m py_compile app.py api/analysis.py api/db.py
+          # desktop_app.py 依赖 PyQt6，CI 不装，跳过编译检查
+          python -c "import ast; ast.parse(open('desktop_app.py').read()); print('desktop_app.py syntax OK')"
+
+      - name: Lint
+        run: ruff check . || true
+        # 首版允许 lint warning，避免一次性大改；后续可去掉 || true 收紧
+
+      - name: Unit + integration tests
+        run: pytest -q --cov=api --cov-report=term-missing

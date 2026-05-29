@@ -16,6 +16,7 @@ env/
 
 # macOS
 .DS_Store
+**/.DS_Store
 
 # PyInstaller 中间产物
 build/
@@ -27,3 +28,25 @@ build/
 # pyenv 本地版本文件（可保留或忽略，按需）
 # .python-version
 windows-build/
+
+# ──────────────────────────────────────────────
+# AI 协作工作流：减少大文件 / 临时产物进入仓库
+# ──────────────────────────────────────────────
+
+# 用户本地数据目录
+.spacelens/
+
+# 大文件 / 临时产物（注意：GUI/ 下已经追踪的 .xlsx 不会受 *.xlsx 影响）
+*.zip
+*.docx
+test_*_output.png
+
+# 测试产物
+.coverage
+.pytest_cache/
+htmlcov/
+coverage.xml
+
+# Agent / 工具沙箱目录
+contract-review/
+kml-webshell-direct/

@@ -1,0 +1,31 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+exclude = [
+    ".venv",
+    ".venv311",
+    "build",
+    "dist",
+    "windows-build",
+    "__pycache__",
+    "GUI",
+    "GUI_评价结果",
+]
+
+[tool.ruff.lint]
+# 保守起步：只开启基础错误检查 + import 排序，避免大改既有代码
+select = ["E", "F", "I"]
+ignore = [
+    "E501",  # 行宽（已有大量长行，先不强制）
+    "E402",  # api/analysis.py 顶部 matplotlib.use 后才能 import pyplot
+    "E722",  # 既有 bare except 较多，渐进收紧
+    "F401",  # 部分 noqa 已有 import 用作副作用
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
